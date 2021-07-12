@@ -1,0 +1,65 @@
+//-----------------------------------------------------------------------------
+//	SERVER_RTBR.VPC
+//
+//	Project Script
+//-----------------------------------------------------------------------------
+
+$Macro SRCDIR		"..\.."
+$Macro GAMENAME 	"raisingthebarredux"
+
+$Include "$SRCDIR\game\server\server_episodic_base.vpc"
+
+$Configuration
+{
+	$Compiler
+	{
+		$AdditionalIncludeDirectories	"$BASE;.\rtbr;$SRCDIR\game\shared\rtbr"
+		$PreprocessorDefinitions		"$BASE;RTBR_DLL"
+	}
+}
+
+$Project "Server (RTBR)"
+{
+	$Folder "Source Files"
+	{
+		-$File	"$SRCDIR\game\shared\weapon_parse_default.cpp"
+
+		$Folder "RTBR"
+		{
+			$Folder "NPCs"
+			{
+				$File	"hl2\npc_bullsquid.cpp"
+				$File	"hl2\npc_bullsquid.h"
+				$File	"hl2\weapon_gauss.h"
+				$File	"rtbr\npc_combineguard.cpp"
+				$File	"rtbr\npc_cremator.cpp"
+				$File	"rtbr\npc_cremator.h"
+				$File	"hl2\npc_houndeye.cpp"
+				$File	"hl2\npc_houndeye.h"
+				$File	"rtbr\npc_lightstalk.cpp"
+				$File	"rtbr\npc_lightstalk.h"
+			}
+		
+			$Folder "Weapons"
+			{
+				$File	"$SRCDIR\game\shared\rtbr\weapon_parse_rtbr.cpp"
+				$File	"hl2\weapon_immolator.cpp"
+			}
+			
+			$Folder "Misc"
+			{
+			}
+		}
+		
+		// New Xen plants from EZ2
+		$Folder	"EZ2 DLL"
+		{
+			$File	"ez2\npc_baseflora.h"
+			$File	"ez2\npc_baseflora.cpp"
+			$File	"ez2\npc_xenhair.h"
+			$File	"ez2\npc_xenhair.cpp"
+			$File	"ez2\npc_xentree.h"
+			$File	"ez2\npc_xentree.cpp"
+		}
+	}
+}

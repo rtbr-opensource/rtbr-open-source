@@ -1,0 +1,103 @@
+#include "cbase.h"
+/*// Top of file:
+
+// Fidget Variable
+bool WEAPONNAMENotHolstered;
+
+//----------------------------------------------------
+
+//Within class CWeaponWEAPONNAME : public CHLSelectFireMachineGun under public:
+
+// Fidget functions
+	void Fidget( void ); 
+	void ResetFidget( void );
+
+//----------------------------------------------------
+
+// At the top of the functions.
+
+//-----------------------------------------------------------------------------
+// Idle fidget experimentation by Kralich 4head and Iridium
+//-----------------------------------------------------------------------------
+void CWeaponWEAPONNAME::Fidget(void)
+{
+	CBasePlayer *pPlayer = ToBasePlayer(GetOwner());
+	if (GetActivity() == ACT_VM_IDLE && WEAPONNAMENotHolstered && pPlayer->GetLocalVelocity().Length() == 0)
+	{
+		SendWeaponAnim(ACT_VM_FIDGET);
+		SetContextThink(&CWeaponWEAPONNAME::ResetFidget, gpGlobals->curtime + SequenceDuration(), "FidgetThink");
+	}
+	else
+	{
+		SetContextThink(&CWeaponWEAPONNAME::Fidget, gpGlobals->curtime + random->RandomFloat(9.0f, 12.0f), "FidgetThink");
+	}
+}
+
+void CWeaponWEAPONNAME::ResetFidget(void)
+{
+	if (WEAPONNAMENotHolstered)
+	{
+		SendWeaponAnim(ACT_VM_IDLE);
+		SetContextThink(&CWeaponWEAPONNAME::Fidget, gpGlobals->curtime + random->RandomFloat(11.0f, 14.0f), "FidgetThink");
+	} 
+	else
+	{
+		SetContextThink(&CWeaponWEAPONNAME::Fidget, gpGlobals->curtime + random->RandomFloat(9.0f, 12.0f), "FidgetThink");
+	}
+}
+
+//----------------------------------------------------
+
+// Under Precache function at the top
+
+//this line starts off the fidget timer
+	SetContextThink( &CWeaponWEAPONNAME::Fidget, gpGlobals->curtime + random->RandomFloat( 11.0f, 14.0f ), "FidgetThink" );
+
+//----------------------------------------------------
+
+// Under ItemPostFrame function at the top
+
+// Unholser weapon bool for fidget
+	WEAPONNAMENotHolstered = true;
+
+//----------------------------------------------------
+
+// Under holster function
+
+// Marks weapon as holstered to stop fidget animation.
+	WEAPONNAMENotHolstered = false;
+	
+//----------------------------------------------------
+
+// ONLY IF: The ItemPostFrame function doesnt exist:
+// Under the fidget function declaration at the top of the file add
+
+void ItemPostFrame( void );
+
+// Add this below the actual fidget functions.
+
+void CWeaponWEAPONNAME::ItemPostFrame(void)
+{
+	// Unholser weapon bool for fidget
+	WEAPONNAMENotHolstered = true;
+
+	BaseClass::ItemPostFrame();
+}
+//I give up on writing this well so copy and paste will ensue
+
+void CWeaponWEAPONNAME::Precache( void )
+{
+	//this line starts off the fidget timer
+	SetContextThink( &CWeaponWEAPONNAME::Fidget, gpGlobals->curtime + random->RandomFloat( 11.0f, 14.0f ), "FidgetThink" );
+	BaseClass::Precache();
+}
+
+bool CWeaponWEAPONNAME::Holster( CBaseCombatWeapon *pSwitchingTo )
+{
+	// Marks weapon as holstered to stop fidget animation.
+	WEAPONNAMENotHolstered = false;
+
+	return BaseClass::Holster( pSwitchingTo );
+}
+
+bool Holster( CBaseCombatWeapon * pSwitchingTo );*/

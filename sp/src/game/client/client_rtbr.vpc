@@ -1,0 +1,59 @@
+//-----------------------------------------------------------------------------
+//	CLIENT_RTBR.VPC
+//
+//	Project Script
+//-----------------------------------------------------------------------------
+
+$Macro SRCDIR		"..\.."
+$Macro GAMENAME 	"raisingthebarredux"
+
+$Include "$SRCDIR\game\client\client_episodic_base.vpc"
+
+$Configuration
+{
+	$Compiler
+	{
+		$AdditionalIncludeDirectories	"$BASE;.\rtbr;$SRCDIR\game\shared\rtbr"
+		$PreprocessorDefinitions		"$BASE;RTBR_DLL;SOURCE_2013"
+	}
+}
+
+$Project "Client (RTBR)"
+{
+	$Folder "Source Files"
+	{
+	    
+		$Folder "Shader Editor" [$WIN32]
+		{
+			$Folder	"Header Files"
+		   {
+				$File	"$SRCDIR\game\client\ShaderEditor\ISEdit_ModelRender.h"
+				$File	"$SRCDIR\game\client\ShaderEditor\IVShaderEditor.h"
+				$File	"$SRCDIR\game\client\ShaderEditor\ShaderEditorSystem.h"
+				$File	"$SRCDIR\game\client\ShaderEditor\SEdit_ModelRender.h"
+				//$File	"$SRCDIR\game\client\ShaderEditor\Grass\CGrassCluster.h"
+			}
+		
+			$Folder	"Implementation Files"
+			{
+				$File	"$SRCDIR\game\client\ShaderEditor\ShaderEditorSystem.cpp"
+				$File	"$SRCDIR\game\client\ShaderEditor\SEdit_ModelRender.cpp"
+				//$File	"$SRCDIR\game\client\ShaderEditor\Grass\CGrassCluster.cpp"
+			}
+		}
+		
+		-$File	"$SRCDIR\game\shared\weapon_parse_default.cpp"
+		
+		$Folder "RTBR"
+		{
+			$Folder "Weapons"
+			{
+				$File	"hl2\c_extinguisher.cpp"
+				$File	"$SRCDIR\game\shared\rtbr\weapon_parse_rtbr.cpp"
+			}
+			$Folder "Misc"
+			{
+			}
+		}
+	}
+}
