@@ -13,11 +13,12 @@
 #include "explode.h"
 #include "Sprite.h"
 #include "grenade_satchel.h"
+#include "particle_parse.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-#define	SLAM_SPRITE	"sprites/redglow1.vmt"
+#define	SLAM_SPRITE	"sprites/glow01.vmt"
 
 ConVar    sk_plr_dmg_satchel		( "sk_plr_dmg_satchel","0");
 ConVar    sk_npc_dmg_satchel		( "sk_npc_dmg_satchel","0");
@@ -104,10 +105,11 @@ void CSatchelCharge::CreateEffects( void )
 
 	// Create a blinking light to show we're an active SLAM
 	m_hGlowSprite = CSprite::SpriteCreate( SLAM_SPRITE, GetAbsOrigin(), false );
-	m_hGlowSprite->SetAttachment( this, 0 );
+	m_hGlowSprite->SetAttachment( this, LookupAttachment("screen") );
 	m_hGlowSprite->SetTransparency( kRenderTransAdd, 255, 255, 255, 255, kRenderFxStrobeFast );
 	m_hGlowSprite->SetBrightness( 255, 1.0f );
-	m_hGlowSprite->SetScale( 0.2f, 0.5f );
+	m_hGlowSprite->SetScale( 0.1f, 0.5f );
+	m_hGlowSprite->SetColor(0, 255, 0);
 	m_hGlowSprite->TurnOn();
 }
 
@@ -119,8 +121,9 @@ void CSatchelCharge::CreateEffects( void )
 void CSatchelCharge::InputExplode( inputdata_t &inputdata )
 {
 	ExplosionCreate( GetAbsOrigin() + Vector( 0, 0, 16 ), GetAbsAngles(), GetThrower(), GetDamage(), 200, 
-		SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NODLIGHTS | SF_ENVEXPLOSION_NOSMOKE, 0.0f, this);
-
+		SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NODLIGHTS | SF_ENVEXPLOSION_NOSMOKE | SF_ENVEXPLOSION_NOFIREBALL | SF_ENVEXPLOSION_NOFIREBALLSMOKE | SF_ENVEXPLOSION_NOPARTICLES /*| SF_ENVEXPLOSION_NOSOUND*/, 0.0f, this );
+	DispatchParticleEffect("explosion_nailmine", GetAbsOrigin(), GetAbsAngles());
+	//EmitSound( "Weapon_SLAM.Explosion" );
 	UTIL_Remove( this );
 }
 
@@ -186,6 +189,8 @@ void CSatchelCharge::Precache( void )
 {
 	PrecacheModel("models/Weapons/w_slam.mdl");
 	PrecacheModel(SLAM_SPRITE);
+	PrecacheParticleSystem("explosion_nailmine");
+	PrecacheScriptSound( "Weapon_SLAM.Explosion" );
 }
 
 void CSatchelCharge::BounceSound( void )

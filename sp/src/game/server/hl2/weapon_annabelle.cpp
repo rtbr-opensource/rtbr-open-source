@@ -58,7 +58,7 @@ public:
 		if (GetOwner() && GetOwner()->OverridingWeaponProficiency())
 		{
 			// If the owner's weapon proficiency is being overridden, return a more realistic spread
-			static Vector cone2 = VECTOR_CONE_6DEGREES;
+			static Vector cone2 = VECTOR_CONE_3DEGREES;
 			return cone2;
 		}
 #endif
@@ -67,7 +67,7 @@ public:
 			cone = vec3_origin;
 		}
 		else{
-			cone = VECTOR_CONE_5DEGREES;
+			cone = VECTOR_CONE_2DEGREES;
 		}
 		return cone;
 	}
@@ -299,10 +299,17 @@ bool CWeaponAnnabelle::Reload( void )
 	if (j <= 0)
 		return false;
 
+	int oldClip1 = Clip1();
+	int oldAmmo = pOwner->GetAmmoCount(m_iPrimaryAmmoType);
 	FillClip();
 	// Play reload on different channel as otherwise steals channel away from fire sound
 	WeaponSound(RELOAD);
-	SendWeaponAnim( ACT_VM_RELOAD );
+	if (oldClip1 == GetMaxClip1() - 1 || oldAmmo == 1){
+		SendWeaponAnim( ACT_VM_SECONDARYRELOAD );
+	}
+	else{
+		SendWeaponAnim( ACT_VM_RELOAD );
+	}
 
 	pOwner->m_flNextAttack = gpGlobals->curtime;
 	m_flNextPrimaryAttack = gpGlobals->curtime + SequenceDuration();
@@ -351,8 +358,14 @@ void CWeaponAnnabelle::FillClip( void )
 	{
 		if ( Clip1() < GetMaxClip1() )
 		{
-			m_iClip1++;
-			pOwner->RemoveAmmo( 1, m_iPrimaryAmmoType );
+			if (Clip1() == GetMaxClip1() - 1 || pOwner->GetAmmoCount( m_iPrimaryAmmoType ) == 1){
+				m_iClip1 += 1;
+				pOwner->RemoveAmmo( 1, m_iPrimaryAmmoType );
+			}
+			else {
+				m_iClip1 += 2;
+				pOwner->RemoveAmmo( 2, m_iPrimaryAmmoType );
+			}
 		}
 	}
 }
@@ -706,3 +719,17 @@ CWeaponAnnabelle::CWeaponAnnabelle( void )
 	m_fMinRange2		= 0.0;
 	m_fMaxRange2		= 200;
 }
+
+//-----------------------------------------------------------------------------
+// Golden Variant
+//-----------------------------------------------------------------------------
+class CWeaponGoldAnnabelle : public CWeaponAnnabelle {
+	DECLARE_CLASS(CWeaponGoldAnnabelle, CWeaponAnnabelle);
+	DECLARE_SERVERCLASS();
+};
+
+IMPLEMENT_SERVERCLASS_ST(CWeaponGoldAnnabelle, DT_WeaponGoldAnnabelle)
+END_SEND_TABLE()
+
+LINK_ENTITY_TO_CLASS(weapon_goldannabelle, CWeaponGoldAnnabelle);
+PRECACHE_WEAPON_REGISTER(weapon_goldannabelle);

@@ -93,6 +93,7 @@ typedef enum
 	AE_NPC_RESPONSE,	// Play a response system concept if we're not speaking
 	AE_NPC_RESPONSE_FORCED,		// Always play a response system concept
 #endif
+	AE_KICKATTACK, // For Bad Cop kicks
 
 	LAST_SHARED_ANIMEVENT,
 } Animevent;

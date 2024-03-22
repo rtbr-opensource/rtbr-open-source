@@ -1930,13 +1930,10 @@ void CHalfLife2::AdjustPlayerDamageTaken( CTakeDamageInfo *pInfo )
 	switch( GetSkillLevel() )
 	{
 	case SKILL_EASY:
-		pInfo->ScaleDamage( sk_dmg_take_scale1.GetFloat() );
-		break;
-
-	case SKILL_MEDIUM:
 		pInfo->ScaleDamage( sk_dmg_take_scale2.GetFloat() );
 		break;
 
+	case SKILL_MEDIUM:
 	case SKILL_HARD:
 		pInfo->ScaleDamage( sk_dmg_take_scale3.GetFloat() );
 		break;
@@ -1950,13 +1947,10 @@ float CHalfLife2::AdjustPlayerDamageInflicted( float damage )
 	switch( GetSkillLevel() ) 
 	{
 	case SKILL_EASY:
-		return damage * sk_dmg_inflict_scale1.GetFloat();
-		break;
-
-	case SKILL_MEDIUM:
 		return damage * sk_dmg_inflict_scale2.GetFloat();
 		break;
 
+	case SKILL_MEDIUM:
 	case SKILL_HARD:
 		return damage * sk_dmg_inflict_scale3.GetFloat();
 		break;
@@ -2015,10 +2009,10 @@ float CHalfLife2::GetAutoAimScale( CBasePlayer *pPlayer )
 	switch( GetSkillLevel() )
 	{
 	case SKILL_EASY:
-		return sk_autoaim_scale1.GetFloat();
-
-	case SKILL_MEDIUM:
 		return sk_autoaim_scale2.GetFloat();
+
+	//case SKILL_MEDIUM:
+		//return sk_autoaim_scale2.GetFloat();
 
 	default:
 		return 0.0f;
@@ -2033,11 +2027,9 @@ float CHalfLife2::GetAmmoQuantityScale( int iAmmoIndex )
 	switch( GetSkillLevel() )
 	{
 	case SKILL_EASY:
-		return sk_ammo_qty_scale1.GetFloat();
-
-	case SKILL_MEDIUM:
 		return sk_ammo_qty_scale2.GetFloat();
 
+	case SKILL_MEDIUM:
 	case SKILL_HARD:
 		return sk_ammo_qty_scale3.GetFloat();
 

@@ -76,7 +76,12 @@ void CGrenadeSpit::Spawn( void )
 	AddEffects( EF_NOSHADOW|EF_NORECEIVESHADOW );
 
 	// Create the dust effect in place
-	DispatchParticleEffect("npc_bullsquid_spit_trail", PATTACH_ABSORIGIN_FOLLOW, this);
+	if (m_bIsBullsquidSpit){
+		DispatchParticleEffect("npc_bullsquid_spit_trail", PATTACH_ABSORIGIN_FOLLOW, this);
+	}
+	else{
+		DispatchParticleEffect("npc_antlion_spit_trail", PATTACH_ABSORIGIN_FOLLOW, this);
+	}
 	/*m_hSpitEffect = (CParticleSystem *) CreateEntityByName( "info_particle_system" );
 	if ( m_hSpitEffect != NULL )
 	{
@@ -199,11 +204,21 @@ void CGrenadeSpit::GrenadeSpitTouch( CBaseEntity *pOther )
 	if ( pOther->IsPlayer() || bHitWater )
 	{
 		// Do a lighter-weight effect if we just hit a player
-		DispatchParticleEffect( "npc_bullsquid_spit_player", GetAbsOrigin(), vecAngles );
+		if (m_bIsBullsquidSpit){
+			DispatchParticleEffect("npc_bullsquid_spit_player", GetAbsOrigin(), vecAngles);
+		}
+		else {
+			DispatchParticleEffect("npc_antlion_spit_impact_player", GetAbsOrigin(), vecAngles);
+		}
 	}
 	else
 	{
-		DispatchParticleEffect( "npc_bullsquid_spit", GetAbsOrigin(), vecAngles );
+		if (m_bIsBullsquidSpit){
+			DispatchParticleEffect("npc_bullsquid_spit", GetAbsOrigin(), vecAngles);
+		}
+		else {
+			DispatchParticleEffect("npc_antlion_spit_impact", GetAbsOrigin(), vecAngles);
+		}
 	}
 
 	Detonate();
@@ -292,7 +307,10 @@ void CGrenadeSpit::Precache( void )
 
 	PrecacheScriptSound( "GrenadeSpit.Hit" );
 
-	PrecacheParticleSystem( "npc_bullsquid_spit_player" );
-	PrecacheParticleSystem( "npc_bullsquid_spit" );
+	PrecacheParticleSystem("npc_bullsquid_spit_player");
+	PrecacheParticleSystem("npc_bullsquid_spit");
 	PrecacheParticleSystem("npc_bullsquid_spit_trail");
+	PrecacheParticleSystem("npc_antlion_spit_impact_player");
+	PrecacheParticleSystem("npc_antlion_spit_impact");
+	PrecacheParticleSystem("npc_antlion_spit_trail");
 }

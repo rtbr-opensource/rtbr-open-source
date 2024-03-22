@@ -49,11 +49,13 @@
 #include "weapon_physcannon.h"
 #include "ammodef.h"
 #include "vehicle_base.h"
- 
+#include "hl2_player.h"
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
 extern ConVar sk_npc_head;
+extern int g_interactionBadCopKick;
 
 #define ZOMBIE_BULLET_DAMAGE_SCALE 0.5f
 
@@ -665,6 +667,30 @@ int CNPC_BaseZombie::MeleeAttack1Conditions ( float flDot, float flDist )
 
 	// Move around some more
 	return COND_TOO_FAR_TO_ATTACK;
+}
+
+bool CNPC_BaseZombie::HandleInteraction( int interactionType, void *data, CBaseCombatCharacter* sourceEnt )
+{
+	if (interactionType == g_interactionBadCopKick)
+	{
+		KickInfo_t * pInfo = static_cast< KickInfo_t *>(data);
+
+		// Only continue if our damage filter allows us to
+		if (pInfo->dmgInfo && !PassesDamageFilter( *pInfo->dmgInfo ))
+			return false;
+
+		// If we are a torso, this is fatal
+		if (m_fIsTorso)
+		{
+			// TODO - Add special handling for stealth mode
+			m_iHealth = pInfo->dmgInfo->GetDamage();
+		}
+
+		// Do normal kick handling
+		return false;
+	}
+
+	return BaseClass::HandleInteraction( interactionType, data, sourceEnt );
 }
 
 //-----------------------------------------------------------------------------

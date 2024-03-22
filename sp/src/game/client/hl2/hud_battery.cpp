@@ -14,7 +14,7 @@
 #include "hud.h"
 #include "hudelement.h"
 #include "hud_macros.h"
-#include "hud_bitmapnumericdisplay.h"
+#include "hud_numericdisplay.h"
 #include "iclientmode.h"
 
 #include "vgui_controls/AnimationController.h"
@@ -28,9 +28,9 @@
 //-----------------------------------------------------------------------------
 // Purpose: Displays suit power (armor) on hud
 //-----------------------------------------------------------------------------
-class CHudBattery : public CHudBitmapNumericDisplay, public CHudElement
+class CHudBattery : public CHudNumericDisplay, public CHudElement
 {
-	DECLARE_CLASS_SIMPLE(CHudBattery, CHudBitmapNumericDisplay);
+	DECLARE_CLASS_SIMPLE( CHudBattery, CHudNumericDisplay );
 
 public:
 	CHudBattery( const char *pElementName );
@@ -38,11 +38,11 @@ public:
 	void Reset( void );
 	void VidInit( void );
 	void OnThink( void );
-	void MsgFunc_Battery(bf_read &msg );
+	void MsgFunc_Battery( bf_read &msg );
 	bool ShouldDraw();
 
 private:
-	int		m_iBat;	
+	int		m_iBat;
 	int		m_iNewBat;
 };
 
@@ -52,7 +52,7 @@ DECLARE_HUD_MESSAGE( CHudBattery, Battery );
 //-----------------------------------------------------------------------------
 // Purpose: Constructor
 //-----------------------------------------------------------------------------
-CHudBattery::CHudBattery( const char *pElementName ) : BaseClass(NULL, "HudSuit"), CHudElement( pElementName )
+CHudBattery::CHudBattery( const char *pElementName ) : BaseClass( NULL, "HudSuit" ), CHudElement( pElementName )
 {
 	SetHiddenBits( HIDEHUD_HEALTH | HIDEHUD_NEEDSUIT );
 }
@@ -62,10 +62,10 @@ CHudBattery::CHudBattery( const char *pElementName ) : BaseClass(NULL, "HudSuit"
 //-----------------------------------------------------------------------------
 void CHudBattery::Init( void )
 {
-	HOOK_HUD_MESSAGE( CHudBattery, Battery);
+	HOOK_HUD_MESSAGE( CHudBattery, Battery );
 	Reset();
-	m_iBat		= INIT_BAT;
-	m_iNewBat   = 0;
+	m_iBat = INIT_BAT;
+	m_iNewBat = 0;
 }
 
 //-----------------------------------------------------------------------------
@@ -73,9 +73,8 @@ void CHudBattery::Init( void )
 //-----------------------------------------------------------------------------
 void CHudBattery::Reset( void )
 {
-	//SetLabelText(g_pVGuiLocalize->Find("#Valve_Hud_SUIT"));
-	SetDisplayValue(m_iBat);
-	SetLabel(2);
+	SetLabelText( g_pVGuiLocalize->Find( "#Valve_Hud_SUIT" ) );
+	SetDisplayValue( m_iBat );
 }
 
 //-----------------------------------------------------------------------------
@@ -108,35 +107,35 @@ void CHudBattery::OnThink( void )
 
 	if ( !m_iNewBat )
 	{
-		//g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("SuitPowerZero");
+		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "SuitPowerZero" );
 	}
 	else if ( m_iNewBat < m_iBat )
 	{
 		// battery power has decreased, so play the damaged animation
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("SuitDamageTaken");
+		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "SuitDamageTaken" );
 
 		// play an extra animation if we're super low
 		if ( m_iNewBat < 20 )
 		{
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("SuitArmorLow");
+			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "SuitArmorLow" );
 		}
 	}
 	else
 	{
 		// battery power has increased (if we had no previous armor, or if we just loaded the game, don't use alert state)
-		if ( m_iBat == INIT_BAT || m_iBat == 0 || m_iNewBat >= 20)
+		if ( m_iBat == INIT_BAT || m_iBat == 0 || m_iNewBat >= 20 )
 		{
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("SuitPowerIncreasedAbove20");
+			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "SuitPowerIncreasedAbove20" );
 		}
 		else
 		{
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("SuitPowerIncreasedBelow20");
+			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "SuitPowerIncreasedBelow20" );
 		}
 	}
 
 	m_iBat = m_iNewBat;
 
-	SetDisplayValue(m_iBat);
+	SetDisplayValue( m_iBat );
 }
 
 //-----------------------------------------------------------------------------

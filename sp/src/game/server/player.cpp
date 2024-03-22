@@ -492,6 +492,7 @@ BEGIN_DATADESC( CBasePlayer )
 #ifdef MAPBASE // From Alien Swarm SDK
 	DEFINE_FIELD( m_hPostProcessCtrl, FIELD_EHANDLE ),
 
+	DEFINE_FIELD( m_flLastIgniteTick, FIELD_FLOAT ),
 	DEFINE_FIELD( m_hColorCorrectionCtrl, FIELD_EHANDLE ),
 #endif
 
@@ -501,12 +502,8 @@ BEGIN_DATADESC( CBasePlayer )
 	// DEFINE_UTLVECTOR( m_vecPlayerCmdInfo ),
 	// DEFINE_UTLVECTOR( m_vecPlayerSimInfo ),
 	DEFINE_FIELD(m_iIdleTicks, FIELD_INTEGER),
-	DEFINE_FIELD(m_vLastPosition, FIELD_VECTOR),
-	DEFINE_FIELD(m_vViewAngles, FIELD_VECTOR),
-
-	// don't save the afterburn fields, because the tradeoff of players being able to save/load abuse to extinguish themselves
-	// is far outweighed by the quality of life of not losing 20hp if you load a save on fire
-	//DEFINE_FIELD( m_flLastIgniteTick, FIELD_FLOAT ),
+	DEFINE_FIELD( m_vLastPosition, FIELD_VECTOR ),
+	DEFINE_FIELD( m_vViewAngles, FIELD_VECTOR ),
 END_DATADESC()
 
 #ifdef MAPBASE_VSCRIPT
@@ -1077,7 +1074,7 @@ void CBasePlayer::Fidget()
 		//		- FIXME: Only works when looking at a friendly, not when it's meant to be lowered.
 		// - Player is looking around
 
-		if (GetActiveWeapon()->GetActivity() != ACT_VM_IDLE){
+		if (GetActiveWeapon()->GetActivity() != ACT_VM_IDLE && GetActiveWeapon()->GetActivity() != ACT_SLAM_THROW_ND_IDLE){
 			m_iIdleTicks = 0; // also handles weapon drawing... unless our drawtime is less than IDLE_FIDGET_TICK seconds
 		}
 		else if (curPos != m_vLastPosition){
@@ -4112,7 +4109,7 @@ void CBasePlayer::PreThink(void)
 	ItemPreFrame( );
 	WaterMove();
 
-	if ( g_pGameRules && g_pGameRules->FAllowFlashlight() )
+	if (g_pGameRules && g_pGameRules->FAllowFlashlight())
 		m_Local.m_iHideHUD &= ~HIDEHUD_FLASHLIGHT;
 	else
 		m_Local.m_iHideHUD |= HIDEHUD_FLASHLIGHT;
@@ -5695,8 +5692,6 @@ void CBasePlayer::OnRestore( void )
 	{
 		g_pScriptVM->SetValue( "player", GetScriptInstance() );
 	}
-
-	m_Local.m_bOnFireImmolator = false; // fix a bug where the immolator overlay gets stuck on the player permanently.
 }
 
 /* void CBasePlayer::SetTeamName( const char *pTeamName )
@@ -6394,7 +6389,7 @@ void CBasePlayer::ImpulseCommands( )
 		}
 		break;
 	case	69:
-		if (GetActiveWeapon()->GetActivity() == ACT_VM_IDLE){
+		if (GetActiveWeapon()->GetActivity() == ACT_VM_IDLE || GetActiveWeapon()->GetActivity() == ACT_SLAM_THROW_ND_IDLE){
 			m_iIdleTicks = (int)(IDLE_FIDGET_TIME / IDLE_FIDGET_TICK); // basically just force a fidget
 			Fidget();
 		}

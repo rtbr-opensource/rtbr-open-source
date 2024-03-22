@@ -426,10 +426,6 @@ void CWeaponPistol::DryFire( void )
 //-----------------------------------------------------------------------------
 void CWeaponPistol::PrimaryAttack( void )
 {
-	// suppress weird m1+m2 stuff
-	if (m_iBurstSize > 0)
-		return;
-
 	if ((gpGlobals->curtime - m_flLastAttackTime) >= GetFireRate()) {
 		if ((gpGlobals->curtime - m_flLastAttackTime) > GetFireRate())
 		{
@@ -462,39 +458,21 @@ void CWeaponPistol::PrimaryAttack( void )
 
 		m_iPrimaryAttacks++;
 		gamestats->Event_WeaponFired(pOwner, true, GetClassname());
-
-		m_flNextSecondaryAttack = gpGlobals->curtime + GetFireRate();
 	}
 }
 
 void CWeaponPistol::SecondaryAttack() {
-	// suppress weird m1+m2 stuff
-	CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
-	if (pOwner)
-	{
-		if (pOwner->m_nButtons & IN_ATTACK) {
-			return;
-		}
-	}
-	if (Clip1() == 1)
-	{
-		// no point doing the double burst when we can't even fire 2 bullets
-		WeaponSound( SINGLE );
-		PrimaryAttack();
-		return;
-	}
+		m_bPrimary = false;
+		m_iBurstSize = GetBurstSize();
 
-	m_bPrimary = false;
-	m_iBurstSize = GetBurstSize();
+		// Call the think function directly so that the first round gets fired immediately.
+		BurstSingleSoundThink();
+		SetThink(&CHLSelectFireMachineGun::BurstSingleSoundThink);
+		m_flNextPrimaryAttack = gpGlobals->curtime + GetBurstCycleRate();
+		m_flNextSecondaryAttack = gpGlobals->curtime + GetBurstCycleRate();
 
-	// Call the think function directly so that the first round gets fired immediately.
-	BurstSingleSoundThink();
-	SetThink(&CHLSelectFireMachineGun::BurstSingleSoundThink);
-	m_flNextPrimaryAttack = gpGlobals->curtime + GetBurstCycleRate();
-	m_flNextSecondaryAttack = gpGlobals->curtime + GetBurstCycleRate();
-
-	// Pick up the rest of the burst through the think function.
-	SetNextThink(gpGlobals->curtime + GetFireRate() / sk_pistol_burst_speed.GetFloat());
+		// Pick up the rest of the burst through the think function.
+		SetNextThink(gpGlobals->curtime + GetFireRate() / sk_pistol_burst_speed.GetFloat());
 }
 
 //-----------------------------------------------------------------------------
@@ -549,7 +527,7 @@ void CWeaponPistol::ItemPostFrame( void )
 
 	if ( pOwner == NULL )
 		return;
-	
+
 	//Allow a refire as fast as the player can click
 	if ( ( ( pOwner->m_nButtons & IN_ATTACK ) == false ) && ( m_flSoonestPrimaryAttack < gpGlobals->curtime ) )
 	{

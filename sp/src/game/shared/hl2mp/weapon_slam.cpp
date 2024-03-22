@@ -322,15 +322,15 @@ bool CWeapon_SLAM::AnyUndetonatedCharges(void)
 void CWeapon_SLAM::StartSatchelDetonate()
 {
 
-	if ( GetActivity() != ACT_SLAM_DETONATOR_IDLE && GetActivity() != ACT_SLAM_THROW_IDLE )
-		 return;
+	//if ( GetActivity() != ACT_SLAM_DETONATOR_IDLE && GetActivity() != ACT_SLAM_THROW_IDLE )
+		 //return;
 	
 	// -----------------------------------------
 	//  Play detonate animation
 	// -----------------------------------------
 	if (m_bNeedReload)
 	{
-		SendWeaponAnim(ACT_SLAM_DETONATOR_DETONATE);
+		//SendWeaponAnim(ACT_SLAM_DETONATOR_DETONATE);
 	}
 	else if (m_tSlamState == SLAM_SATCHEL_ATTACH)
 	{
@@ -919,12 +919,12 @@ void CWeapon_SLAM::WeaponIdle( void )
 						{
 							if (m_bNeedDetonatorHolster)
 							{
-								iAnim = ACT_SLAM_THROW_DETONATOR_HOLSTER;
+								//iAnim = ACT_SLAM_THROW_DETONATOR_HOLSTER;
 								m_bNeedDetonatorHolster = false;
 							}
 							else if (m_bDetonatorArmed)
 							{
-								iAnim =	m_bNeedDetonatorDraw ? ACT_SLAM_DETONATOR_THROW_DRAW : ACT_SLAM_THROW_DRAW;
+								iAnim =	m_bNeedDetonatorDraw ? ACT_SLAM_THROW_ND_DRAW : ACT_SLAM_THROW_ND_DRAW;
 								m_bNeedDetonatorDraw = false;
 							}
 							else
@@ -978,7 +978,7 @@ void CWeapon_SLAM::WeaponIdle( void )
 						}
 						else
 						{
-							iAnim = m_bDetonatorArmed ? ACT_SLAM_THROW_IDLE : ACT_SLAM_THROW_ND_IDLE;
+							iAnim = m_bDetonatorArmed ? ACT_SLAM_THROW_ND_IDLE : ACT_SLAM_THROW_ND_IDLE;
 							m_flWallSwitchTime = 0;
 						}
 					}
@@ -1039,7 +1039,7 @@ bool CWeapon_SLAM::Deploy( void )
 		}
 		else
 		{
-			iActivity = ACT_SLAM_DETONATOR_THROW_DRAW; 
+			iActivity = ACT_SLAM_THROW_ND_DRAW; 
 			SetSlamState(SLAM_SATCHEL_THROW);
 		}
 	}

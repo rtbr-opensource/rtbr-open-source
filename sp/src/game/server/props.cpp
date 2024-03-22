@@ -43,11 +43,14 @@
 #include "vehicle_base.h"
 #include "particles\particles.h"
 #include "particle_parse.h"
+#include "hl2_player.h"
 #ifdef MAPBASE
 #include "mapbase/GlobalStrings.h"
 #include "collisionutils.h"
 #include "vstdlib/IKeyValuesSystem.h" // From Alien Swarm SDK
 #endif
+
+#include "eventqueue.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -102,6 +105,7 @@ ConVar mapbase_prop_consistency_noremove("mapbase_prop_consistency_noremove", "1
 	void KillFlare( CBaseEntity *pOwnerEntity, CBaseEntity *pEntity, float flKillTime );
 #endif
 
+#define PROP_PHYSICS_KICK_MULTIPLIER 3
 
 //-----------------------------------------------------------------------------
 // Purpose: Breakable objects take different levels of damage based upon the damage type.
@@ -766,6 +770,8 @@ void CBreakableProp::HandleInteractionStick( int index, gamevcollisionevent_t *p
 	}
 }
 
+extern int g_interactionBadCopKick;
+
 #ifdef MAPBASE
 extern int g_interactionBarnacleVictimBite;
 extern ConVar npc_barnacle_ignite;
@@ -796,7 +802,44 @@ bool CBreakableProp::HandleInteraction( int interactionType, void *data, CBaseCo
 		return true;
 	}
 #endif
+	if ( interactionType == g_interactionBadCopKick )
+	{
+		KickInfo_t * info = static_cast< KickInfo_t *>( data );
 
+		// If we're an item crate, explode violently!
+		if ( FClassnameIs( this, "item_item_crate" ) || m_bBreakOnPlayerKick )
+		{
+			info->dmgInfo->SetDamage( 500 );
+			info->dmgInfo->ScaleDamageForce( 0.1f );
+
+			// Still take the damage
+			return false;
+		}
+
+		// If we're a phsyics prop with the "motion disabled" flag set, do extra damage!
+		if ( IsPropPhysics() && HasSpawnFlags( SF_PHYSPROP_MOTIONDISABLED ) )
+		{
+			info->dmgInfo->SetDamage( info->dmgInfo->GetDamage() * PROP_PHYSICS_KICK_MULTIPLIER );
+		}
+
+		// If we're an explosive barrel, DON'T explode violently!
+		if (
+			HasInteraction( PROPINTER_PHYSGUN_BREAK_EXPLODE ) ||
+			HasInteraction( PROPINTER_PHYSGUN_FIRST_BREAK ) ||
+			HasInteraction( PROPINTER_FIRE_FLAMMABLE ) ||
+			HasInteraction( PROPINTER_FIRE_IGNITE_HALFHEALTH ) ||
+			HasInteraction( PROPINTER_FIRE_EXPLOSIVE_RESIST ) )
+		{
+			// If we have directional information, PUNT!
+			trace_t * pTr = info->tr;
+			if ( pTr )
+			{
+				ApplyAbsVelocityImpulse( ( pTr->endpos - pTr->startpos ) * 1024.0f );
+			}
+
+			return true;
+		}
+	}
 	return BaseClass::HandleInteraction(interactionType, data, sourceEnt);
 }
 #endif
@@ -864,6 +907,8 @@ BEGIN_DATADESC( CBreakableProp )
 	DEFINE_FIELD( m_flDefaultFadeScale, FIELD_FLOAT ),
 	DEFINE_FIELD( m_bUsePuntSound, FIELD_BOOLEAN ),
 	// DEFINE_FIELD( m_mpBreakMode, mp_break_t ),
+
+	DEFINE_KEYFIELD( m_bBreakOnPlayerKick, FIELD_BOOLEAN, "BreakOnPlayerKick" ),
 
 	// Inputs
 	DEFINE_INPUTFUNC( FIELD_VOID, "Break", InputBreak ),
@@ -4194,6 +4239,13 @@ BEGIN_DATADESC(CBasePropDoor)
 	DEFINE_FIELD( m_bFirstBlocked, FIELD_BOOLEAN ),
 	//DEFINE_FIELD(m_hDoorList, FIELD_CLASSPTR),	// Reconstructed
 	
+	DEFINE_KEYFIELD( m_flKickSpeed, FIELD_FLOAT, "kickspeed" ),
+	DEFINE_KEYFIELD( m_bOpenOnKick, FIELD_BOOLEAN, "openonkick" ),
+	DEFINE_KEYFIELD( m_bUnlockOnKick, FIELD_BOOLEAN, "unlockonkick" ),
+	DEFINE_FIELD( m_bKicked, FIELD_BOOLEAN ),
+
+	DEFINE_INPUTFUNC( FIELD_VOID, "KickOpen", InputKickOpen ),
+
 	DEFINE_INPUTFUNC(FIELD_VOID, "Open", InputOpen),
 	DEFINE_INPUTFUNC(FIELD_STRING, "OpenAwayFrom", InputOpenAwayFrom),
 	DEFINE_INPUTFUNC(FIELD_VOID, "Close", InputClose),
@@ -4860,6 +4912,7 @@ void CBasePropDoor::DoorOpen(CBaseEntity *pOpenAwayFrom)
 			if ( pLinkedDoor != NULL )
 			{
 				// If the door isn't already moving, get it moving
+				pLinkedDoor->m_bKicked = m_bKicked;
 				pLinkedDoor->m_hActivator = m_hActivator;
 				pLinkedDoor->DoorOpen( pOpenAwayFrom );
 			}
@@ -4903,6 +4956,8 @@ void CBasePropDoor::DoorOpenMoveDone(void)
 	}
 
 	m_OnFullyOpen.FireOutput(this, this);
+
+	m_bKicked = false;
 
 	// Let the leaf class do its thing.
 	OnDoorOpened();
@@ -5007,6 +5062,8 @@ void CBasePropDoor::DoorCloseMoveDone(void)
 
 	m_OnFullyClosed.FireOutput(m_hActivator, this);
 	UpdateAreaPortals(false);
+
+	m_bKicked = false;
 
 	// Let the leaf class do its thing.
 	OnDoorClosed();
@@ -5309,6 +5366,64 @@ bool CBasePropDoor::TestCollision( const Ray_t &ray, unsigned int mask, trace_t&
 	return false;
 }
 
+//-----------------------------------------------------------------------------
+// Purpose:  Uses the new CBaseEntity interaction implementation
+// Input  :  The type of interaction, extra info pointer, and who started it
+// Output :	 true  - if sub-class has a response for the interaction
+//			 false - if sub-class has no response
+//-----------------------------------------------------------------------------
+bool CBasePropDoor::HandleInteraction( int interactionType, void *data, CBaseCombatCharacter* sourceEnt )
+{
+	if ( interactionType == g_interactionBadCopKick )
+	{
+		bool kicked = KickOpen( sourceEnt );
+
+		// Set success if we opened
+		KickInfo_t *info = static_cast<KickInfo_t*>( data );
+		if ( info )
+			info->success = kicked;
+
+		g_EventQueue.AddEvent( STRING( GetEntityName() ), "KickOpen", variant_t(), 0.0f, sourceEnt, this, 0 );
+
+		return true;
+	}
+
+	return BaseClass::HandleInteraction( interactionType, data, sourceEnt );
+}
+
+void CBasePropDoor::InputKickOpen( inputdata_t & inputdata )
+{
+	KickOpen( inputdata.pActivator );
+}
+
+bool CBasePropDoor::KickOpen( CBaseEntity * pSourceEnt )
+{
+	// Don't kick open if we're already kicking open
+	if ( m_bKicked && IsDoorOpening() )
+		return false;
+
+	// Fire an output
+	m_OnKicked.FireOutput( pSourceEnt, this, 0.0f );
+
+	// If kicking is meant to unlock this door, unlock
+	if ( m_bUnlockOnKick )
+	{
+		Unlock();
+	}
+
+	if ( CanOpenOnKick( pSourceEnt ) )
+	{
+		// Set the door speed to the kicking speed
+		m_bKicked = true;
+
+		// Open the door away from the source entity if you can
+		OpenIfUnlocked( pSourceEnt, pSourceEnt );
+
+		return IsDoorOpening();
+	}
+
+	return false;
+}
 
 //-----------------------------------------------------------------------------
 // Custom trace filter for doors
@@ -5433,7 +5548,7 @@ class CPropDoorRotating : public CBasePropDoor
 	DECLARE_CLASS( CPropDoorRotating, CBasePropDoor );
 
 public:
-
+	CPropDoorRotating() { m_bOpenOnKick = true; }
 	~CPropDoorRotating();
 
 	int		DrawDebugTextOverlays(void);
@@ -5600,6 +5715,11 @@ void CPropDoorRotating::Spawn()
 	// Figure out our volumes of movement as this door opens
 	CalculateDoorVolume( GetLocalAngles(), m_angRotationOpenForward, &m_vecForwardBoundsMin, &m_vecForwardBoundsMax );
 	CalculateDoorVolume( GetLocalAngles(), m_angRotationOpenBack, &m_vecBackBoundsMin, &m_vecBackBoundsMax );
+
+	if ( m_flKickSpeed <= 0 )
+	{
+		m_flKickSpeed = m_flSpeed * 5.0f;
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -6048,7 +6168,13 @@ void CPropDoorRotating::BeginOpening(CBaseEntity *pOpenAwayFrom)
 		}
 	}
 
-	AngularMove(angOpen, m_flSpeed);
+	float flSpeed = m_flSpeed;
+	if ( m_bKicked )
+	{
+		flSpeed = m_flKickSpeed;
+	}
+
+	AngularMove( angOpen, flSpeed );
 }
 
 
@@ -6156,7 +6282,7 @@ float CPropDoorRotating::GetOpenInterval()
 	QAngle vecDestDelta = m_angRotationOpenForward - GetLocalAngles();
 	
 	// divide by speed to get time to reach dest
-	return vecDestDelta.Length() / m_flSpeed;
+	return m_bKicked ? vecDestDelta.Length() / m_flKickSpeed : vecDestDelta.Length() / m_flSpeed;
 }
 
 

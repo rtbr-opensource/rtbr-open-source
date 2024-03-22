@@ -310,7 +310,7 @@ void C_BaseCombatWeapon::DrawCrosshair()
 	}
 	else
 	{ 
-		Color white( 255, 255, 255, 255 );
+		Color white( 255, 0, 0, 255 ); // salvation colour
 
 		// zoomed crosshairs
 		if (bOnTarget && GetWpnData().iconZoomedAutoaim)

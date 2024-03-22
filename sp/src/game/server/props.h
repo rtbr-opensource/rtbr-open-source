@@ -210,6 +210,8 @@ protected:
 	float			m_explodeRadius;
 	string_t		m_iszBreakModelMessage;
 
+	bool            m_bBreakOnPlayerKick;
+
 	// Count of how many pieces we'll break into, custom or generic
 	int				m_iNumBreakableChunks;
 

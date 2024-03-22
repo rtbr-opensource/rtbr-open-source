@@ -63,6 +63,26 @@ public:
 		m_bEnabled = !m_bEnabled;
 	}
 
+	void InputEnableRadius( inputdata_t &data ){
+		m_bUseRadius = true;
+	}
+
+	void InputDisableRadius(inputdata_t &data){
+		m_bUseRadius = false;
+	}
+
+	void InputSetRadius( inputdata_t &data ){
+		m_flRadius = data.value.Int();
+	}
+
+	void InputSetMins( inputdata_t &data ){
+		data.value.Vector3D( m_vecMins );
+	}
+
+	void InputSetMaxs( inputdata_t &data ){
+		data.value.Vector3D( m_vecMaxs );
+	}
+
 	bool SuppressCall( void )
 	{
 		return ( HasSpawnFlags( SF_BUGBAIT_SUPPRESS_CALL ) );
@@ -91,10 +111,24 @@ public:
 		return !m_bEnabled;
 	}
 
+	bool UsesRadius(void) const {
+		return m_bUseRadius;
+	}
+
+	Vector GetAbsMins(void) const {
+		return GetAbsOrigin() + m_vecMins;
+	}
+	Vector GetAbsMaxs(void) const {
+		return GetAbsOrigin() + m_vecMaxs;
+	}
+
 protected:
 
 	float			m_flRadius;
 	bool			m_bEnabled;
+	bool			m_bUseRadius;
+	Vector			m_vecMins;
+	Vector			m_vecMaxs;
 	COutputEvent	m_OnBaited;
 
 public:

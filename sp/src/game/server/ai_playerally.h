@@ -61,6 +61,7 @@
 #define TLK_SELECTED		"TLK_SELECTED"	// selected by player in command mode.
 #define TLK_COMMANDED		"TLK_COMMANDED" // received orders from player in command mode
 #define TLK_COMMAND_FAILED	"TLK_COMMAND_FAILED" 
+#define TLK_DETONATE		"TLK_DETONATE" // 1upD - detonating satchel charges
 #define TLK_DENY_COMMAND	"TLK_DENY_COMMAND" // designer has asked this NPC to politely deny player commands to move the squad
 #define TLK_BETRAYED		"TLK_BETRAYED"	// player killed an ally in front of me.
 #define TLK_ALLY_KILLED		"TLK_ALLY_KILLED" // witnessed an ally die some other way.
@@ -131,6 +132,9 @@
 #define TLK_TGLOSTYOU 	"TLK_TGLOSTYOU"
 #define TLK_TGCATCHUP 	"TLK_TGCATCHUP"
 #define TLK_TGENDTOUR 	"TLK_TGENDTOUR"
+
+#define TLK_USE_SCARE		"TLK_USE_SCARE"
+#define TLK_REMARK "TLK_REMARK"
 
 //-----------------------------------------------------------------------------
 

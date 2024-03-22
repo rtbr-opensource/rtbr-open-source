@@ -479,7 +479,6 @@ bool CWeaponStunStick::Holster(CBaseCombatWeapon *pSwitchingTo)
 	SendWeaponAnim(ACT_VM_HOLSTER);
 
 	m_bIsCharging = false;
-	StopWeaponSound( WPN_DOUBLE );
 
 	if (BaseClass::Holster(pSwitchingTo) == false)
 		return false;

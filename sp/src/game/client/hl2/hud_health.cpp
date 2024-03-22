@@ -27,7 +27,7 @@
 using namespace vgui;
 
 #include "hudelement.h"
-#include "hud_bitmapnumericdisplay.h"
+#include "hud_numericdisplay.h"
 
 #include "convar.h"
 
@@ -39,9 +39,9 @@ using namespace vgui;
 //-----------------------------------------------------------------------------
 // Purpose: Health panel
 //-----------------------------------------------------------------------------
-class CHudHealth : public CHudElement, public CHudBitmapNumericDisplay
+class CHudHealth : public CHudElement, public CHudNumericDisplay
 {
-	DECLARE_CLASS_SIMPLE(CHudHealth, CHudBitmapNumericDisplay);
+	DECLARE_CLASS_SIMPLE( CHudHealth, CHudNumericDisplay );
 
 public:
 	CHudHealth( const char *pElementName );
@@ -49,7 +49,7 @@ public:
 	virtual void VidInit( void );
 	virtual void Reset( void );
 	virtual void OnThink();
-			void MsgFunc_Damage( bf_read &msg );
+	void MsgFunc_Damage( bf_read &msg );
 
 private:
 	// old variables
@@ -64,7 +64,7 @@ DECLARE_HUD_MESSAGE( CHudHealth, Damage );
 //-----------------------------------------------------------------------------
 // Purpose: Constructor
 //-----------------------------------------------------------------------------
-CHudHealth::CHudHealth( const char *pElementName ) : CHudElement( pElementName ), CHudBitmapNumericDisplay( NULL, "HudHealth" )
+CHudHealth::CHudHealth( const char *pElementName ) : CHudElement( pElementName ), CHudNumericDisplay( NULL, "HudHealth" )
 {
 	SetHiddenBits( HIDEHUD_HEALTH | HIDEHUD_PLAYERDEAD | HIDEHUD_NEEDSUIT );
 }
@@ -83,21 +83,20 @@ void CHudHealth::Init()
 //-----------------------------------------------------------------------------
 void CHudHealth::Reset()
 {
-	m_iHealth		= INIT_HEALTH;
-	m_bitsDamage	= 0;
+	m_iHealth = INIT_HEALTH;
+	m_bitsDamage = 0;
 
-	wchar_t *tempString = g_pVGuiLocalize->Find("#Valve_Hud_HEALTH");
+	wchar_t *tempString = g_pVGuiLocalize->Find( "#Valve_Hud_HEALTH" );
 
-	if (tempString)
+	if ( tempString )
 	{
-		//SetLabelText(tempString);
+		SetLabelText( tempString );
 	}
 	else
 	{
-		//SetLabelText(L"HEALTH");
+		SetLabelText( L"HEALTH" );
 	}
-	SetLabel(1);
-	SetDisplayValue(m_iHealth);
+	SetDisplayValue( m_iHealth );
 }
 
 //-----------------------------------------------------------------------------
@@ -131,15 +130,15 @@ void CHudHealth::OnThink()
 
 	if ( m_iHealth >= 20 )
 	{
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthIncreasedAbove20");
+		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "HealthIncreasedAbove20" );
 	}
 	else if ( m_iHealth > 0 )
 	{
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthIncreasedBelow20");
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthLow");
+		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "HealthIncreasedBelow20" );
+		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "HealthLow" );
 	}
 
-	SetDisplayValue(m_iHealth);
+	SetDisplayValue( m_iHealth );
 }
 
 //-----------------------------------------------------------------------------
@@ -165,7 +164,7 @@ void CHudHealth::MsgFunc_Damage( bf_read &msg )
 		if ( damageTaken > 0 )
 		{
 			// start the animation
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthDamageTaken");
+			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "HealthDamageTaken" );
 		}
 	}
 }

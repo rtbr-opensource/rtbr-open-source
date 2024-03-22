@@ -2066,30 +2066,35 @@ public:
 	}
 
 	void OnDataArrived( CUtlVector< AsyncCaption_t >& directories, int nFileIndex, int nBlockNum, AsyncCaptionData_t *pData )
-	{
-		int c = m_Tokens.Count();
-		for ( int i = 0; i < c; ++i )
-		{
-			caption_t *caption = m_Tokens[ i ];
-			if ( caption->stream != NULL )
-				continue;
+    {
+        int c = m_Tokens.Count();
+        for ( int i = 0; i < c; ++i )
+        {
+            caption_t *caption = m_Tokens[ i ];
+            if ( caption->stream != NULL )
+                continue;
 
-			// Lookup the data
-			CaptionLookup_t &entry = directories[ nFileIndex ].m_CaptionDirectory[ caption->dirindex ];
-			if ( entry.blockNum != nBlockNum )
-				continue;
+            // Lookup the data
+            if (caption->dirindex > directories[nFileIndex].m_CaptionDirectory.Size()) //Lychy: prevents korean subtitles, due to messed up race hazards
+                continue;
+
+            CaptionLookup_t &entry = directories[ nFileIndex ].m_CaptionDirectory[ caption->dirindex ];
+            if ( entry.blockNum != nBlockNum )
+                continue;
+            if (entry.length == 0) //Lychy: prevents korean subtitles, due to messed up race hazards
+                continue;
 
 #ifdef WIN32
-			const wchar_t *pIn = ( const wchar_t *)&pData->m_pBlockData[ entry.offset ];
-			caption->stream = new wchar_t[ entry.length >> 1 ];
-			memcpy( (void *)caption->stream, pIn, entry.length );
+            const wchar_t *pIn = ( const wchar_t *)&pData->m_pBlockData[ entry.offset ];
+            caption->stream = new wchar_t[ entry.length >> 1 ];
+            memcpy( (void *)caption->stream, pIn, entry.length );
 #else
-			// we persist to disk as ucs2 so convert back to real unicode here
-			caption->stream = new wchar_t[ entry.length ];
-			V_UCS2ToUnicode( (ucs2 *)&pData->m_pBlockData[ entry.offset ], caption->stream, entry.length*sizeof(wchar_t) );	
+            // we persist to disk as ucs2 so convert back to real unicode here
+            caption->stream = new wchar_t[ entry.length ];
+            V_UCS2ToUnicode( (ucs2 *)&pData->m_pBlockData[ entry.offset ], caption->stream, entry.length*sizeof(wchar_t) );    
 #endif
-		}
-	}
+        }
+    }
 
 	void ProcessAsyncWork( CHudCloseCaption *hudCloseCaption, CUtlVector< AsyncCaption_t >& directories )
 	{

@@ -12,6 +12,7 @@
 #include "vstdlib/random.h"
 #include "engine/IEngineSound.h"
 #include "explode.h"
+#include "particle_parse.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -146,6 +147,8 @@ void CTripmineGrenade::Precache( void )
 
 	PrecacheScriptSound( "TripmineGrenade.Place" );
 	PrecacheScriptSound( "TripmineGrenade.Activate" );
+	PrecacheParticleSystem("explosion_nailmine");
+	PrecacheScriptSound( "Weapon_SLAM.Explosion" );
 }
 
 
@@ -321,7 +324,9 @@ void CTripmineGrenade::DelayDeathThink( void )
 	UTIL_ScreenShake( GetAbsOrigin(), 25.0, 150.0, 1.0, 750, SHAKE_START );
 
 	ExplosionCreate( GetAbsOrigin() + m_vecDir * 8, GetAbsAngles(), m_hOwner, GetDamage(), 200, 
-		SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NODLIGHTS | SF_ENVEXPLOSION_NOSMOKE, 0.0f, this);
+		SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NODLIGHTS | SF_ENVEXPLOSION_NOSMOKE | SF_ENVEXPLOSION_NOFIREBALL | SF_ENVEXPLOSION_NOFIREBALLSMOKE | SF_ENVEXPLOSION_NOPARTICLES /*| SF_ENVEXPLOSION_NOSOUND*/, 0.0f, this);
+	DispatchParticleEffect("explosion_nailmine", GetAbsOrigin(), GetAbsAngles());
+	//EmitSound( "Weapon_SLAM.Explosion" );
 
 #ifdef MAPBASE
 	m_OnExplode.FireOutput(m_hAttacker.Get(), this);

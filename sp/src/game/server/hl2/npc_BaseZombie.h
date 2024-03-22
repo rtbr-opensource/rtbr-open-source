@@ -143,6 +143,8 @@ public:
 	int MeleeAttack1Conditions ( float flDot, float flDist );
 	virtual float GetClawAttackRange() const { return ZOMBIE_MELEE_REACH; }
 
+	bool HandleInteraction( int interactionType, void *data, CBaseCombatCharacter* sourceEnt );
+
 	// No range attacks
 	int RangeAttack1Conditions ( float flDot, float flDist ) { return( 0 ); }
 	

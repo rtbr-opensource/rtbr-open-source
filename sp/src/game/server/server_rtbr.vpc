@@ -112,7 +112,10 @@ $Project "Server (RTBR Release)"
 				$File "ez2\npc_basepredator.cpp"
 				$File "ez2\ai_behavior_beast.h"
 				$File "ez2\ai_behavior_beast.cpp"
+				$File "ez2\ai_sensorydummy.h"
 			}
+			$File "ez2\ez2_player.h"
+			$File "ez2\ez2_player.cpp"
 		}
 	}
 }

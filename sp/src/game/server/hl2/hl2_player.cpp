@@ -117,6 +117,9 @@ ConVar sv_infinite_aux_power( "sv_infinite_aux_power", "0", FCVAR_CHEAT );
 ConVar autoaim_unlock_target( "autoaim_unlock_target", "0.8666" );
 
 ConVar sv_stickysprint("sv_stickysprint", "0", FCVAR_ARCHIVE | FCVAR_ARCHIVE_XBOX);
+ConVar sv_player_kick_attack_enabled( "sv_player_kick_attack_enabled", "1", FCVAR_REPLICATED );
+ConVar sv_player_kick_default_modelname( "sv_player_kick_default_modelname", "models/weapons/ez2/v_kick.mdl", FCVAR_REPLICATED, "Default filename of model to use for kick animation - can be overridden in map" );
+ConVar sk_plr_dmg_kick( "sk_plr_dmg_kick", "5", FCVAR_REPLICATED );
 
 #ifdef MAPBASE
 ConVar player_autoswitch_enabled( "player_autoswitch_enabled", "1", FCVAR_NONE, "This convar was added by Mapbase to toggle whether players automatically switch to their ''best'' weapon upon picking up ammo for it after it was dry." );
@@ -540,7 +543,8 @@ BEGIN_DATADESC( CHL2_Player )
 	DEFINE_EMBEDDED( m_CommanderUpdateTimer ),
 	//					m_RealTimeLastSquadCommand
 	DEFINE_FIELD( m_QueuedCommand, FIELD_INTEGER ),
-
+	DEFINE_FIELD( m_flNextKickAttack, FIELD_TIME ),
+	DEFINE_FIELD( m_bKickWeaponLowered, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_flTimeIgnoreFallDamage, FIELD_TIME ),
 	DEFINE_FIELD( m_bIgnoreFallDamageResetAfterImpact, FIELD_BOOLEAN ),
 
@@ -610,6 +614,8 @@ BEGIN_DATADESC( CHL2_Player )
 	//DEFINE_FIELD( m_hPlayerProxy, FIELD_EHANDLE ), //Shut up class check!
 
 END_DATADESC()
+
+int g_interactionBadCopKick = 0;
 
 #ifdef MAPBASE_VSCRIPT
 BEGIN_ENT_SCRIPTDESC( CHL2_Player, CBasePlayer, "The HL2 player entity." )
@@ -693,6 +699,21 @@ void CHL2_Player::Precache( void )
 	PrecacheScriptSound( "HL2Player.TrainUse" );
 	PrecacheScriptSound( "HL2Player.Use" );
 	PrecacheScriptSound( "HL2Player.BurnPain" );
+	PrecacheScriptSound( "EZ2Player.KickHit" );
+	PrecacheScriptSound( "EZ2Player.KickSwing" );
+	PrecacheScriptSound( "EZ2Player.KickMiss" );
+
+	if ( m_LegModelName == NULL_STRING )
+	{
+		m_LegModelName = AllocPooledString( sv_player_kick_default_modelname.GetString() );
+	}
+
+	PrecacheModel( STRING( m_LegModelName ) );
+
+	if ( g_interactionBadCopKick == 0 )
+	{
+		g_interactionBadCopKick = CBaseCombatCharacter::GetInteractionID();
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -952,7 +973,7 @@ void CHL2_Player::PreThink(void)
 	WaterMove();
 	VPROF_SCOPE_END();
 
-	if ( g_pGameRules && g_pGameRules->FAllowFlashlight() )
+	if (g_pGameRules && g_pGameRules->FAllowFlashlight() && !m_bFlashlightDisabled)
 		m_Local.m_iHideHUD &= ~HIDEHUD_FLASHLIGHT;
 	else
 		m_Local.m_iHideHUD |= HIDEHUD_FLASHLIGHT;
@@ -1162,6 +1183,8 @@ void CHL2_Player::PostThink( void )
 	{
 		 HandleAdmireGlovesAnimation();
 	}
+
+	HandleKickAnimation();
 
 #ifdef SP_ANIM_STATE
 	if (m_pPlayerAnimState)
@@ -2570,7 +2593,6 @@ bool CHL2_Player::ApplyBattery( float powerMultiplier )
 		// Suit reports new power level
 		// For some reason this wasn't working in release build -- round it.
 		pct = (int)( (float)(ArmorValue() * 100.0) * (1.0/MAX_NORMAL_BATTERY) + 0.5);
-		pct = (pct / 5);
 		if (pct > 0)
 			pct--;
 	
@@ -3796,7 +3818,7 @@ bool CHL2_Player::Weapon_CanSwitchTo( CBaseCombatWeapon *pWeapon )
 	if (pVehicle && !pPlayer->UsingStandardWeaponsInVehicle())
 		return false;
 
-	if ( !pWeapon->HasAnyAmmo() && !GetAmmoCount( pWeapon->m_iPrimaryAmmoType ) )
+	if (!pWeapon->HasAnyAmmo() && !GetAmmoCount(pWeapon->m_iPrimaryAmmoType) && !(pWeapon->GetWeaponFlags() & ITEM_FLAG_SELECTONEMPTY))
 		return false;
 
 	if ( !pWeapon->CanDeploy() )
@@ -4295,9 +4317,249 @@ void CHL2_Player::PlayUseDenySound()
 	m_bPlayUseDenySound = true;
 }
 
+void CHL2_Player::HandleKickAttack()
+{
+	if ( !sv_player_kick_attack_enabled.GetBool() && !IsInAVehicle() )
+		return;
+
+	// Door kick!
+	if ( gpGlobals->curtime >= m_flNextAttack && gpGlobals->curtime >= m_flNextKickAttack && !IsInAVehicle() && m_nButtons & IN_ATTACK3 )
+	{
+		// Viewpunch
+		QAngle punchAng;
+		punchAng.x = random->RandomFloat( 2.0f, 3.0f );
+		punchAng.y = random->RandomFloat( -3.0f, -2.0f );
+		punchAng.z = 0.0f;
+		ViewPunch( punchAng );
+
+		// Prevent all attacks for 1 second
+		m_flNextKickAttack = gpGlobals->curtime + 1.0f;
+		CBaseCombatWeapon * pWeapon = GetActiveWeapon();
+		if ( pWeapon )
+		{
+			pWeapon->m_flNextPrimaryAttack = MAX( GetActiveWeapon()->m_flNextPrimaryAttack.Get(), m_flNextKickAttack );
+			pWeapon->m_flNextSecondaryAttack = MAX( GetActiveWeapon()->m_flNextSecondaryAttack.Get(), m_flNextKickAttack );
+
+			CBaseHLCombatWeapon * pHLWeapon = dynamic_cast<CBaseHLCombatWeapon *>( pWeapon );
+
+			// Lower the weapon if possible
+			if ( pHLWeapon )
+			{
+				if ( pHLWeapon->CanLower() && !pHLWeapon->WeaponShouldBeLowered() )
+				{
+					pHLWeapon->Lower();
+					m_bKickWeaponLowered = true;
+				}
+			}
+		}
+
+		EmitSound( "EZ2Player.KickSwing" );
+
+		StartKickAnimation();
+	}
+	else if ( m_bKickWeaponLowered && gpGlobals->curtime <= m_flNextKickAttack )
+	{
+		CBaseHLCombatWeapon * pHLWeapon = dynamic_cast<CBaseHLCombatWeapon *>( GetActiveWeapon() );
+
+		// Lower the weapon if possible
+		if ( pHLWeapon && pHLWeapon->m_flNextPrimaryAttack <= gpGlobals->curtime )
+		{
+			pHLWeapon->Ready();
+			m_bKickWeaponLowered = false;
+		}
+	}
+}
+
+// Should these be separate from g_bludgeonMins and g_bludgeonMaxs in basebludgeonweapon?
+#define KICK_HULL_DIM		16
+static const Vector g_kickMins( -KICK_HULL_DIM, -KICK_HULL_DIM, -KICK_HULL_DIM );
+static const Vector g_kickMaxs( KICK_HULL_DIM, KICK_HULL_DIM, KICK_HULL_DIM );
+
+void CHL2_Player::TraceKickAttack( CBaseEntity* pKickedEntity )
+{
+	Vector vecSrc = GetFlags() & FL_DUCKING ? EyePosition() : EyePosition() - Vector( 0, 0, 32 );
+	Vector vecAim = BaseClass::GetAutoaimVector( AUTOAIM_SCALE_DEFAULT );
+	Vector vecEnd = EyePosition() + ( vecAim * 80 );
+
+	trace_t tr;
+
+	UTIL_TraceLine( vecSrc, vecEnd, MASK_SHOT_HULL, this, COLLISION_GROUP_NONE, &tr );
+
+	// If the ray trace didn't hit anything, use a hull trace based on bludgeon weapons
+	if ( tr.fraction == 1.0 )
+	{
+		float bludgeonHullRadius = 1.732f * KICK_HULL_DIM;  // hull is +/- 16, so use cuberoot of 2 to determine how big the hull is from center to the corner point
+		// Back off by hull "radius"
+		vecEnd -= vecAim * bludgeonHullRadius;
+
+		UTIL_TraceHull( vecSrc, vecEnd, g_kickMins, g_kickMaxs, MASK_SHOT_HULL, this, COLLISION_GROUP_NONE, &tr );
+		if ( tr.fraction < 1.0 && tr.m_pEnt )
+		{
+			Vector vecToTarget = tr.m_pEnt->GetAbsOrigin() - vecSrc;
+			VectorNormalize( vecToTarget );
+
+			float dot = vecToTarget.Dot( vecAim );
+
+			// YWB:  Make sure they are sort of facing the guy at least...
+			if ( dot < 0.70721f )
+			{
+				// Force amiss
+				tr.fraction = 1.0f;
+			}
+		}
+	}
+
+	if ( pKickedEntity == NULL )
+	{
+		pKickedEntity = tr.m_pEnt;
+	}
+
+	if ( pKickedEntity != NULL )
+	{
+		float dmg = sk_plr_dmg_kick.GetFloat();
+		int dmgType = DMG_CLUB;
+
+		CTakeDamageInfo dmgInfo( this, this, dmg, dmgType );
+		dmgInfo.SetDamagePosition( tr.endpos );
+		VectorNormalize( vecAim );// not a unit vec yet
+		// hit like a 5kg object flying 100 ft/s
+		dmgInfo.SetDamageForce( dmg * 256 * 12 * vecAim );
+
+		// Try to dispatch an interaction
+		KickInfo_t kickInfo( &tr, &dmgInfo );
+		if ( !pKickedEntity->DispatchInteraction( g_interactionBadCopKick, &kickInfo, this ) )
+		{
+			if ( pKickedEntity->m_takedamage == DAMAGE_NO && pKickedEntity->GetParent() )
+			{
+				// Send the damage to the recipient's parent instead
+				// (important for brush doors, charger trailers, etc.)
+				if ( !pKickedEntity->GetParent()->DispatchInteraction( g_interactionBadCopKick, &kickInfo, this ) )
+				{
+					pKickedEntity->GetParent()->DispatchTraceAttack( dmgInfo, vecAim, &tr );
+					ApplyMultiDamage();
+				}
+
+				// Use pEntity for the remaining stuff below
+				// (allows brush doors to count towards achievements)
+				pKickedEntity = pKickedEntity->GetParent();
+			}
+			else
+			{
+				// Send the damage to the recipient
+				pKickedEntity->DispatchTraceAttack( dmgInfo, vecAim, &tr );
+				ApplyMultiDamage();
+			}
+		}
+
+		if ( kickInfo.success )
+		{
+			// Fire achievement event
+			IGameEvent *event = gameeventmanager->CreateEvent( "entity_kicked" );
+			if ( event )
+			{
+				event->SetInt( "entindex_kicked", pKickedEntity ? pKickedEntity->entindex() : 0 );
+				event->SetInt( "entindex_attacker", this->entindex() );
+				event->SetInt( "entindex_inflictor", this->entindex() );
+				event->SetInt( "damagebits", dmgInfo.GetDamageType() );
+				gameeventmanager->FireEvent( event );
+			}
+
+			// Add a context counting how many times this entity has been kicked
+			if ( pKickedEntity )
+			{
+				int iIndex = pKickedEntity->FindContextByName( "kicked" );
+				int iNumKicks = 1;
+				if ( iIndex != -1 )
+				{
+					// Increment for each kick
+					iNumKicks += atoi( pKickedEntity->GetContextValue( iIndex ) );
+				}
+
+				pKickedEntity->AddContext( "kicked", CNumStr( iNumKicks ) );
+			}
+		}
+
+		// Insert an AI sound so nearby enemies can hear the impact
+		CSoundEnt::InsertSound( SOUND_BULLET_IMPACT, tr.endpos, 384, 0.2f, this );
+
+		// Viewpunch again based on the view punch angles in ez2_c2_1 but milder
+		QAngle punchAng;
+		punchAng.x = random->RandomFloat( -5.0f, -4.0f );
+		punchAng.y = 0.0f;
+		punchAng.z = random->RandomFloat( 4.0f, 5.0f );
+
+		ViewPunch( punchAng );
+
+		EmitSound( "EZ2Player.KickHit" );
+	}
+	else
+	{
+		EmitSound( "EZ2Player.KickMiss" );
+	}
+}
+
+void CHL2_Player::StartKickAnimation( void )
+{
+	MDLCACHE_CRITICAL_SECTION();
+	CBaseViewModel *vm = GetViewModel( 2 );
+	if ( vm == NULL )
+	{
+		CreateViewModel( 2 );
+		vm = GetViewModel( 2 );
+	}
+
+	if ( vm )
+	{
+		vm->SetWeaponModel( STRING( m_LegModelName ), NULL );
+
+		int	idealSequence = vm->SelectWeightedSequence( ACT_VM_PRIMARYATTACK );
+
+		if ( idealSequence >= 0 )
+		{
+			vm->SendViewModelMatchingSequence( idealSequence );
+			vm->SetPlaybackRate( 1.0f );
+		}
+	}
+}
+
+void CHL2_Player::HandleKickAnimation( void )
+{
+	CBaseViewModel *pVM = GetViewModel( 2 );
+
+	if ( pVM )
+	{
+		pVM->m_flPlaybackRate = 1.0f;
+		pVM->StudioFrameAdvance();
+		pVM->DispatchAnimEvents( this );
+		if ( pVM->IsSequenceFinished() )
+		{
+			pVM->SetPlaybackRate( 0.0f );
+
+			// Destroy the kick viewmodel. 
+			// This should prevent the kick animation from firing off after level transitions.
+			pVM->SUB_Remove();
+		}
+	}
+}
+
+void CHL2_Player::HandleAnimEvent( animevent_t *pEvent )
+{
+	if ( pEvent->event == AE_KICKATTACK )
+	{
+		CBaseEntity *obj = GetPlayerHeldEntity(this);
+		if (obj) {
+			Pickup_ForcePlayerToDropThisObject( obj );
+		}
+		TraceKickAttack();
+	}
+
+	BaseClass::HandleAnimEvent( pEvent );
+}
 
 void CHL2_Player::ItemPostFrame()
 {
+	HandleKickAttack();
+
 	BaseClass::ItemPostFrame();
 
 	if ( m_bPlayUseDenySound )

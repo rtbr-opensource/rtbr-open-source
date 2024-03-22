@@ -212,7 +212,7 @@ bool CHudDamageTiles::ShouldDraw(void)
 	//if (!m_bitsDamage)
 	//	return false;
 
-	return (!gHUD.IsHidden( m_iHiddenBits ));
+	return true;
 }
 
 void CHudDamageTiles::Paint(void)
@@ -277,10 +277,6 @@ void CHudDamageTiles::Paint(void)
 
 void CHudDamageTiles::UpdateTiles(long bitsDamage)
 {
-	// no point updating damage tiles if we can't see them
-	if (!ShouldDraw())
-		return;
-
 	damagetile_t* pDmgTile;
 
 	// Which types are new?

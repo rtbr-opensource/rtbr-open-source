@@ -46,6 +46,24 @@ struct commandgoal_t
 	CBaseEntity	*m_pGoalEntity;
 };
 
+//-----------------------------------------------------------------------------
+// Purpose: Kick data for interaction.
+// (Blixibon)
+//-----------------------------------------------------------------------------
+struct KickInfo_t
+{
+	KickInfo_t( trace_t *_tr, CTakeDamageInfo *_dmgInfo )
+	{
+		tr = _tr;
+		dmgInfo = _dmgInfo;
+		success = true;
+	}
+
+	trace_t *tr;
+	CTakeDamageInfo *dmgInfo;
+	bool success; // Can be set by interactions to determine if a kick was "successful" (whether it should be counted by kick trackers)
+};
+
 // Time between checks to determine whether NPCs are illuminated by the flashlight
 #define FLASHLIGHT_NPC_CHECK_INTERVAL	0.4
 
@@ -373,6 +391,14 @@ protected:
 	virtual void		ItemPostFrame();
 	virtual void		PlayUseDenySound();
 
+	virtual void		HandleKickAttack();
+	virtual void		TraceKickAttack( CBaseEntity* pKickedEntity = NULL );
+
+	void  HandleKickAnimation( void );
+	void  StartKickAnimation( void );
+
+	virtual void HandleAnimEvent( animevent_t *pEvent );
+
 private:
 	bool				CommanderExecuteOne( CAI_BaseNPC *pNpc, const commandgoal_t &goal, CAI_BaseNPC **Allies, int numAllies );
 
@@ -414,6 +440,11 @@ private:
 
 	float				m_flNextFlashlightCheckTime;
 	float				m_flFlashlightPowerDrainScale;
+
+	float				m_flNextKickAttack;
+	bool				m_bKickWeaponLowered;
+
+	string_t		    m_LegModelName;
 
 	// Aiming heuristics code
 	float				m_flIdleTime;		//Amount of time we've been motionless

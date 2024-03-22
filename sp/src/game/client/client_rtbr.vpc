@@ -92,7 +92,12 @@ $Project "Client (RTBR Release)"
 				$File "rtbr\hud_grenadetimer.cpp"	
 				$File "rtbr\hud_screendamagefx.cpp"	
 				$File "rtbr\hud_damagetiles.cpp"	
-			}	
-		}	
+			}
+		}
+		$Folder "EZ2 DLL"
+		{
+			$File	"ez2\c_ez2_player.cpp"
+			$File	"ez2\c_ez2_player.h"	
+		}			
 	}	
 }

@@ -52,6 +52,7 @@ STUB_WEAPON_CLASS( weapon_cguard, WeaponCGuard, C_BaseHLCombatWeapon );
 STUB_WEAPON_CLASS( weapon_extinguisher, WeaponExtinguisher, C_HLSelectFireMachineGun );
 STUB_WEAPON_CLASS( weapon_smg2, WeaponSMG2, C_HLSelectFireMachineGun );
 STUB_WEAPON_CLASS( weapon_immolator, WeaponImmolator, C_BaseHLCombatWeapon );
+STUB_WEAPON_CLASS( weapon_goldannabelle, WeaponGoldAnnabelle, C_BaseHLCombatWeapon );
 #endif
 
 /*
