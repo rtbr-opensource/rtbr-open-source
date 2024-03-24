@@ -33,6 +33,7 @@ BEGIN_SEND_TABLE_NOBASE( CPlayerLocalData, DT_Local )
 	SendPropFloat	(SENDINFO(m_flDucktime), 12, SPROP_ROUNDDOWN|SPROP_CHANGES_OFTEN, 0.0f, 2048.0f ),
 	SendPropFloat	(SENDINFO(m_flDuckJumpTime), 12, SPROP_ROUNDDOWN, 0.0f, 2048.0f ),
 	SendPropFloat	(SENDINFO(m_flJumpTime), 12, SPROP_ROUNDDOWN, 0.0f, 2048.0f ),
+	SendPropBool	(SENDINFO(m_bOnFireImmolator)),
 #if PREDICTION_ERROR_CHECK_LEVEL > 1 
 	SendPropFloat	(SENDINFO(m_flFallVelocity), 32, SPROP_NOSCALE ),
 
@@ -99,6 +100,11 @@ BEGIN_SEND_TABLE_NOBASE( CPlayerLocalData, DT_Local )
 
 	SendPropFloat ( SENDINFO_STRUCTELEM( m_TonemapParams.m_flAutoExposureMin ), 0, SPROP_NOSCALE ),
 	SendPropFloat ( SENDINFO_STRUCTELEM( m_TonemapParams.m_flAutoExposureMax ), 0, SPROP_NOSCALE ),
+
+#ifdef RTBR_DLL
+	SendPropFloat(SENDINFO(m_flGrenadeStart)),
+#endif
+
 END_SEND_TABLE()
 
 BEGIN_SIMPLE_DATADESC( fogplayerparams_t )
@@ -175,6 +181,7 @@ BEGIN_SIMPLE_DATADESC( CPlayerLocalData )
 	DEFINE_FIELD( m_bInDuckJump, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_flDucktime, FIELD_TIME ),
 	DEFINE_FIELD( m_flDuckJumpTime, FIELD_TIME ),
+	DEFINE_FIELD(m_bOnFireImmolator, FIELD_BOOLEAN),
 	DEFINE_FIELD( m_flJumpTime, FIELD_TIME ),
 	DEFINE_FIELD( m_nStepside, FIELD_INTEGER ),
 	DEFINE_FIELD( m_flFallVelocity, FIELD_FLOAT ),
@@ -190,6 +197,9 @@ BEGIN_SIMPLE_DATADESC( CPlayerLocalData )
 	DEFINE_EMBEDDED( m_PlayerFog ),
 	DEFINE_EMBEDDED( m_fog ),
 	DEFINE_EMBEDDED( m_audio ),
+#ifdef RTBR_DLL
+	DEFINE_FIELD(m_flGrenadeStart, FIELD_FLOAT),
+#endif
 
 	//Tony; added
 	DEFINE_EMBEDDED( m_TonemapParams ),
@@ -219,6 +229,9 @@ CPlayerLocalData::CPlayerLocalData()
 	m_audio.ent.Set( NULL );
 	m_pOldSkyCamera = NULL;
 	m_bDrawViewmodel = true;
+#ifdef RTBR_DLL
+	m_flGrenadeStart = -1;
+#endif
 }
 
 

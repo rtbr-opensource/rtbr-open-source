@@ -7,6 +7,7 @@
 #include "basehlcombatweapon.h"
 #include "soundenvelope.h"
 
+
 #ifndef WEAPON_FLAREGUN_H
 #define WEAPON_FLAREGUN_H
 #ifdef _WIN32
@@ -99,8 +100,8 @@ public:
 
 	void Precache( void );
 	void PrimaryAttack( void );
-	void SecondaryAttack( void );
 };
+
 
 #endif // WEAPON_FLAREGUN_H
 

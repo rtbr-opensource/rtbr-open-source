@@ -84,6 +84,9 @@ ConVar fire_dmgbase( "fire_dmgbase", "1" );
 ConVar fire_growthrate( "fire_growthrate", "1.0" );
 ConVar fire_dmginterval( "fire_dmginterval", "1.0" );
 
+ConVar fire_flarescale("fire_flarescale", "3.0");
+
+
 #define VPROF_FIRE(s) VPROF( s )
 
 class CFire : public CBaseEntity
@@ -172,10 +175,12 @@ public:
 	void	InputEnable( inputdata_t &inputdata );
 	void	InputDisable( inputdata_t &inputdata );
 
+	bool	m_bIsFlareFire;
+
 protected:
 	
 	void	Spread( void );
-	void	SpawnEffect( fireType_e type, float scale );
+	void	SpawnEffect(fireType_e type, float scale, bool isFlareFire = false);
 
 	CHandle<CBaseFire>	m_hEffect;
 	EHANDLE		m_hOwner;
@@ -424,6 +429,11 @@ bool FireSystem_StartFire( const Vector &position, float fireHeight, float attac
 	//Create a new fire entity
 	CFire *fire = (CFire *) CreateEntityByName( "env_fire" );
 	
+	if (type == FIRE_FLARE) {
+		fire->m_bIsFlareFire = true;
+		type = FIRE_NATURAL;
+	}
+
 	if ( fire == NULL )
 		return false;
 
@@ -581,6 +591,8 @@ BEGIN_DATADESC( CFire )
 	DEFINE_OUTPUT( m_OnIgnited, "OnIgnited" ),
 	DEFINE_OUTPUT( m_OnExtinguished, "OnExtinguished" ),
 
+	DEFINE_FIELD(m_bIsFlareFire, FIELD_BOOLEAN),
+
 END_DATADESC()
 
 LINK_ENTITY_TO_CLASS( env_fire, CFire );
@@ -625,7 +637,7 @@ void CFire::UpdateOnRemove( void )
 //-----------------------------------------------------------------------------
 void CFire::Precache( void )
 {
-	if ( m_nFireType == FIRE_NATURAL )
+	if (m_nFireType == FIRE_NATURAL)
 	{
 		UTIL_PrecacheOther("_firesmoke");
 		
@@ -643,6 +655,10 @@ void CFire::Precache( void )
 			PrecacheParticleSystem( "env_fire_medium_smoke" );
 			PrecacheParticleSystem( "env_fire_large_smoke" );
 		}
+	}
+
+	if (m_bIsFlareFire) {
+		PrecacheParticleSystem("weapon_flare_fire");
 	}
 
 	if ( m_nFireType == FIRE_PLASMA )
@@ -787,7 +803,7 @@ void CFire::Activate( void )
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
-void CFire::SpawnEffect( fireType_e type, float scale )
+void CFire::SpawnEffect(fireType_e type, float scale, bool isFlareFire)
 {
 	CBaseFire *pEffect = NULL;
 	switch ( type )
@@ -799,6 +815,7 @@ void CFire::SpawnEffect( fireType_e type, float scale )
 			fireSmoke->EnableSmoke( ( m_spawnflags & SF_FIRE_SMOKELESS )==false );
 			fireSmoke->EnableGlow( ( m_spawnflags & SF_FIRE_NO_GLOW )==false );
 			fireSmoke->EnableVisibleFromAbove( ( m_spawnflags & SF_FIRE_VISIBLE_FROM_ABOVE )!=false );
+			fireSmoke->m_bIsFlareFire = isFlareFire;
 			
 			pEffect			= fireSmoke;
 			m_nFireType		= FIRE_NATURAL;
@@ -879,7 +896,7 @@ void CFire::Start()
 	UTIL_SetSize(this, Vector(-boxWidth,-boxWidth,0),Vector(boxWidth,boxWidth,m_flFireSize));
 
 	//Spawn the client-side effect
-	SpawnEffect( (fireType_e)m_nFireType, FIRE_SCALE_FROM_SIZE(m_flFireSize) );
+	SpawnEffect( (fireType_e)m_nFireType, FIRE_SCALE_FROM_SIZE(m_flFireSize), m_bIsFlareFire );
 	m_OnIgnited.FireOutput( this, this );
 	SetThink( &CFire::BurnThink );
 	m_flDamageTime = 0;
@@ -996,12 +1013,15 @@ void CFire::Update( float simTime )
 	{
 		m_flDamageTime = gpGlobals->curtime + fire_dmginterval.GetFloat();
 		outputDamage = (fire_dmgbase.GetFloat() + outputHeat * fire_dmgscale.GetFloat() * m_flDamageScale) * fire_dmginterval.GetFloat();
+		if (m_bIsFlareFire){
+			outputDamage *= fire_flarescale.GetFloat();
+		}
 		if ( outputDamage )
 		{
 			damage = true;
 		}
 	}
-	int damageFlags = (m_nFireType == FIRE_NATURAL) ? DMG_BURN : DMG_PLASMA;
+	int damageFlags = (m_nFireType == FIRE_NATURAL || m_nFireType == FIRE_FLARE) ? DMG_BURN : DMG_PLASMA;
 	for ( i = 0; i < nearbyCount; i++ )
 	{
 		CBaseEntity *pOther = pNearby[i];

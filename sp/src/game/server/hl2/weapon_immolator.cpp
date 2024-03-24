@@ -18,6 +18,7 @@
 #include "particle_parse.h"
 #include "decals.h"
 #include "props.h"
+#include "baseentity.h"
 #include "beam_shared.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -156,6 +157,8 @@ void CWeaponImmolator::StartImmolating()
 	WeaponSound(SINGLE);
 	SendWeaponAnim(ACT_VM_PRIMARYATTACK);
 
+	DispatchParticleEffect("immo_beam_muzzle01", PATTACH_POINT_FOLLOW, ToBasePlayer(GetOwner())->GetViewModel(), "muzzle", true);
+
 	CSoundEnt::InsertSound(SOUND_DANGER, m_vecImmolatorTarget, 256, 5.0, GetOwner());
 }
 
@@ -179,7 +182,7 @@ void CWeaponImmolator::StopImmolating()
 void CWeaponImmolator::OnPickedUp(CBaseCombatCharacter *pNewOwner)
 {
 	BaseClass::OnPickedUp(pNewOwner);
-	SendWeaponAnim(ACT_VM_FIRSTDRAW);
+	//SendWeaponAnim(ACT_VM_FIRSTDRAW);
 }
 
 void CWeaponImmolator::StopImmolatingSilent()
@@ -199,6 +202,7 @@ void CWeaponImmolator::StopImmolatingSilent()
 bool CWeaponImmolator::Holster(CBaseCombatWeapon *pSwitchingTo)
 {
 	StopImmolatingSilent();
+	StopWeaponSound(SINGLE);
 	return BaseClass::Holster(pSwitchingTo);
 }
 
@@ -314,24 +318,19 @@ void CWeaponImmolator::Update()
 
 		pOwner->EyeVectors(&vForward, &vRight, &vUp);
 
-		Vector	muzzlePoint = pOwner->Weapon_ShootPosition() + vForward * 16.0f + vRight * 4.0f + vUp * -5.0f;
-		QAngle vecAngles;
 		Vector vecAiming = pOwner->GetAutoaimVector(0);
 
-		VectorAngles(vForward, vecAngles);
 
 		// Create a new entity with CCrossbowBolt private data
-		CImmolatorPlasmaBall *pPlasmaBall = (CImmolatorPlasmaBall *)CBaseEntity::Create("immolator_plasma_ball", muzzlePoint, vecAngles, pOwner);
+		CImmolatorPlasmaBall *pPlasmaBall = (CImmolatorPlasmaBall *)CBaseEntity::Create("immolator_plasma_ball", playerMuzzleVector, QAngle(0,0,0), pOwner);
 		//UTIL_SetOrigin(pPlasmaBall, vecSrc);
 		//pPlasmaBall->SetLocalOrigin(vecShootOrigin2);
-		pPlasmaBall->SetAbsAngles(vecAngles);
+		//pPlasmaBall->SetAbsAngles(vecAngles);
 		pPlasmaBall->Spawn();
 		pPlasmaBall->SetOwnerEntity(pOwner);
 		pPlasmaBall->SetBaseVelocity((vecAiming * 512) + GetAbsVelocity());
 		pPlasmaBall->SetContextThink(&CImmolatorPlasmaBall::SUB_Remove, gpGlobals->curtime + 0.75, "KillBoltThink");
 		pPlasmaBall->SetCollisionGroup(COLLISION_GROUP_NONE);
-		DispatchParticleEffect("immo_beam_muzzle01", PATTACH_POINT_FOLLOW,
-			pOwner->GetViewModel(), "muzzle", true);
 
 		GetOwner()->RemoveAmmo(1, m_iPrimaryAmmoType);
 
@@ -568,7 +567,8 @@ void CImmolatorPlasmaBall::Spawn(void)
 	SetModel("models/immolator_bolt.mdl");
 	PrecacheParticleSystem("burning_character_immo");
 	SetMoveType(MOVETYPE_FLYGRAVITY, MOVECOLLIDE_FLY_CUSTOM);
-	UTIL_SetSize(this, -Vector(0.3, 0.3f, 0.3f), Vector(0.3f, 0.3f, 0.3f));
+	UTIL_SetSize(this, -Vector(0.3f, 0.3f, 0.3f), Vector(0.3f, 0.3f, 0.3f));
+	SetCollisionBounds(-Vector(7.0f, 7.0f, 7.0f), Vector(7.0f, 7.0f, 7.0f)); // make immo hits easier to land
 	SetSolid(SOLID_VPHYSICS);
 	SetGravity(0.05f);
 
@@ -652,15 +652,19 @@ void CImmolatorPlasmaBall::IgniteOtherIfAllowed(CBaseEntity * pOther)
 	// If this is a breakable prop, ignite it!
 	CBreakableProp *pBreakable;
 	pBreakable = dynamic_cast<CBreakableProp*>(pOther);
-	if (pBreakable)
+	if (pBreakable && pBreakable->GetHealth() > 0)
 	{
 		pBreakable->IgniteLifetimeGreen(sk_immolator_rtbr_burn_seconds.GetInt());
 		// Don't do damage to props that are on fire
-		if (pBreakable->IsOnFire())
-			return;
+		/*if (pBreakable->IsOnFire())
+			return;*/
+		if (pBreakable->GetHealth() < 3) 
+			pBreakable->Break(this, CTakeDamageInfo(this, this, sk_plr_dmg_immolator.GetFloat(), (DMG_BURN)));
 	}
 
 	// Do damage
-	pOther->TakeDamage(CTakeDamageInfo(this, this, sk_plr_dmg_immolator.GetFloat(), (DMG_BULLET | DMG_BURN)));
+	//if (!FStrEq(STRING(pOther->m_iClassname), "prop_physics")) {
+		pOther->TakeDamage(CTakeDamageInfo(this, this, sk_plr_dmg_immolator.GetFloat(), (DMG_BURN | DMG_DIRECT | DMG_SLOWBURN)));
+	//}
 
 }

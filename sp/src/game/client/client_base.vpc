@@ -188,7 +188,7 @@ $Project
 		$File	"$SRCDIR\game\shared\achievementmgr.cpp"
 		$File	"$SRCDIR\game\shared\achievementmgr.h"
 		$File   "$SRCDIR\game\shared\achievements_and_stats_interface.h"
-		$File	"$SRCDIR\game\shared\achievements_hlx.cpp"
+		//$File	"$SRCDIR\game\shared\achievements_hlx.cpp"
 		$File	"achievement_notification_panel.cpp"
 		$File	"achievement_notification_panel.h"
 		$File	"$SRCDIR\game\shared\activitylist.cpp"
@@ -537,7 +537,6 @@ $Project
 				"$SRCDIR\public\dt_utlvector_recv.cpp"				\
 				"$SRCDIR\public\filesystem_helpers.cpp"				\
 				"$SRCDIR\public\interpolatortypes.cpp"				\
-				"$SRCDIR\game\shared\interval.cpp"					\
 				"$SRCDIR\common\language.cpp"						\
 				"$SRCDIR\public\networkvar.cpp"						\
 				"$SRCDIR\common\randoverride.cpp"					\
@@ -1108,6 +1107,7 @@ $Project
 		$File	"$SRCDIR\public\vgui_controls\WizardSubPanel.h"
 		$File	"$SRCDIR\public\worldsize.h"
 		$File	"$SRCDIR\public\zip_uncompressed.h"
+		$File	"$SRCDIR\public\tier1\interval.h"
 		//Haptics
 		$File   "$SRCDIR\public\haptics\ihaptics.h"	[$WIN32]
 		$File   "$SRCDIR\public\haptics\haptic_utils.h"	[$WIN32]
@@ -1164,7 +1164,6 @@ $Project
 		$File	"$SRCDIR\game\shared\igamesystem.h"
 		$File	"$SRCDIR\game\shared\imovehelper.h"
 		$File	"$SRCDIR\game\shared\in_buttons.h"
-		$File	"$SRCDIR\game\shared\interval.h"
 		$File	"$SRCDIR\game\shared\iplayeranimstate.h"
 		$File	"$SRCDIR\game\shared\ipredictionsystem.h"
 		$File	"$SRCDIR\game\shared\itempents.h"
@@ -1261,6 +1260,9 @@ $Project
 		$Lib		vgui_controls
 		$Lib		vtf
 		$ImpLib		steam_api
+		
+		// Discord integration
+		$Lib	"$LIBPUBLIC\discord-rpc" [$MAPBASE_RPC&&!$LINUXALL]
 		
 		$Lib $LIBCOMMON/libcrypto [$POSIX]
 

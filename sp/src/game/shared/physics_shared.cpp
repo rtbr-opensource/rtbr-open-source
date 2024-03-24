@@ -11,6 +11,7 @@
 #include "physics_shared.h"
 #include "solidsetdefaults.h"
 #include "model_types.h"
+#include "particle_parse.h"
 #include "bone_setup.h"
 #include "vphysics/object_hash.h"
 #include "vphysics/friction.h"
@@ -949,7 +950,8 @@ void PhysFrictionEffect( Vector &vecPos, Vector vecVel, float energy, int surfac
 		if ( energy < MASS10_SPEED2ENERGY(15) )
 			break;
 		
-		g_pEffects->Dust( vecPos, invVecVel, 1, 16 );
+		//g_pEffects->Dust( vecPos, invVecVel, 1, 16 );
+		DispatchParticleEffect("physics_friction_dust", vecPos, QAngle(0, 0, 0));
 		break;
 
 	case CHAR_TEX_CONCRETE:
@@ -957,7 +959,8 @@ void PhysFrictionEffect( Vector &vecPos, Vector vecVel, float energy, int surfac
 		if ( energy < MASS10_SPEED2ENERGY(28) )
 			break;
 		
-		g_pEffects->Dust( vecPos, invVecVel, 1, 16 );
+		//g_pEffects->Dust( vecPos, invVecVel, 1, 16 );
+		DispatchParticleEffect("physics_friction_dust", vecPos, QAngle(0, 0, 0));
 		break;
 	}
 	
@@ -972,7 +975,8 @@ void PhysFrictionEffect( Vector &vecPos, Vector vecVel, float energy, int surfac
 			case CHAR_TEX_CONCRETE:
 			case CHAR_TEX_METAL:
 
-				g_pEffects->MetalSparks( vecPos, invVecVel );
+				//g_pEffects->MetalSparks( vecPos, invVecVel );
+				DispatchParticleEffect("physics_friction_metal", vecPos, QAngle(0, 0, 0));
 				break;									
 			}
 		}

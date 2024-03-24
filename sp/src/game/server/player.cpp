@@ -10,6 +10,7 @@
 #include "trains.h"
 #include "soundent.h"
 #include "gib.h"
+#include "rtbr/weapon_stunstick.h"
 #include "shake.h"
 #include "decals.h"
 #include "gamerules.h"
@@ -29,6 +30,7 @@
 #include "mathlib/mathlib.h"
 #include "ndebugoverlay.h"
 #include "baseviewmodel.h"
+#include "filesystem.h"
 #include "in_buttons.h"
 #include "client.h"
 #include "team.h"
@@ -59,6 +61,10 @@
 #include "env_zoom.h"
 #include "rumble_shared.h"
 #include "gamestats.h"
+#ifdef MAPBASE // From Alien Swarm SDK
+#include "env_tonemap_controller.h"
+#include "fogvolume.h"
+#endif
 #include "npcevent.h"
 #include "datacache/imdlcache.h"
 #include "hintsystem.h"
@@ -191,6 +197,11 @@ ConVar	sk_player_stomach( "sk_player_stomach","1" );
 ConVar	sk_player_arm( "sk_player_arm","1" );
 ConVar	sk_player_leg( "sk_player_leg","1" );
 
+// afterburn convars
+ConVar sk_afterburn_duration("sk_afterburn_duration", "5");
+ConVar sk_afterburn_tick("sk_afterburn_tick", "0.5");
+ConVar sk_afterburn_damage("sk_afterburn_damage", "2");
+
 //ConVar	player_usercommand_timeout( "player_usercommand_timeout", "10", 0, "After this many seconds without a usercommand from a player, the client is kicked." );
 #ifdef _DEBUG
 ConVar  sv_player_net_suppress_usercommands( "sv_player_net_suppress_usercommands", "0", FCVAR_CHEAT, "For testing usercommand hacking sideeffects. DO NOT SHIP" );
@@ -202,7 +213,6 @@ ConVar  player_debug_print_damage( "player_debug_print_damage", "0", FCVAR_CHEAT
 #ifdef MAPBASE
 ConVar	player_use_visibility_cache( "player_use_visibility_cache", "0", FCVAR_NONE, "Allows the player to use the visibility cache." );
 #endif
-
 
 void CC_GiveCurrentAmmo( void )
 {
@@ -459,8 +469,13 @@ BEGIN_DATADESC( CBasePlayer )
 	// Inputs
 	DEFINE_INPUTFUNC( FIELD_INTEGER, "SetHealth", InputSetHealth ),
 	DEFINE_INPUTFUNC( FIELD_BOOLEAN, "SetHUDVisibility", InputSetHUDVisibility ),
-	DEFINE_INPUTFUNC( FIELD_STRING, "SetFogController", InputSetFogController ),
+#ifdef MAPBASE // From Alien Swarm SDK (kind of)
+	DEFINE_INPUTFUNC( FIELD_INPUT, "SetFogController", InputSetFogController ),
 	DEFINE_INPUTFUNC( FIELD_INPUT, "SetPostProcessController", InputSetPostProcessController ),
+	DEFINE_INPUTFUNC( FIELD_INPUT, "SetColorCorrectionController", InputSetColorCorrectionController ),
+#else
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetFogController", InputSetFogController ),
+#endif
 	DEFINE_INPUTFUNC( FIELD_STRING, "HandleMapEvent", InputHandleMapEvent ),
 #ifdef MAPBASE
 	DEFINE_INPUTFUNC( FIELD_BOOLEAN, "SetSuppressAttacks", InputSetSuppressAttacks ),
@@ -474,15 +489,24 @@ BEGIN_DATADESC( CBasePlayer )
 
 	DEFINE_FIELD( m_nNumCrateHudHints, FIELD_INTEGER ),
 
+#ifdef MAPBASE // From Alien Swarm SDK
 	DEFINE_FIELD( m_hPostProcessCtrl, FIELD_EHANDLE ),
 
-
+	DEFINE_FIELD( m_hColorCorrectionCtrl, FIELD_EHANDLE ),
+#endif
 
 	// DEFINE_FIELD( m_nBodyPitchPoseParam, FIELD_INTEGER ),
 	// DEFINE_ARRAY( m_StepSoundCache, StepSoundCache_t,  2  ),
 
 	// DEFINE_UTLVECTOR( m_vecPlayerCmdInfo ),
 	// DEFINE_UTLVECTOR( m_vecPlayerSimInfo ),
+	DEFINE_FIELD(m_iIdleTicks, FIELD_INTEGER),
+	DEFINE_FIELD(m_vLastPosition, FIELD_VECTOR),
+	DEFINE_FIELD(m_vViewAngles, FIELD_VECTOR),
+
+	// don't save the afterburn fields, because the tradeoff of players being able to save/load abuse to extinguish themselves
+	// is far outweighed by the quality of life of not losing 20hp if you load a save on fire
+	//DEFINE_FIELD( m_flLastIgniteTick, FIELD_FLOAT ),
 END_DATADESC()
 
 #ifdef MAPBASE_VSCRIPT
@@ -526,8 +550,8 @@ BEGIN_ENT_SCRIPTDESC( CBasePlayer, CBaseCombatCharacter, "The player entity." )
 	DEFINE_SCRIPTFUNC( GetButtonForced, "Gets the player's currently forced buttons." )
 
 	DEFINE_SCRIPTFUNC( GetFOV, "" )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptGetFOVOwner, "GetFOVOwner", "" )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptSetFOV, "SetFOV", "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetFOVOwner, "GetFOVOwner", "Gets current view owner." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetFOV, "SetFOV", "Sets player FOV regardless of view owner." )
 
 	DEFINE_SCRIPTFUNC( ViewPunch, "Punches the player's view with the specified vector." )
 	DEFINE_SCRIPTFUNC( SetMuzzleFlashTime, "Sets the player's muzzle flash time for AI." )
@@ -540,6 +564,8 @@ BEGIN_ENT_SCRIPTDESC( CBasePlayer, CBaseCombatCharacter, "The player entity." )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptGetEyeForward, "GetEyeForward", "Gets the player's forward eye vector." )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptGetEyeRight, "GetEyeRight", "Gets the player's right eye vector." )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptGetEyeUp, "GetEyeUp", "Gets the player's up eye vector." )
+
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetViewModel, "GetViewModel", "Returns the viewmodel of the specified index." )
 
 	// 
 	// Hooks
@@ -622,6 +648,10 @@ void CBasePlayer::DestroyViewModels( void )
 }
 
 #ifdef MAPBASE
+extern char g_szDefaultHandsModel[MAX_PATH];
+extern int g_iDefaultHandsSkin;
+extern int g_iDefaultHandsBody;
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
@@ -629,8 +659,14 @@ void CBasePlayer::CreateHandModel(int index, int iOtherVm)
 {
 	Assert(index >= 0 && index < MAX_VIEWMODELS && iOtherVm >= 0 && iOtherVm < MAX_VIEWMODELS );
 
-	if (GetViewModel(index))
+	if (GetViewModel( index ))
+	{
+		// This can happen if the player respawns
+		// Don't draw unless we're already using a hands weapon
+		if ( !GetActiveWeapon() || !GetActiveWeapon()->UsesHands() )
+			GetViewModel( index )->AddEffects( EF_NODRAW );
 		return;
+	}
 
 	CBaseViewModel *vm = (CBaseViewModel *)CreateEntityByName("hand_viewmodel");
 	if (vm)
@@ -638,9 +674,15 @@ void CBasePlayer::CreateHandModel(int index, int iOtherVm)
 		vm->SetAbsOrigin(GetAbsOrigin());
 		vm->SetOwner(this);
 		vm->SetIndex(index);
+
+		vm->SetModel( g_szDefaultHandsModel );
+		vm->m_nSkin = g_iDefaultHandsSkin;
+		vm->m_nBody = g_iDefaultHandsBody;
+
 		DispatchSpawn(vm);
 		vm->FollowEntity(GetViewModel(iOtherVm), true);
 		m_hViewModel.Set(index, vm);
+		vm->AddEffects( EF_NODRAW );
 	}
 }
 #endif
@@ -1020,23 +1062,65 @@ void CBasePlayer::DrawDebugGeometryOverlays(void)
 	BaseClass::DrawDebugGeometryOverlays();
 }
 //Fidget Stuff
-void CBasePlayer::Fidget(void)
+// commented out is Iridium's old implementation
+void CBasePlayer::Fidget()
 {
-	if (GetActiveWeapon() != NULL) {
+	if (GetActiveWeapon()) {
+		Vector curPos = GetAbsOrigin();
+		QAngle curAng = GetAbsAngles();
 
-		if (GetActiveWeapon()->GetActivity() == ACT_VM_IDLE && GetLocalVelocity().Length() == 0)
-		{
-			GetActiveWeapon()->SendWeaponAnim(ACT_VM_FIDGET);
-			SetContextThink(&CBasePlayer::ResetFidget, gpGlobals->curtime + GetActiveWeapon()->SequenceDuration(), "FidgetThink");
+		// Don't fidget if we meet any of the following conditions:
+		// - Weapon animation is not idle (i.e. firing, drawing, reloading, etc.)
+		// - Player is moving
+		// - Player is zooming
+		// - Player is specifically meant to have a lowered weapon that has no lower animation (e.g. crowbar, magnum)
+		//		- FIXME: Only works when looking at a friendly, not when it's meant to be lowered.
+		// - Player is looking around
+
+		if (GetActiveWeapon()->GetActivity() != ACT_VM_IDLE){
+			m_iIdleTicks = 0; // also handles weapon drawing... unless our drawtime is less than IDLE_FIDGET_TICK seconds
 		}
-		else
-		{
-			SetContextThink(&CBasePlayer::Fidget, gpGlobals->curtime + random->RandomFloat(20.0f, 25.0f), "FidgetThink");
+		else if (curPos != m_vLastPosition){
+			m_vLastPosition = curPos;
+			m_iIdleTicks = 0;
+		}
+		else if (m_afButtonPressed & IN_ZOOM || m_nButtons & IN_ZOOM){
+			m_iIdleTicks = 0;
+		}
+		else if (LookingAtFriendly()){
+			m_iIdleTicks = 0;
+		}
+		else if (curAng != m_vViewAngles) {
+			m_vViewAngles = curAng;
+			m_iIdleTicks = 0;
+		}
+		else if (m_iIdleTicks >= (int)(IDLE_FIDGET_TIME / IDLE_FIDGET_TICK)){
+			m_iIdleTicks = 0;
+			GetActiveWeapon()->SendWeaponAnim( ACT_VM_FIDGET );
+			//SetContextThink(&CBasePlayer::ResetFidget, gpGlobals->curtime + GetActiveWeapon()->SequenceDuration(), "FidgetThink");
+		}
+		else {
+			m_iIdleTicks++;
 		}
 	}
-	else {
-		SetContextThink(&CBasePlayer::Fidget, gpGlobals->curtime + random->RandomFloat(20.0f, 25.0f), "FidgetThink");
+	else{
+		// if no weapon, be considered as 'not idle' - this fixes some weird glitch where fidget anims appear after picking up a weapon off of nothing
+		m_iIdleTicks = 0;
 	}
+	SetContextThink(&CBasePlayer::Fidget, gpGlobals->curtime + IDLE_FIDGET_TICK, "FidgetThink");
+	//	if (GetActiveWeapon()->GetActivity() == ACT_VM_IDLE && GetLocalVelocity().Length() == 0)
+	//	{
+	//		GetActiveWeapon()->SendWeaponAnim(ACT_VM_FIDGET);
+	//		SetContextThink(&CBasePlayer::ResetFidget, gpGlobals->curtime + GetActiveWeapon()->SequenceDuration(), "FidgetThink");
+	//	}
+	//	else
+	//	{
+	//		SetContextThink(&CBasePlayer::Fidget, gpGlobals->curtime + random->RandomFloat(20.0f, 25.0f), "FidgetThink");
+	//	}
+	//}
+	//else {
+	//	SetContextThink(&CBasePlayer::Fidget, gpGlobals->curtime + random->RandomFloat(20.0f, 25.0f), "FidgetThink");
+	//}
 }
 
 
@@ -1045,7 +1129,7 @@ void CBasePlayer::ResetFidget(void)
 	if (GetActiveWeapon() != NULL) {
 		GetActiveWeapon()->SendWeaponAnim(ACT_VM_IDLE);
 	}
-	SetContextThink(&CBasePlayer::Fidget, gpGlobals->curtime + random->RandomFloat(25.0f, 30.0f), "FidgetThink");
+	//SetContextThink(&CBasePlayer::Fidget, gpGlobals->curtime + random->RandomFloat(25.0f, 30.0f), "FidgetThink");
 }
 
 
@@ -1369,7 +1453,7 @@ int CBasePlayer::OnTakeDamage( const CTakeDamageInfo &inputInfo )
 	if(HasHaptics())
 		HapticsDamage(this,info);
 #endif
-
+	
 	// this cast to INT is critical!!! If a player ends up with 0.5 health, the engine will get that
 	// as an int (zero) and think the player is dead! (this will incite a clientside screentilt, etc)
 	
@@ -1515,7 +1599,14 @@ int CBasePlayer::OnTakeDamage( const CTakeDamageInfo &inputInfo )
 		}
 		if (bitsDamage & DMG_SHOCK)
 		{
+			SetSuitUpdate("!HEV_DET1", false, SUIT_NEXT_IN_1MIN);	// radiation detected
 			bitsDamage &= ~DMG_SHOCK;
+			ffound = true;
+		}
+		if (bitsDamage & (DMG_BURN | DMG_SLOWBURN))
+		{
+			SetSuitUpdate("!HEV_DET1", false, SUIT_NEXT_IN_1MIN);	// radiation detected
+			bitsDamage &= ~(DMG_BURN | DMG_SLOWBURN);
 			ffound = true;
 		}
 	}
@@ -1725,6 +1816,15 @@ void CBasePlayer::RemoveAllItems( bool removeSuit )
 	Weapon_SetLast( NULL );
 	RemoveAllWeapons();
  	RemoveAllAmmo();
+
+#ifdef MAPBASE
+	// Hide hand viewmodel
+	CBaseViewModel *vm = GetViewModel( 1 );
+	if ( vm )
+	{
+		vm->AddEffects( EF_NODRAW );
+	}
+#endif
 
 	if ( removeSuit )
 	{
@@ -3860,7 +3960,7 @@ void CBasePlayer::PlayerRunCommand(CUserCmd *ucmd, IMoveHelper *moveHelper)
 	// Movement hook for VScript
 	if (m_ScriptScope.IsInitialized() && g_Hook_PlayerRunCommand.CanRunInScope(m_ScriptScope))
 	{
-		HSCRIPT hCmd = g_pScriptVM->RegisterInstance( ucmd );
+		HSCRIPT hCmd = g_pScriptVM->RegisterInstance( reinterpret_cast<CScriptUserCmd*>(ucmd) );
 
 		// command
 		ScriptVariant_t args[] = { hCmd };
@@ -4019,7 +4119,7 @@ void CBasePlayer::PreThink(void)
 
 	// checks if new client data (for HUD and view control) needs to be sent to the client
 	UpdateClientData();
-	
+
 	CheckTimeBasedDamage();
 
 	CheckSuitUpdate();
@@ -4140,6 +4240,32 @@ void CBasePlayer::PreThink(void)
 //#define SLOWFREEZE_DAMAGE	3.0
 
 /* */
+
+void CBasePlayer::SetIgniteBegin(void){
+	m_flIgniteBegin = gpGlobals->curtime;
+	if (!m_Local.m_bOnFireImmolator){
+		m_Local.m_bOnFireImmolator = true; // only start taking afterburn damage if not already afterburned
+		TakeIgniteDamage();
+	}
+}
+
+//--------------------------------------------------
+// Purpose: Take damage when ignited by Immolator.
+//--------------------------------------------------
+void CBasePlayer::TakeIgniteDamage(void){
+	if (m_Local.m_bOnFireImmolator){
+		if (gpGlobals->curtime >= m_flLastIgniteTick + sk_afterburn_tick.GetFloat()){
+			OnTakeDamage(CTakeDamageInfo(this, this, sk_afterburn_damage.GetFloat(), DMG_GENERIC));
+			EmitSound("HL2Player.BurnPain");
+			m_flLastIgniteTick = gpGlobals->curtime;
+			if (gpGlobals->curtime > m_flIgniteBegin + sk_afterburn_duration.GetFloat()){
+				// take final tick of damage THEN turn off overlay
+				m_flLastIgniteTick = 0.0f;
+				m_Local.m_bOnFireImmolator = false;
+			}
+		}
+	}
+}
 
 
 void CBasePlayer::CheckTimeBasedDamage() 
@@ -4697,16 +4823,72 @@ void CBasePlayer::ForceOrigin( const Vector &vecOrigin )
 	m_vForcedOrigin = vecOrigin;
 }
 
+#ifdef MAPBASE // From Alien Swarm SDK
+//--------------------------------------------------------------------------------------------------------
+void CBasePlayer::OnTonemapTriggerStartTouch( CTonemapTrigger *pTonemapTrigger )
+{
+	m_hTriggerTonemapList.FindAndRemove( pTonemapTrigger );
+	m_hTriggerTonemapList.AddToTail( pTonemapTrigger );
+}
+
+
+//--------------------------------------------------------------------------------------------------------
+void CBasePlayer::OnTonemapTriggerEndTouch( CTonemapTrigger *pTonemapTrigger )
+{
+	m_hTriggerTonemapList.FindAndRemove( pTonemapTrigger );
+}
+
+
+//--------------------------------------------------------------------------------------------------------
+void CBasePlayer::UpdateTonemapController( void )
+{
+	// For now, Mapbase uses Tony Sergi's Source 2007 tonemap fixes.
+	// Alien Swarm SDK tonemap controller code copies the parameters instead.
+
+	CEnvTonemapController *pController = NULL;
+
+	if (m_hTriggerTonemapList.Count() > 0)
+	{
+		pController = static_cast<CEnvTonemapController*>(m_hTriggerTonemapList.Tail()->GetTonemapController());
+	}
+	else if (TheTonemapSystem()->GetMasterTonemapController())
+	{
+		pController = static_cast<CEnvTonemapController*>(TheTonemapSystem()->GetMasterTonemapController());
+	}
+
+	if (pController)
+	{
+		//m_hTonemapController = TheTonemapSystem()->GetMasterTonemapController();
+
+		if (pController->m_bUseCustomAutoExposureMax)
+			m_Local.m_TonemapParams.m_flAutoExposureMax = pController->m_flCustomAutoExposureMax;
+
+		if (pController->m_bUseCustomAutoExposureMin)
+			m_Local.m_TonemapParams.m_flAutoExposureMin = pController->m_flCustomAutoExposureMin;
+
+		if (pController->m_bUseCustomBloomScale)
+			m_Local.m_TonemapParams.m_flBloomScale = pController->m_flCustomBloomScale;
+	}
+}
+#endif
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
 void CBasePlayer::PostThink()
 {
 	m_vecSmoothedVelocity = m_vecSmoothedVelocity * SMOOTHING_FACTOR + GetAbsVelocity() * ( 1 - SMOOTHING_FACTOR );
+
+#ifdef MAPBASE // From Alien Swarm SDK
+	UpdateTonemapController();
+	UpdateFXVolume();
+#endif
+
 	if ( !g_fGameOver && !m_iPlayerLocked )
 	{
 		if ( IsAlive() )
 		{
+			TakeIgniteDamage();
 			// set correct collision bounds (may have changed in player movement code)
 			VPROF_SCOPE_BEGIN( "CBasePlayer::PostThink-Bounds" );
 			if ( GetFlags() & FL_DUCKING )
@@ -5179,7 +5361,9 @@ void CBasePlayer::Spawn( void )
 
 	// Initialize the fog and postprocess controllers.
 	InitFogController();
+#ifdef MAPBASE // From Alien Swarm SDK
 	InitPostProcessController();
+#endif
 
 	m_DmgTake		= 0;
 	m_DmgSave		= 0;
@@ -5279,6 +5463,11 @@ void CBasePlayer::Spawn( void )
 	m_vecSmoothedVelocity = vec3_origin;
 	InitVCollision( GetAbsOrigin(), GetAbsVelocity() );
 
+	if ( !g_pGameRules->IsMultiplayer() && g_pScriptVM )
+	{
+		g_pScriptVM->SetValue( "player", GetScriptInstance() );
+	}
+
 #if !defined( TF_DLL )
 	IGameEvent *event = gameeventmanager->CreateEvent( "player_spawn" );
 	
@@ -5303,11 +5492,6 @@ void CBasePlayer::Spawn( void )
 	UpdateLastKnownArea();
 
 	m_weaponFiredTimer.Invalidate();
-
-	if ( !g_pGameRules->IsMultiplayer() && g_pScriptVM )
-	{
-		g_pScriptVM->SetValue( "player", GetScriptInstance() );
-	}
 }
 
 void CBasePlayer::Activate( void )
@@ -5326,9 +5510,10 @@ void CBasePlayer::Activate( void )
 void CBasePlayer::Precache( void )
 {
 	BaseClass::Precache();
-	SetContextThink(&CBasePlayer::Fidget, gpGlobals->curtime + random->RandomFloat(10.0f, 15.0f), "FidgetThink");
-
+	SetContextThink(&CBasePlayer::Fidget, gpGlobals->curtime + IDLE_FIDGET_TICK, "FidgetThink");
 	PrecacheScriptSound( "Player.FallGib" );
+	PrecacheScriptSound("Player.Crouch");
+	PrecacheScriptSound("Player.Jump");
 	PrecacheScriptSound( "Player.Death" );
 	PrecacheScriptSound( "Player.PlasmaDamage" );
 	PrecacheScriptSound( "Player.SonicDamage" );
@@ -5378,6 +5563,10 @@ void CBasePlayer::Precache( void )
 	SetPlayerUnderwter( false );
 
 	m_iTrain = TRAIN_NEW;
+#endif
+
+#ifdef MAPBASE
+	PrecacheModel( g_szDefaultHandsModel );
 #endif
 
 	m_iClientBattery = -1;
@@ -5506,6 +5695,8 @@ void CBasePlayer::OnRestore( void )
 	{
 		g_pScriptVM->SetValue( "player", GetScriptInstance() );
 	}
+
+	m_Local.m_bOnFireImmolator = false; // fix a bug where the immolator overlay gets stuck on the player permanently.
 }
 
 /* void CBasePlayer::SetTeamName( const char *pTeamName )
@@ -6203,7 +6394,15 @@ void CBasePlayer::ImpulseCommands( )
 		}
 		break;
 	case	69:
-		Fidget();
+		if (GetActiveWeapon()->GetActivity() == ACT_VM_IDLE){
+			m_iIdleTicks = (int)(IDLE_FIDGET_TIME / IDLE_FIDGET_TICK); // basically just force a fidget
+			Fidget();
+		}
+		break;
+	case	70:
+		if (!GetActiveWeapon() == NULL) {
+			GetActiveWeapon()->SendWeaponAnim(ACT_VM_FIRSTDRAW);
+		}
 		break;
 	case	201:// paint decal
 		
@@ -6451,34 +6650,30 @@ void CBasePlayer::CheatImpulseCommands( int iImpulse )
 
 		// Give the player everything!
 		GiveAmmo( 255,	"Pistol");
-		GiveAmmo( 255,	"AR2");
-		GiveAmmo( 5,	"AR2AltFire");
 		GiveAmmo( 255,	"SMG1");
 		GiveAmmo( 255,	"Buckshot");
-		GiveAmmo( 3,	"smg1_grenade");
-		GiveAmmo( 3,	"rpg_round");
 		GiveAmmo( 5,	"grenade");
 		GiveAmmo( 32,	"357" );
-		GiveAmmo( 16,	"XBowBolt" );
 #ifdef HL2_EPISODIC
 		GiveAmmo( 5,	"Hopwire" );
 #endif		
 #ifdef RTBR_DLL
+		GiveAmmo( 255, "AKM" );
 		GiveAmmo( 255, "Immolator" );
-#endif
+		GiveAmmo(255, "FlareRound");
+		GiveAmmo(255, "Annabelle");
+		GiveAmmo( 255, "AlyxGun" );
+		GiveNamedItem("weapon_alyxgun");
+		GiveNamedItem("weapon_annabelle");
+		GiveNamedItem("weapon_flaregun");
+		GiveNamedItem("weapon_physcannon");
 		GiveNamedItem( "weapon_smg1" );
 		GiveNamedItem( "weapon_frag" );
 		GiveNamedItem( "weapon_crowbar" );
 		GiveNamedItem( "weapon_pistol" );
-		GiveNamedItem( "weapon_ar2" );
 		GiveNamedItem( "weapon_shotgun" );
-		GiveNamedItem( "weapon_physcannon" );
-		GiveNamedItem( "weapon_bugbait" );
-		GiveNamedItem( "weapon_rpg" );
 		GiveNamedItem( "weapon_357" );
-		GiveNamedItem( "weapon_crossbow" );
-
-#ifdef RTBR_DLL
+		GiveNamedItem( "weapon_akm" );
 		GiveNamedItem( "weapon_immolator" );
 		GiveNamedItem( "weapon_stunstick" );
 #endif
@@ -7106,6 +7301,19 @@ HSCRIPT CBasePlayer::VScriptGetExpresser()
 	}
 
 	return hScript;
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+HSCRIPT CBasePlayer::ScriptGetViewModel( int viewmodelindex )
+{
+	if (viewmodelindex < 0 || viewmodelindex >= MAX_VIEWMODELS)
+	{
+		Warning( "GetViewModel: Invalid index '%i'\n", viewmodelindex );
+		return NULL;
+	}
+
+	return ToHScript( GetViewModel( viewmodelindex ) );
 }
 #endif
 
@@ -7751,6 +7959,10 @@ void CBasePlayer::Weapon_DropSlot( int weaponSlot )
 	}
 }
 
+#ifdef MAPBASE
+ConVar player_autoswitch_on_first_pickup("player_autoswitch_on_pickup", "1", FCVAR_NONE, "Determines how the player should autoswitch when picking up a new weapon. 0 = no autoswitch, 1 = always (default), 2 = use unused weighting system");
+#endif
+
 //-----------------------------------------------------------------------------
 // Purpose: Override to add weapon to the hud
 //-----------------------------------------------------------------------------
@@ -7759,24 +7971,25 @@ void CBasePlayer::Weapon_Equip( CBaseCombatWeapon *pWeapon )
 	BaseClass::Weapon_Equip( pWeapon );
 
 #ifdef MAPBASE
-	// So, I discovered that BumpWeapon seems to have some deprecated code.
-	// It automatically switches the player to all new weapons. Sounds normal, right?
-	// Except that's *also* handled here. Since the BumpWeapon code implied the player could pick up weapons while carrying the mega physcannon,
-	// I assumed it was some old, deprecated code and, since I needed to remove a piece of (also deprecated) code in it, I decided to remove it entirely
-	// and hand weapon switching to this alone. Seems straightforward, right?
-	// 
-	// Well, it turns out, this code was more complicated than I thought and used various weights and stuff to determine if a weapon was worth automatically switching to.
-	// It doesn't automatically switch to most of the weapons. Even though I seem to be right about that old code being deprecated,
-	// I got irritated and...uh...replaced the correct Weapon_Equip code with the old deprecated code from BumpWeapon.
-	// 
-	// Trust me. It was hard and pointless to get used to. You'll thank me later.
-
-	if ( !PlayerHasMegaPhysCannon() )
+	// BumpWeapon's code appeared to be deprecated; The same operation is already handled here, but with much more code involved.
+	// There's also an unused weighting system which was overridden by that deprecated code. The unused weighting code can be enabled
+	// via player_autoswitch_on_first_pickup.
+	bool bShouldSwitch = false;
+	switch (player_autoswitch_on_first_pickup.GetInt())
 	{
-		Weapon_Switch( pWeapon );
+		// Unused Weighting
+		case 2:
+			bShouldSwitch = g_pGameRules->FShouldSwitchWeapon( this, pWeapon );
+			break;
+
+		// Always (old behavior)
+		case 1:
+			bShouldSwitch = true;
+			break;
 	}
 #else
 	bool bShouldSwitch = g_pGameRules->FShouldSwitchWeapon( this, pWeapon );
+#endif
 
 #ifdef HL2_DLL
 	if ( bShouldSwitch == false && PhysCannonGetHeldEntity( GetActiveWeapon() ) == pWeapon && 
@@ -7791,7 +8004,18 @@ void CBasePlayer::Weapon_Equip( CBaseCombatWeapon *pWeapon )
 	{
 		Weapon_Switch( pWeapon );
 	}
-#endif
+	if (GetActiveWeapon() == pWeapon) {
+		if (!FClassnameIs(GetActiveWeapon(), "weapon_stunstick")) {
+			GetActiveWeapon()->SendWeaponAnim(ACT_VM_FIRSTDRAW);
+		}
+		else {
+			CWeaponStunStick* pStunstick = dynamic_cast<CWeaponStunStick*>(GetActiveWeapon());
+			if (!pStunstick->m_bIsCharging) {
+				GetActiveWeapon()->SendWeaponAnim(ACT_VM_FIRSTDRAW);
+			}
+		}
+		
+	}	
 }
 
 #ifdef MAPBASE
@@ -7800,39 +8024,24 @@ void CBasePlayer::Weapon_Equip( CBaseCombatWeapon *pWeapon )
 //-----------------------------------------------------------------------------
 Activity CBasePlayer::Weapon_TranslateActivity( Activity baseAct, bool *pRequired )
 {
-#ifdef HL2_DLL
-	// HAAAAAAAAAAAAAACKS!
-	if (GetActiveWeapon())
+	Activity weaponTranslation = BaseClass::Weapon_TranslateActivity( baseAct, pRequired );
+	
+	if ( GetActiveWeapon() && GetActiveWeapon()->IsEffectActive(EF_NODRAW) && baseAct != ACT_ARM )
 	{
-		int translated = baseAct;
-		int iActOffset = (baseAct - ACT_HL2MP_IDLE);
-
-		string_t iszClassname = GetActiveWeapon()->m_iClassname;
-		if (iszClassname == gm_isz_class_Pistol || iszClassname == gm_isz_class_357)
-			translated = (ACT_HL2MP_IDLE_PISTOL + iActOffset);
-		else if (iszClassname == gm_isz_class_SMG1)
-			translated = (ACT_HL2MP_IDLE_SMG1 + iActOffset);
-		else if (iszClassname == gm_isz_class_AR2)
-			translated = (ACT_HL2MP_IDLE_AR2 + iActOffset);
-		else if (iszClassname == gm_isz_class_Shotgun)
-			translated = (ACT_HL2MP_IDLE_SHOTGUN + iActOffset);
-		else if (iszClassname == gm_isz_class_RPG)
-			translated = (ACT_HL2MP_IDLE_RPG + iActOffset);
-		else if (iszClassname == gm_isz_class_Grenade)
-			translated = (ACT_HL2MP_IDLE_GRENADE + iActOffset);
-		else if (iszClassname == gm_isz_class_Physcannon)
-			translated = (ACT_HL2MP_IDLE_PHYSGUN + iActOffset);
-		else if (iszClassname == gm_isz_class_Crossbow)
-			translated = (ACT_HL2MP_IDLE_CROSSBOW + iActOffset);
-		else if (iszClassname == gm_isz_class_Crowbar || iszClassname == gm_isz_class_Stunstick)
-			translated = (ACT_HL2MP_IDLE_MELEE + iActOffset);
-
-		if (translated != baseAct)
-			return (Activity)translated;
+		// Our weapon is holstered. Use the base activity.
+		return baseAct;
 	}
-#endif
+	if ( GetModelPtr() && (!GetModelPtr()->HaveSequenceForActivity(weaponTranslation) || baseAct == weaponTranslation) )
+	{
+		// This is used so players can fall back to backup activities in the same way NPCs in Mapbase can
+		Activity backupActivity = Weapon_BackupActivity(baseAct, pRequired ? *pRequired : false);
+		if ( baseAct != backupActivity && GetModelPtr()->HaveSequenceForActivity(backupActivity) )
+			return backupActivity;
 
-	return BaseClass::Weapon_TranslateActivity( baseAct, pRequired );
+		return baseAct;
+	}
+
+	return weaponTranslation;
 }
 #endif
 
@@ -8725,6 +8934,7 @@ void SendProxy_ShiftPlayerSpawnflags( const SendProp *pProp, const void *pStruct
 		SendPropInt			( SENDINFO( m_spawnflags ), 3, SPROP_UNSIGNED, SendProxy_ShiftPlayerSpawnflags ),
 
 		SendPropBool		( SENDINFO( m_bDrawPlayerModelExternally ) ),
+		SendPropBool		( SENDINFO( m_bInTriggerFall ) ),
 #endif
 
 	END_SEND_TABLE()
@@ -8764,8 +8974,11 @@ void SendProxy_ShiftPlayerSpawnflags( const SendProp *pProp, const void *pStruct
 		SendPropArray	( SendPropEHandle( SENDINFO_ARRAY( m_hViewModel ) ), m_hViewModel ),
 		SendPropString	(SENDINFO(m_szLastPlaceName) ),
 
+#ifdef MAPBASE // From Alien Swarm SDK
 		// Postprocess data
-		SendPropEHandle( SENDINFO( m_hPostProcessCtrl ) ),
+		SendPropEHandle		( SENDINFO(m_hPostProcessCtrl) ),
+		SendPropEHandle		( SENDINFO(m_hColorCorrectionCtrl) ),
+#endif
 
 #if defined USES_ECON_ITEMS
 		SendPropUtlVector( SENDINFO_UTLVECTOR( m_hMyWearables ), MAX_WEARABLES_SENT_FROM_SERVER, SendPropEHandle( NULL, 0 ) ),
@@ -9481,7 +9694,19 @@ void CBasePlayer::InputSetSuppressAttacks( inputdata_t &inputdata )
 void CBasePlayer::InputSetFogController( inputdata_t &inputdata )
 {
 	// Find the fog controller with the given name.
+#ifdef MAPBASE // From Alien Swarm SDK
+	CFogController *pFogController = NULL;
+	if ( inputdata.value.FieldType() == FIELD_EHANDLE )
+	{
+		pFogController = dynamic_cast<CFogController*>( inputdata.value.Entity().Get() );
+	}
+	else
+	{
+		pFogController = dynamic_cast<CFogController*>( gEntList.FindEntityByName( NULL, inputdata.value.String() ) );
+	}
+#else
 	CFogController *pFogController = dynamic_cast<CFogController*>( gEntList.FindEntityByName( NULL, inputdata.value.String() ) );
+#endif
 	if ( pFogController )
 	{
 		m_Local.m_PlayerFog.m_hCtrl.Set( pFogController );
@@ -9497,6 +9722,7 @@ void CBasePlayer::InitFogController( void )
 	m_Local.m_PlayerFog.m_hCtrl = FogSystem()->GetMasterFogController();
 }
 
+#ifdef MAPBASE // From Alien Swarm SDK
 //-----------------------------------------------------------------------------
 //
 //-----------------------------------------------------------------------------
@@ -9509,24 +9735,56 @@ void CBasePlayer::InitPostProcessController( void )
 //-----------------------------------------------------------------------------
 //
 //-----------------------------------------------------------------------------
-void CBasePlayer::InputSetPostProcessController( inputdata_t& inputdata )
+void CBasePlayer::InitColorCorrectionController( void )
 {
-	// Find the postprocess controller with the given name.
-	CPostProcessController* pController = NULL;
-	if (inputdata.value.FieldType() == FIELD_EHANDLE)
+	m_hColorCorrectionCtrl = ColorCorrectionSystem()->GetMasterColorCorrection();
+}
+
+//-----------------------------------------------------------------------------
+//
+//-----------------------------------------------------------------------------
+void CBasePlayer::InputSetPostProcessController( inputdata_t &inputdata )
+{
+	// Find the fog controller with the given name.
+	CPostProcessController *pController = NULL;
+	if ( inputdata.value.FieldType() == FIELD_EHANDLE )
 	{
-		pController = dynamic_cast<CPostProcessController*>(inputdata.value.Entity().Get());
+		pController = dynamic_cast<CPostProcessController*>( inputdata.value.Entity().Get() );
 	}
 	else
 	{
-		pController = dynamic_cast<CPostProcessController*>(gEntList.FindEntityByName( NULL, inputdata.value.String() ));
+		pController = dynamic_cast<CPostProcessController*>( gEntList.FindEntityByName( NULL, inputdata.value.String() ) );
 	}
 
-	if (pController)
+	if ( pController )
 	{
 		m_hPostProcessCtrl.Set( pController );
 	}
 }
+
+//-----------------------------------------------------------------------------
+//
+//-----------------------------------------------------------------------------
+void CBasePlayer::InputSetColorCorrectionController( inputdata_t &inputdata )
+{
+	// Find the fog controller with the given name.
+	CColorCorrection *pController = NULL;
+	if ( inputdata.value.FieldType() == FIELD_EHANDLE )
+	{
+		pController = dynamic_cast<CColorCorrection*>( inputdata.value.Entity().Get() );
+	}
+	else
+	{
+		pController = dynamic_cast<CColorCorrection*>( gEntList.FindEntityByName( NULL, inputdata.value.String() ) );
+	}
+
+	if ( pController )
+	{
+		m_hColorCorrectionCtrl.Set( pController );
+	}
+
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -10199,3 +10457,90 @@ uint64 CBasePlayer::GetSteamIDAsUInt64( void )
 	return 0;
 }
 #endif // NO_STEAM
+
+#ifdef MAPBASE // From Alien Swarm SDK
+//--------------------------------------------------------------------------------------------------------
+void CBasePlayer::UpdateFXVolume( void )
+{
+	CFogController *pFogController = NULL;
+	CPostProcessController *pPostProcessController = NULL;
+	CColorCorrection* pColorCorrectionEnt = NULL;
+
+	Vector eyePos;
+	CBaseEntity *pViewEntity = GetViewEntity();
+	if ( pViewEntity )
+	{
+		eyePos = pViewEntity->GetAbsOrigin();
+	}
+	else
+	{
+		eyePos = EyePosition();
+	}
+
+	CFogVolume *pFogVolume = CFogVolume::FindFogVolumeForPosition( eyePos );
+	if ( pFogVolume )
+	{
+		pFogController = pFogVolume->GetFogController();
+		pPostProcessController = pFogVolume->GetPostProcessController();
+		pColorCorrectionEnt = pFogVolume->GetColorCorrectionController();
+
+		if ( !pFogController )
+		{
+			pFogController = FogSystem()->GetMasterFogController();
+		}
+
+		if ( !pPostProcessController )
+		{
+			pPostProcessController = PostProcessSystem()->GetMasterPostProcessController();
+		}
+
+		if ( !pColorCorrectionEnt )
+		{
+			pColorCorrectionEnt = ColorCorrectionSystem()->GetMasterColorCorrection();
+		}
+	}
+	else if ( TheFogVolumes.Count() > 0 )
+	{
+		// If we're not in a fog volume, clear our fog volume, if the map has any.
+		// This will get us back to using the master fog controller.
+		pFogController = FogSystem()->GetMasterFogController();
+		pPostProcessController = PostProcessSystem()->GetMasterPostProcessController();
+		pColorCorrectionEnt = ColorCorrectionSystem()->GetMasterColorCorrection();
+	}
+
+	if ( pFogController && m_Local.m_PlayerFog.m_hCtrl.Get() != pFogController )
+	{
+		m_Local.m_PlayerFog.m_hCtrl.Set( pFogController );
+	}
+
+	if ( pPostProcessController )
+	{
+		m_hPostProcessCtrl.Set( pPostProcessController );
+	}
+
+	if ( pColorCorrectionEnt )
+	{
+		m_hColorCorrectionCtrl.Set( pColorCorrectionEnt );
+	}
+}
+
+bool CBasePlayer::LookingAtFriendly( void ){
+	Vector vecAim = GetAutoaimVector( AUTOAIM_SCALE_DIRECT_ONLY );
+	const float CHECK_FRIENDLY_RANGE = 50 * 12;
+	trace_t	tr;
+	UTIL_TraceLine( EyePosition(), EyePosition() + vecAim * CHECK_FRIENDLY_RANGE, MASK_SHOT, this, COLLISION_GROUP_NONE, &tr );
+	CBaseEntity *aimTarget = tr.m_pEnt;
+	if (aimTarget && !tr.DidHitWorld())
+	{
+		if (!aimTarget->IsNPC() || aimTarget->MyNPCPointer()->GetState() != NPC_STATE_COMBAT)
+		{
+			Disposition_t dis = IRelationType( aimTarget );
+			if (dis == D_LI)
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+#endif

@@ -7,6 +7,7 @@
 
 #include "cbase.h"
 #include "npcevent.h"
+#include "convar.h"
 #include "basehlcombatweapon.h"
 #include "basecombatcharacter.h"
 #include "ai_basenpc.h"
@@ -28,13 +29,16 @@
 #define	PISTOL_ACCURACY_MAXIMUM_PENALTY_TIME	1.5f	// Maximum penalty to deal out
 
 ConVar	pistol_use_new_accuracy( "pistol_use_new_accuracy", "1" );
-ConVar	do_firstdraw("do_firstdraw", "0");
+ConVar  sk_pistol_burst_time("sk_pistol_burst_time", "0.25", 0);
+ConVar  sk_pistol_burst_size("sk_pistol_burst_size", "2", 0);
+ConVar  sk_pistol_burst_speed("sk_pistol_burst_speed", "3", 0);
+ConVar  sk_pistol_firerate("sk_pistol_firerate", "225.0", 0);
 
 //-----------------------------------------------------------------------------
 // CWeaponPistol
 //-----------------------------------------------------------------------------
 
-class CWeaponPistol : public CBaseHLCombatWeapon
+class CWeaponPistol : public CHLSelectFireMachineGun
 {
 	DECLARE_DATADESC();
 
@@ -52,7 +56,10 @@ public:
 	void	ItemPreFrame( void );
 	void	ItemBusyFrame( void );
 	void	PrimaryAttack( void );
+	void	SecondaryAttack();
 	void	AddViewKick( void );
+	virtual float	GetBurstCycleRate(void) { return sk_pistol_burst_time.GetFloat(); };
+	virtual int GetBurstSize(void) { return sk_pistol_burst_size.GetInt(); };
 	void	OnPickedUp(CBaseCombatCharacter *pNewOwner);
 	void	DryFire( void );
 	void	Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatCharacter *pOperator );
@@ -76,22 +83,26 @@ public:
 			return npcCone;
 			
 		static Vector cone;
+		if (m_bPrimary) {
+			if (pistol_use_new_accuracy.GetBool())
+			{
+				float ramp = RemapValClamped(m_flAccuracyPenalty,
+					0.0f,
+					PISTOL_ACCURACY_MAXIMUM_PENALTY_TIME,
+					0.0f,
+					1.0f);
 
-		if ( pistol_use_new_accuracy.GetBool() )
-		{
-			float ramp = RemapValClamped(	m_flAccuracyPenalty, 
-											0.0f, 
-											PISTOL_ACCURACY_MAXIMUM_PENALTY_TIME, 
-											0.0f, 
-											1.0f ); 
-
-			// We lerp from very accurate to inaccurate over time
-			VectorLerp( VECTOR_CONE_1DEGREES, VECTOR_CONE_6DEGREES, ramp, cone );
+				// We lerp from very accurate to inaccurate over time
+				VectorLerp(VECTOR_CONE_1DEGREES, VECTOR_CONE_3DEGREES, ramp, cone);
+			}
+			else
+			{
+				// Old value
+				cone = VECTOR_CONE_4DEGREES;
+			}
 		}
-		else
-		{
-			// Old value
-			cone = VECTOR_CONE_4DEGREES;
+		else {
+			cone = VECTOR_CONE_7DEGREES;
 		}
 
 		return cone;
@@ -99,18 +110,24 @@ public:
 	
 	virtual int	GetMinBurst() 
 	{ 
-		return 1; 
+		return 2; 
 	}
 
 	virtual int	GetMaxBurst() 
 	{ 
-		return 3; 
+		return 2; 
 	}
 
 	virtual float GetFireRate( void ) 
 	{
-		return 0.5f; 
+		return 60.0f / sk_pistol_firerate.GetInt();
 	}
+
+#ifdef MAPBASE
+	// Pistols are their own backup activities
+	virtual acttable_t		*GetBackupActivityList() { return NULL; }
+	virtual int				GetBackupActivityListCount() { return 0; }
+#endif
 
 	DECLARE_ACTTABLE();
 
@@ -119,6 +136,7 @@ private:
 	float	m_flLastAttackTime;
 	float	m_flAccuracyPenalty;
 	int		m_nNumShotsFired;
+	bool	m_bPrimary;
 };
 
 
@@ -134,6 +152,7 @@ BEGIN_DATADESC( CWeaponPistol )
 	DEFINE_FIELD( m_flLastAttackTime,		FIELD_TIME ),
 	DEFINE_FIELD( m_flAccuracyPenalty,		FIELD_FLOAT ), //NOTENOTE: This is NOT tracking game time
 	DEFINE_FIELD( m_nNumShotsFired,			FIELD_INTEGER ),
+	DEFINE_FIELD(m_bPrimary,				FIELD_BOOLEAN ),
 
 END_DATADESC()
 
@@ -153,10 +172,141 @@ acttable_t	CWeaponPistol::m_acttable[] =
 	{ ACT_GESTURE_RELOAD,			ACT_GESTURE_RELOAD_PISTOL,		false },
 	{ ACT_WALK,						ACT_WALK_PISTOL,				false },
 	{ ACT_RUN,						ACT_RUN_PISTOL,					false },
+
+#ifdef MAPBASE
+	// 
+	// Activities ported from weapon_alyxgun below
+	// 
+
+#if EXPANDED_HL2_WEAPON_ACTIVITIES
+	// Readiness activities (not aiming)
+	{ ACT_IDLE_RELAXED,				ACT_IDLE_PISTOL_RELAXED,		false },//never aims
+	{ ACT_IDLE_STIMULATED,			ACT_IDLE_PISTOL_STIMULATED,		false },
+	{ ACT_IDLE_AGITATED,			ACT_IDLE_ANGRY_PISTOL,			false },//always aims
+	{ ACT_IDLE_STEALTH,				ACT_IDLE_STEALTH_PISTOL,		false },
+
+	{ ACT_WALK_RELAXED,				ACT_WALK_PISTOL_RELAXED,		false },//never aims
+	{ ACT_WALK_STIMULATED,			ACT_WALK_PISTOL_STIMULATED,		false },
+	{ ACT_WALK_AGITATED,			ACT_WALK_AIM_PISTOL,			false },//always aims
+	{ ACT_WALK_STEALTH,				ACT_WALK_STEALTH_PISTOL,		false },
+
+	{ ACT_RUN_RELAXED,				ACT_RUN_PISTOL_RELAXED,			false },//never aims
+	{ ACT_RUN_STIMULATED,			ACT_RUN_PISTOL_STIMULATED,		false },
+	{ ACT_RUN_AGITATED,				ACT_RUN_AIM_PISTOL,				false },//always aims
+	{ ACT_RUN_STEALTH,				ACT_RUN_STEALTH_PISTOL,			false },
+
+	// Readiness activities (aiming)
+	{ ACT_IDLE_AIM_RELAXED,			ACT_IDLE_PISTOL_RELAXED,		false },//never aims	
+	{ ACT_IDLE_AIM_STIMULATED,		ACT_IDLE_AIM_PISTOL_STIMULATED,	false },
+	{ ACT_IDLE_AIM_AGITATED,		ACT_IDLE_ANGRY_PISTOL,			false },//always aims
+	{ ACT_IDLE_AIM_STEALTH,			ACT_IDLE_STEALTH_PISTOL,		false },
+
+	{ ACT_WALK_AIM_RELAXED,			ACT_WALK_PISTOL_RELAXED,		false },//never aims
+	{ ACT_WALK_AIM_STIMULATED,		ACT_WALK_AIM_PISTOL,			false },
+	{ ACT_WALK_AIM_AGITATED,		ACT_WALK_AIM_PISTOL,			false },//always aims
+	{ ACT_WALK_AIM_STEALTH,			ACT_WALK_AIM_STEALTH_PISTOL,	false },//always aims
+
+	{ ACT_RUN_AIM_RELAXED,			ACT_RUN_PISTOL_RELAXED,			false },//never aims
+	{ ACT_RUN_AIM_STIMULATED,		ACT_RUN_AIM_PISTOL,				false },
+	{ ACT_RUN_AIM_AGITATED,			ACT_RUN_AIM_PISTOL,				false },//always aims
+	{ ACT_RUN_AIM_STEALTH,			ACT_RUN_AIM_STEALTH_PISTOL,		false },//always aims
+	//End readiness activities
+#else
+	// Readiness activities (not aiming)
+	{ ACT_IDLE_RELAXED,				ACT_IDLE_PISTOL,				false },//never aims
+	{ ACT_IDLE_STIMULATED,			ACT_IDLE_STIMULATED,			false },
+	{ ACT_IDLE_AGITATED,			ACT_IDLE_ANGRY_PISTOL,			false },//always aims
+	{ ACT_IDLE_STEALTH,				ACT_IDLE_STEALTH_PISTOL,		false },
+
+	{ ACT_WALK_RELAXED,				ACT_WALK,						false },//never aims
+	{ ACT_WALK_STIMULATED,			ACT_WALK_STIMULATED,			false },
+	{ ACT_WALK_AGITATED,			ACT_WALK_AIM_PISTOL,			false },//always aims
+	{ ACT_WALK_STEALTH,				ACT_WALK_STEALTH_PISTOL,		false },
+
+	{ ACT_RUN_RELAXED,				ACT_RUN,						false },//never aims
+	{ ACT_RUN_STIMULATED,			ACT_RUN_STIMULATED,				false },
+	{ ACT_RUN_AGITATED,				ACT_RUN_AIM_PISTOL,				false },//always aims
+	{ ACT_RUN_STEALTH,				ACT_RUN_STEALTH_PISTOL,			false },
+
+	// Readiness activities (aiming)
+	{ ACT_IDLE_AIM_RELAXED,			ACT_IDLE_PISTOL,				false },//never aims	
+	{ ACT_IDLE_AIM_STIMULATED,		ACT_IDLE_ANGRY_PISTOL,			false },
+	{ ACT_IDLE_AIM_AGITATED,		ACT_IDLE_ANGRY_PISTOL,			false },//always aims
+	{ ACT_IDLE_AIM_STEALTH,			ACT_IDLE_STEALTH_PISTOL,		false },
+
+	{ ACT_WALK_AIM_RELAXED,			ACT_WALK,						false },//never aims
+	{ ACT_WALK_AIM_STIMULATED,		ACT_WALK_AIM_PISTOL,			false },
+	{ ACT_WALK_AIM_AGITATED,		ACT_WALK_AIM_PISTOL,			false },//always aims
+	{ ACT_WALK_AIM_STEALTH,			ACT_WALK_AIM_STEALTH_PISTOL,	false },//always aims
+
+	{ ACT_RUN_AIM_RELAXED,			ACT_RUN,						false },//never aims
+	{ ACT_RUN_AIM_STIMULATED,		ACT_RUN_AIM_PISTOL,				false },
+	{ ACT_RUN_AIM_AGITATED,			ACT_RUN_AIM_PISTOL,				false },//always aims
+	{ ACT_RUN_AIM_STEALTH,			ACT_RUN_AIM_STEALTH_PISTOL,		false },//always aims
+	//End readiness activities
+#endif
+
+	// Crouch activities
+	{ ACT_CROUCHIDLE_STIMULATED,	ACT_CROUCHIDLE_STIMULATED,		false },
+	{ ACT_CROUCHIDLE_AIM_STIMULATED,ACT_RANGE_AIM_PISTOL_LOW,		false },//always aims
+	{ ACT_CROUCHIDLE_AGITATED,		ACT_RANGE_AIM_PISTOL_LOW,		false },//always aims
+
+	// Readiness translations
+	{ ACT_READINESS_RELAXED_TO_STIMULATED, ACT_READINESS_PISTOL_RELAXED_TO_STIMULATED, false },
+	{ ACT_READINESS_RELAXED_TO_STIMULATED_WALK, ACT_READINESS_PISTOL_RELAXED_TO_STIMULATED_WALK, false },
+	{ ACT_READINESS_AGITATED_TO_STIMULATED, ACT_READINESS_PISTOL_AGITATED_TO_STIMULATED, false },
+	{ ACT_READINESS_STIMULATED_TO_RELAXED, ACT_READINESS_PISTOL_STIMULATED_TO_RELAXED, false },
+#endif
+
+#if EXPANDED_HL2_WEAPON_ACTIVITIES
+	{ ACT_WALK_CROUCH,				ACT_WALK_CROUCH_PISTOL,			true },
+	{ ACT_WALK_CROUCH_AIM,			ACT_WALK_CROUCH_AIM_PISTOL,		true },
+	{ ACT_RUN_CROUCH,				ACT_RUN_CROUCH_PISTOL,			true },
+	{ ACT_RUN_CROUCH_AIM,			ACT_RUN_CROUCH_AIM_PISTOL,		true },
+#endif
+
+#if EXPANDED_HL2_COVER_ACTIVITIES
+	{ ACT_RANGE_AIM_MED,			ACT_RANGE_AIM_PISTOL_MED,			false },
+	{ ACT_RANGE_ATTACK1_MED,		ACT_RANGE_ATTACK_PISTOL_MED,		false },
+
+	{ ACT_COVER_WALL_R,			ACT_COVER_WALL_R_PISTOL,		false },
+	{ ACT_COVER_WALL_L,			ACT_COVER_WALL_L_PISTOL,		false },
+	{ ACT_COVER_WALL_LOW_R,		ACT_COVER_WALL_LOW_R_PISTOL,	false },
+	{ ACT_COVER_WALL_LOW_L,		ACT_COVER_WALL_LOW_L_PISTOL,	false },
+#endif
+
+#ifdef MAPBASE
+	// HL2:DM activities (for third-person animations in SP)
+	{ ACT_HL2MP_IDLE,                    ACT_HL2MP_IDLE_PISTOL,                    false },
+	{ ACT_HL2MP_RUN,                    ACT_HL2MP_RUN_PISTOL,                    false },
+	{ ACT_HL2MP_IDLE_CROUCH,            ACT_HL2MP_IDLE_CROUCH_PISTOL,            false },
+	{ ACT_HL2MP_WALK_CROUCH,            ACT_HL2MP_WALK_CROUCH_PISTOL,            false },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK,    ACT_HL2MP_GESTURE_RANGE_ATTACK_PISTOL,    false },
+	{ ACT_HL2MP_GESTURE_RELOAD,            ACT_HL2MP_GESTURE_RELOAD_PISTOL,        false },
+	{ ACT_HL2MP_JUMP,                    ACT_HL2MP_JUMP_PISTOL,                    false },
+#if EXPANDED_HL2DM_ACTIVITIES
+	{ ACT_HL2MP_WALK,					ACT_HL2MP_WALK_PISTOL,						false },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK2,	ACT_HL2MP_GESTURE_RANGE_ATTACK2_PISTOL,		false },
+#endif
+#endif
 };
 
 
 IMPLEMENT_ACTTABLE( CWeaponPistol );
+
+#ifdef MAPBASE
+// Allows Weapon_BackupActivity() to access the pistol's activity table.
+acttable_t *GetPistolActtable()
+{
+	return CWeaponPistol::m_acttable;
+}
+
+int GetPistolActtableCount()
+{
+	return ARRAYSIZE(CWeaponPistol::m_acttable);
+}
+#endif
+
 //-----------------------------------------------------------------------------
 // Purpose: Constructor
 //-----------------------------------------------------------------------------
@@ -179,6 +329,7 @@ CWeaponPistol::CWeaponPistol( void )
 void CWeaponPistol::Precache( void )
 {
 	PrecacheModel("models/weapons/pistol/m_pistol.mdl");
+	m_iBurstSize = 2;
 	BaseClass::Precache();
 }
 
@@ -189,7 +340,7 @@ void CWeaponPistol::Precache( void )
 void CWeaponPistol::OnPickedUp(CBaseCombatCharacter *pNewOwner)
 {
 	BaseClass::OnPickedUp(pNewOwner);
-	SendWeaponAnim(ACT_VM_FIRSTDRAW);
+	//SendWeaponAnim(ACT_VM_FIRSTDRAW);
 }
 //-----------------------------------------------------------------------------
 // Purpose:
@@ -275,37 +426,75 @@ void CWeaponPistol::DryFire( void )
 //-----------------------------------------------------------------------------
 void CWeaponPistol::PrimaryAttack( void )
 {
-	if ( ( gpGlobals->curtime - m_flLastAttackTime ) > 0.5f )
-	{
-		m_nNumShotsFired = 0;
-	}
-	else
-	{
-		m_nNumShotsFired++;
-	}
+	// suppress weird m1+m2 stuff
+	if (m_iBurstSize > 0)
+		return;
 
-	m_flLastAttackTime = gpGlobals->curtime;
-	m_flSoonestPrimaryAttack = gpGlobals->curtime + PISTOL_FASTEST_REFIRE_TIME;
-	CSoundEnt::InsertSound( SOUND_COMBAT, GetAbsOrigin(), SOUNDENT_VOLUME_PISTOL, 0.2, GetOwner() );
+	if ((gpGlobals->curtime - m_flLastAttackTime) >= GetFireRate()) {
+		if ((gpGlobals->curtime - m_flLastAttackTime) > GetFireRate())
+		{
+			m_nNumShotsFired = 0;
+		}
+		else
+		{
+			m_nNumShotsFired++;
+		}
 
+		m_flLastAttackTime = gpGlobals->curtime;
+		m_flSoonestPrimaryAttack = gpGlobals->curtime + PISTOL_FASTEST_REFIRE_TIME;
+		CSoundEnt::InsertSound(SOUND_COMBAT, GetAbsOrigin(), SOUNDENT_VOLUME_PISTOL, 0.2, GetOwner());
+
+		CBasePlayer *pOwner = ToBasePlayer(GetOwner());
+
+		if (pOwner)
+		{
+			// Each time the player fires the pistol, reset the view punch. This prevents
+			// the aim from 'drifting off' when the player fires very quickly. This may
+			// not be the ideal way to achieve this, but it's cheap and it works, which is
+			// great for a feature we're evaluating. (sjb)
+			pOwner->ViewPunchReset();
+		}
+		m_bPrimary = true;
+		BaseClass::PrimaryAttack();
+
+		// Add an accuracy penalty which can move past our maximum penalty time if we're really spastic
+		m_flAccuracyPenalty += PISTOL_ACCURACY_SHOT_PENALTY_TIME;
+
+		m_iPrimaryAttacks++;
+		gamestats->Event_WeaponFired(pOwner, true, GetClassname());
+
+		m_flNextSecondaryAttack = gpGlobals->curtime + GetFireRate();
+	}
+}
+
+void CWeaponPistol::SecondaryAttack() {
+	// suppress weird m1+m2 stuff
 	CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
-
-	if( pOwner )
+	if (pOwner)
 	{
-		// Each time the player fires the pistol, reset the view punch. This prevents
-		// the aim from 'drifting off' when the player fires very quickly. This may
-		// not be the ideal way to achieve this, but it's cheap and it works, which is
-		// great for a feature we're evaluating. (sjb)
-		pOwner->ViewPunchReset();
+		if (pOwner->m_nButtons & IN_ATTACK) {
+			return;
+		}
+	}
+	if (Clip1() == 1)
+	{
+		// no point doing the double burst when we can't even fire 2 bullets
+		WeaponSound( SINGLE );
+		PrimaryAttack();
+		return;
 	}
 
-	BaseClass::PrimaryAttack();
+	m_bPrimary = false;
+	m_iBurstSize = GetBurstSize();
 
-	// Add an accuracy penalty which can move past our maximum penalty time if we're really spastic
-	m_flAccuracyPenalty += PISTOL_ACCURACY_SHOT_PENALTY_TIME;
+	// Call the think function directly so that the first round gets fired immediately.
+	BurstSingleSoundThink();
+	SetThink(&CHLSelectFireMachineGun::BurstSingleSoundThink);
+	m_flNextPrimaryAttack = gpGlobals->curtime + GetBurstCycleRate();
+	m_flNextSecondaryAttack = gpGlobals->curtime + GetBurstCycleRate();
 
-	m_iPrimaryAttacks++;
-	gamestats->Event_WeaponFired( pOwner, true, GetClassname() );
+	// Pick up the rest of the burst through the think function.
+	SetNextThink(gpGlobals->curtime + GetFireRate() / sk_pistol_burst_speed.GetFloat());
 }
 
 //-----------------------------------------------------------------------------
@@ -351,7 +540,6 @@ void CWeaponPistol::ItemBusyFrame( void )
 //-----------------------------------------------------------------------------
 void CWeaponPistol::ItemPostFrame( void )
 {
-	ConVar *firstdraw = cvar->FindVar("do_firstdraw");
 	BaseClass::ItemPostFrame();
 
 	if ( m_bInReload )
@@ -361,7 +549,7 @@ void CWeaponPistol::ItemPostFrame( void )
 
 	if ( pOwner == NULL )
 		return;
-
+	
 	//Allow a refire as fast as the player can click
 	if ( ( ( pOwner->m_nButtons & IN_ATTACK ) == false ) && ( m_flSoonestPrimaryAttack < gpGlobals->curtime ) )
 	{
@@ -370,10 +558,6 @@ void CWeaponPistol::ItemPostFrame( void )
 	else if ( ( pOwner->m_nButtons & IN_ATTACK ) && ( m_flNextPrimaryAttack < gpGlobals->curtime ) && ( m_iClip1 <= 0 ) )
 	{
 		DryFire();
-	}
-	if (do_firstdraw.GetInt() == 1) {
-		SendWeaponAnim(ACT_VM_FIRSTDRAW);
-		firstdraw->SetValue(0);
 	}
 }
 
@@ -399,7 +583,17 @@ Activity CWeaponPistol::GetPrimaryAttackActivity( void )
 //-----------------------------------------------------------------------------
 bool CWeaponPistol::Reload( void )
 {
-	bool fRet = DefaultReload( GetMaxClip1(), GetMaxClip2(), ACT_VM_RELOAD );
+	bool fRet = false;
+#ifdef USES_EMPTY_RELOADS
+	if (m_iClip1 > 0) {
+		fRet = DefaultReload(GetMaxClip1(), GetMaxClip2(), ACT_VM_RELOAD);
+	}
+	else {
+		fRet = DefaultReload(GetMaxClip1(), GetMaxClip2(), ACT_VM_RELOAD_EMPTY);
+	}
+#else
+	fRet = DefaultReload(GetMaxClip1(), GetMaxClip2(), ACT_VM_RELOAD);
+#endif
 	if ( fRet )
 	{
 		WeaponSound( RELOAD );

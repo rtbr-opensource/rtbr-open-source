@@ -67,8 +67,12 @@ public:
 
 	const char*		GetGrenadeAttachment() { return "LHand"; }
 
-	virtual bool IsAltFireCapable() { return (m_iGrenadeCapabilities & GRENCAP_ALTFIRE) != 0; }
+	virtual bool IsAltFireCapable() { return (m_iGrenadeCapabilities & GRENCAP_ALTFIRE) != 0 && BaseClass::IsAltFireCapable(); }
 	virtual bool IsGrenadeCapable() { return (m_iGrenadeCapabilities & GRENCAP_GRENADE) != 0; }
+
+	virtual bool	ShouldDropGrenades() { return (m_iGrenadeDropCapabilities & GRENDROPCAP_GRENADE) != 0 && BaseClass::ShouldDropGrenades(); }
+	virtual bool	ShouldDropInterruptedGrenades() { return (m_iGrenadeDropCapabilities & GRENDROPCAP_INTERRUPTED) != 0 && BaseClass::ShouldDropInterruptedGrenades(); }
+	virtual bool	ShouldDropAltFire() { return (m_iGrenadeDropCapabilities & GRENDROPCAP_ALTFIRE) != 0 && BaseClass::ShouldDropAltFire(); }
 #endif
 
 	Vector		EyeDirection3D( void )	{ return CAI_BaseHumanoid::EyeDirection3D(); } // cops don't have eyes
@@ -315,6 +319,7 @@ private:
 
 	// Set up the shot regulator
 	int SetupBurstShotRegulator( float flReactionTime );
+	int SetupEliteBurstShotRegulator();
 
 	// Choose a random vector somewhere between the two specified vectors
 	void RandomDirectionBetweenVectors( const Vector &vecStart, const Vector &vecEnd, Vector *pResult );
@@ -428,6 +433,7 @@ private:
 		SCHED_METROPOLICE_RANGE_ATTACK2,
 		SCHED_METROPOLICE_AR2_ALTFIRE,
 #endif
+		SCHED_METROPOLICE_PISTOL_BURST,
 	};
 
 	enum 
@@ -460,6 +466,7 @@ private:
 		TASK_METROPOLICE_FACE_TOSS_DIR,
 		TASK_METROPOLICE_PLAY_SEQUENCE_FACE_ALTFIRE_TARGET,
 #endif
+		TASK_METROPOLICE_PISTOL_BURST,
 	};
 
 private:
@@ -469,6 +476,9 @@ private:
 	bool			m_fWeaponDrawn;		// Is my weapon drawn? (ready to use)
 	bool			m_bSimpleCops;		// The easy version of the cops
 	int				m_LastShootSlot;
+	bool			m_bIsFemale;
+	bool			m_bIsElite;
+	int				m_iGender;
 	CRandSimTimer	m_TimeYieldShootSlot;
 	CSimpleSimTimer m_BatonSwingTimer;
 	CSimpleSimTimer m_NextChargeTimer;
@@ -491,6 +501,8 @@ private:
 	float			m_flNextLedgeCheckTime;
 	float			m_flTaskCompletionTime;
 	
+	bool			m_bDidBurst = false; // has the NPC in question previously done a pistol doubleburst?
+
 	bool			m_bShouldActivateBaton;
 	float			m_flBatonDebounceTime;	// Minimum amount of time before turning the baton off
 	float			m_flLastPhysicsFlinchTime;
@@ -520,6 +532,7 @@ private:
 
 	// Determines whether this NPC is allowed to use grenades or alt-fire stuff.
 	eGrenadeCapabilities m_iGrenadeCapabilities;
+	eGrenadeDropCapabilities m_iGrenadeDropCapabilities;
 #endif
 
 	AIHANDLE		m_hManhack;

@@ -287,6 +287,8 @@ protected:
 	static int ACT_ZOM_RELEASECRAB;
 	static int ACT_ZOM_FALL;
 
+	int m_iAnnabelleAmmoType; // could be static if source didn't throw a fit when i wanted it to be static
+
 	DECLARE_DATADESC();
 
 	DEFINE_CUSTOM_AI;

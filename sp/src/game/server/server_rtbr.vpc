@@ -5,7 +5,7 @@
 //-----------------------------------------------------------------------------
 
 $Macro SRCDIR		"..\.."
-$Macro GAMENAME 	"raisingthebarredux"
+$Macro GAMENAME 	"raisingthebarredux_release"
 
 $Include "$SRCDIR\game\server\server_episodic_base.vpc"
 
@@ -14,11 +14,34 @@ $Configuration
 	$Compiler
 	{
 		$AdditionalIncludeDirectories	"$BASE;.\rtbr;$SRCDIR\game\shared\rtbr"
-		$PreprocessorDefinitions		"$BASE;RTBR_DLL"
+		$PreprocessorDefinitions		"$BASE;RTBR_DLL;RTBR_RELEASE;"
+	}
+	$PostBuildEvent [!$ANALYZE]
+	{
+		$CommandLine		"if not exist $QUOTE$OUTBINDIR\release_binaries$QUOTE mkdir $QUOTE$OUTBINDIR\release_binaries$QUOTE" "\n" \
+							"if not exist $QUOTE$OUTBINDIR$QUOTE mkdir $QUOTE$OUTBINDIR$QUOTE" "\n" 
+		$CommandLine		"$BASE" "copy $QUOTE$(TargetDir)$(TargetFileName)$QUOTE $QUOTE$OUTBINDIR\release_binaries\$(TargetFileName)$QUOTE" "\n" 
+		$CommandLine		"$BASE" "copy $QUOTE$(TargetDir)$(TargetFileName)$QUOTE $QUOTE$OUTBINDIR\$(TargetFileName)$QUOTE" "\n" \
+							"if ERRORLEVEL 1 goto BuildEventFailed" "\n" \
+							"goto BuildEventOK" "\n" \
+							":BuildEventFailed" "\n" \
+							"echo *** ERROR! PostBuildStep FAILED for $(ProjectName)! EXE or DLL is probably running. ***" "\n" \
+							"del /q $QUOTE$(TargetDir)$(TargetFileName)$QUOTE" "\n" \
+							"exit 1" "\n" \
+							":BuildEventOK" "\n" 
+
+		$CommandLine		"$BASE" "\n" \
+							"call $SRCDIR\devtools\bin\vsign.bat -sign $OUTBINDIR\$(TargetFileName)" "\n" [$RETAIL && $PUBLISH]
+
+		$CommandLine		"$BASE" "\n" \
+							"call $SRCDIR\devtools\bin\vsign.bat -signvalve $OUTBINDIR\$(TargetFileName)" "\n" [!$RETAIL && !$PUBLISH && !$SOURCESDK]
+
+		$Description		"Publishing to $OUTBINDIR"
+		$ExcludedFromBuild	"No"
 	}
 }
 
-$Project "Server (RTBR)"
+$Project "Server (RTBR Release)"
 {
 	$Folder "Source Files"
 	{
@@ -28,38 +51,68 @@ $Project "Server (RTBR)"
 		{
 			$Folder "NPCs"
 			{
-				$File	"hl2\npc_bullsquid.cpp"
-				$File	"hl2\npc_bullsquid.h"
-				$File	"hl2\weapon_gauss.h"
+				$File	"$SRCDIR\game\shared\rtbr\npc_cremator_shared.h"
 				$File	"rtbr\npc_combineguard.cpp"
 				$File	"rtbr\npc_cremator.cpp"
 				$File	"rtbr\npc_cremator.h"
-				$File	"hl2\npc_houndeye.cpp"
-				$File	"hl2\npc_houndeye.h"
+				$File	"rtbr\npc_houndeye.cpp"
+				$File	"rtbr\npc_houndeye.h"
 				$File	"rtbr\npc_lightstalk.cpp"
 				$File	"rtbr\npc_lightstalk.h"
+				$File	"rtbr\npc_bigmomma.cpp"
+				$File	"rtbr\npc_baseally.h"
+				$File	"rtbr\npc_baseally.cpp"
+				$File	"rtbr\npc_barney.cpp"
 			}
 		
 			$Folder "Weapons"
 			{
+				$File	"hl2\extinguisherjet.cpp"
 				$File	"$SRCDIR\game\shared\rtbr\weapon_parse_rtbr.cpp"
+				$File	"hl2\weapon_extinguisher.cpp"
 				$File	"hl2\weapon_immolator.cpp"
+				$File	"rtbr\weapon_stunstick.cpp"
+				$File	"rtbr\weapon_stunstick.h"
+				$File	"weapon_akm.cpp"
+				$File	"weapon_oicw.cpp"
 			}
 			
 			$Folder "Misc"
 			{
+				$File	"rtbr\hl1_grenade_spit.cpp"
+				$File	"rtbr\hl1_grenade_spit.h"
+				$File	"rtbr\hl1_basegrenade.cpp"
+				$File	"rtbr\hl1_basegrenade.h"
+				$File	"rtbr\prop_vehiclegib.cpp"
+				$File	"rtbr\prop_vehiclegib.h"
+				$File	"$SRCDIR\game\shared\rtbr\achievements_rtbr.cpp"
 			}
 		}
 		
 		// New Xen plants from EZ2
 		$Folder	"EZ2 DLL"
 		{
-			$File	"ez2\npc_baseflora.h"
-			$File	"ez2\npc_baseflora.cpp"
-			$File	"ez2\npc_xenhair.h"
-			$File	"ez2\npc_xenhair.cpp"
-			$File	"ez2\npc_xentree.h"
-			$File	"ez2\npc_xentree.cpp"
+			$Folder "Flora" 
+			{
+				$File	"ez2\npc_baseflora.h"
+				$File	"ez2\npc_baseflora.cpp"
+				// // Use the RTBR lightstalk for now!
+				$File	"ez2\npc_xenhair.h"
+				$File	"ez2\npc_xenhair.cpp"
+				$File	"ez2\npc_xentree.h"
+				$File	"ez2\npc_xentree.cpp"
+			}
+			$Folder "NPCs" 
+			{
+				$File "ez2\npc_gonome.h"
+				$File "ez2\npc_gonome.cpp"
+				$File "ez2\npc_bullsquid.h"
+				$File "ez2\npc_bullsquid.cpp"
+				$File "ez2\npc_basepredator.h"
+				$File "ez2\npc_basepredator.cpp"
+				$File "ez2\ai_behavior_beast.h"
+				$File "ez2\ai_behavior_beast.cpp"
+			}
 		}
 	}
 }

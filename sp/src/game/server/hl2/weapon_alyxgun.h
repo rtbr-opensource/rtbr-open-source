@@ -13,11 +13,16 @@
 #pragma once
 #endif
 
-class CWeaponAlyxGun : public CHLSelectFireMachineGun
+#ifdef MAPBASE
+extern acttable_t *GetPistolActtable();
+extern int GetPistolActtableCount();
+#endif
+
+class CWeaponAlyxGun : public CHLMachineGun
 {
 	DECLARE_DATADESC();
 public:
-	DECLARE_CLASS(CWeaponAlyxGun, CHLSelectFireMachineGun);
+	DECLARE_CLASS(CWeaponAlyxGun, CHLMachineGun);
 
 	CWeaponAlyxGun();
 	~CWeaponAlyxGun();
@@ -57,6 +62,11 @@ public:
 	//	// Alyx gun cannot be picked up
 	//	SetTouch(NULL);
 	//}
+
+#ifdef MAPBASE
+	virtual acttable_t		*GetBackupActivityList() { return GetPistolActtable(); }
+	virtual int				GetBackupActivityListCount() { return GetPistolActtableCount(); }
+#endif
 
 	float m_flTooCloseTimer;
 

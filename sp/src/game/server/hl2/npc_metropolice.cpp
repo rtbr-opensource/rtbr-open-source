@@ -36,6 +36,7 @@
 #define SF_METROPOLICE_NO_MANHACK_DEPLOY	0x00800000
 #define SF_METROPOLICE_ALLOWED_TO_RESPOND	0x01000000
 #define SF_METROPOLICE_MID_RANGE_ATTACK		0x02000000
+#define	SF_METROPOLICE_PISTOL_BURST			0x04000000
 
 #define METROPOLICE_MID_RANGE_ATTACK_RANGE	3500.0f
 
@@ -128,6 +129,10 @@ ConVar  metropolice_charge("metropolice_charge", "1" );
 ConVar	metropolice_new_component_behavior("metropolice_new_component_behavior", "1");
 #endif
 
+#ifdef RTBR_DLL
+ConVar  sk_metropolice_pistol_burst_distance( "sk_metropolice_pistol_burst_distance", "512" );
+#endif
+
 // How many clips of pistol ammo a metropolice carries.
 #define METROPOLICE_NUM_CLIPS			5
 #define METROPOLICE_BURST_RELOAD_COUNT	20
@@ -171,7 +176,7 @@ int ACT_DEACTIVATE_BATON;
  
 LINK_ENTITY_TO_CLASS( npc_metropolice, CNPC_MetroPolice );
 LINK_ENTITY_TO_CLASS( npc_elitepolice, CNPC_MetroPolice );
-
+LINK_ENTITY_TO_CLASS(npc_fempolice, CNPC_MetroPolice);
 BEGIN_DATADESC( CNPC_MetroPolice )
 
 	DEFINE_EMBEDDED( m_BatonSwingTimer ),	
@@ -205,6 +210,7 @@ BEGIN_DATADESC( CNPC_MetroPolice )
 	DEFINE_FIELD( m_flTaskCompletionTime, FIELD_TIME ),
 	DEFINE_FIELD( m_flLastPhysicsFlinchTime, FIELD_TIME ),
 	DEFINE_FIELD( m_flLastDamageFlinchTime, FIELD_TIME ),
+	DEFINE_FIELD(m_bIsFemale, FIELD_BOOLEAN),
 
 	DEFINE_FIELD( m_hManhack, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_hBlockingProp, FIELD_EHANDLE ),
@@ -227,6 +233,8 @@ BEGIN_DATADESC( CNPC_MetroPolice )
 	DEFINE_FIELD( m_nNumWarnings,		FIELD_INTEGER ),
 	DEFINE_FIELD( m_iNumPlayerHits,		FIELD_INTEGER ),
 
+	DEFINE_FIELD(m_bIsElite, FIELD_BOOLEAN),
+
 	//								m_ActBusyBehavior (auto saved by AI)
 	//								m_StandoffBehavior (auto saved by AI)
 	//								m_AssaultBehavior (auto saved by AI)
@@ -236,6 +244,7 @@ BEGIN_DATADESC( CNPC_MetroPolice )
 	//								m_FollowBehavior (auto saved by AI)
 
 	DEFINE_KEYFIELD( m_iManhacks, FIELD_INTEGER, "manhacks" ),
+	DEFINE_KEYFIELD(m_iGender, FIELD_INTEGER, "gender" ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "EnableManhackToss", InputEnableManhackToss ),
 #ifdef MAPBASE
 	DEFINE_INPUTFUNC( FIELD_VOID, "DisableManhackToss", InputDisableManhackToss ),
@@ -263,6 +272,7 @@ BEGIN_DATADESC( CNPC_MetroPolice )
 #ifdef MAPBASE
 	DEFINE_AIGRENADE_DATADESC()
 	DEFINE_INPUT( m_iGrenadeCapabilities, FIELD_INTEGER, "SetGrenadeCapabilities" ),
+	DEFINE_INPUT( m_iGrenadeDropCapabilities, FIELD_INTEGER, "SetGrenadeDropCapabilities" ),
 #endif
 
 END_DATADESC()
@@ -520,6 +530,11 @@ CNPC_MetroPolice::CNPC_MetroPolice()
 {
 #ifdef MAPBASE
 	m_iGrenadeCapabilities = GRENCAP_GRENADE;
+
+	if (ai_grenade_always_drop.GetBool())
+	{
+		m_iGrenadeDropCapabilities = (eGrenadeDropCapabilities)(GRENDROPCAP_GRENADE | GRENDROPCAP_ALTFIRE | GRENDROPCAP_INTERRUPTED);
+	}
 #endif
 }
 
@@ -629,6 +644,7 @@ bool CNPC_MetroPolice::OverrideMoveFacing( const AILocalMoveGoal_t &move, float 
 //-----------------------------------------------------------------------------
 void CNPC_MetroPolice::Precache( void )
 {
+	m_bIsFemale = false;
 	gm_iszEliteMetrocop = FindPooledString("npc_elitepolice");
 	
 #ifdef MAPBASE
@@ -642,11 +658,33 @@ void CNPC_MetroPolice::Precache( void )
 	}
 	else if ( m_iClassname == gm_iszEliteMetrocop )
 	{
-    SetModelName( AllocPooledString("models/police_elite.mdl" ) );
+		m_bIsElite = true;
+		SetModelName( AllocPooledString("models/police_elite.mdl" ) );
 	}
 	else
 	{
-		SetModelName( AllocPooledString("models/police.mdl") );
+		switch (m_iGender) {
+			case 0: // Male
+				SetModelName(AllocPooledString("models/police.mdl"));
+				break;
+			case 1: // Female
+				SetModelName(AllocPooledString("models/female_police.mdl"));
+				SetClassname("npc_fempolice");
+				break; 
+			case 2: // Randomized
+				if (random->RandomFloat() < 0.4f) {
+					m_bIsFemale = true;
+					SetModelName(AllocPooledString("models/female_police.mdl"));
+					SetClassname("npc_fempolice");
+					m_iGender = 1;
+				}
+				else {
+					SetModelName(AllocPooledString("models/police.mdl"));
+					m_iGender = 0;
+				}
+				break;
+		}
+		
 	}
 #ifdef MAPBASE
 	}
@@ -660,6 +698,7 @@ void CNPC_MetroPolice::Precache( void )
 	PrecacheScriptSound( "NPC_MetroPolice.WaterSpeech" );
 	PrecacheScriptSound( "NPC_MetroPolice.HidingSpeech" );
 	enginesound->PrecacheSentenceGroup( "METROPOLICE" );
+	enginesound->PrecacheSentenceGroup("FEMPOLICE");
 
 	BaseClass::Precache();
 }
@@ -714,7 +753,7 @@ void CNPC_MetroPolice::Spawn( void )
 	{
     m_iHealth = sk_metropolice_simple_health.GetFloat();
 	}
-	else if (m_iClassname == gm_iszEliteMetrocop)
+	else if (m_bIsElite)
 	{
     m_iHealth = sk_metropolice_elite_health.GetFloat();
 	}
@@ -895,7 +934,7 @@ void CNPC_MetroPolice::SpeakStandoffSentence( int nSentenceType )
 		break;
 
 	case STANDOFF_SENTENCE_FORCED_TAKE_COVER:
-		SpeakIfAllowed( TLK_COP_SO_END );
+		SpeakIfAllowed( TLK_COP_SO_FORCE_COVER );
 		break;
 
 	case STANDOFF_SENTENCE_STAND_CHECK_TARGET:
@@ -1021,7 +1060,12 @@ void CNPC_MetroPolice::SpeakSentence( int nSentenceType )
 			return;
 		}
 
+#ifdef MAPBASE
+		// Fixed issues with standoff sentences not playing when they should
+		if ( m_StandoffBehavior.IsActive() )
+#else
 		if ( GetRunningBehavior() == &m_StandoffBehavior )
+#endif
 		{
 			SpeakStandoffSentence( nSentenceType );
 			return;
@@ -1169,7 +1213,11 @@ bool CNPC_MetroPolice::SpeakIfAllowed( const char *concept, const char *modifier
 	AI_CriteriaSet set;
 	if (modifiers)
 	{
+#ifdef NEW_RESPONSE_SYSTEM
+		GatherCriteria( &set, concept, modifiers );
+#else
 		GetExpresser()->MergeModifiers(set, modifiers);
+#endif
 	}
 	return SpeakIfAllowed( concept, set, sentencepriority, sentencecriteria );
 }
@@ -1535,7 +1583,12 @@ void CNPC_MetroPolice::OnUpdateShotRegulator( )
 	BaseClass::OnUpdateShotRegulator();
 
 	// FIXME: This code (except the burst interval) could be used for all weapon types 
+#ifdef MAPBASE
+	// Only if we actually have the pistol out
+	if ( GetActiveWeapon() && EntIsClass( GetActiveWeapon(), gm_isz_class_Pistol ) )
+#else
 	if( Weapon_OwnsThisType( "weapon_pistol" ) )
+#endif
 	{
 		if ( m_nBurstMode == BURST_NOT_ACTIVE )
 		{
@@ -1635,6 +1688,11 @@ bool CNPC_MetroPolice::ShouldAttemptToStitch()
 //-----------------------------------------------------------------------------
 Vector CNPC_MetroPolice::StitchAimTarget( const Vector &posSrc, bool bNoisy ) 
 {
+#ifdef MAPBASE
+	if ( !GetEnemy() )
+		return vec3_origin;
+#endif
+
 	// This will make us aim a stitch at the feet of the player so we can see it
 	if ( !GetEnemy()->IsPlayer() )
 		return GetShootTarget()->BodyTarget( posSrc, bNoisy );
@@ -1914,6 +1972,15 @@ int CNPC_MetroPolice::SetupBurstShotRegulator( float flReactionTime )
 	GetShotRegulator()->Reset( true );
 	int nShots = GetShotRegulator()->GetBurstShotsRemaining();
 	OnRangeAttack1();
+	return nShots;
+}
+
+int CNPC_MetroPolice::SetupEliteBurstShotRegulator(){
+	GetShotRegulator()->SetBurstShotCountRange( 3, 3 ); // +1 shot to preempt innate task completion when the burst runs out
+	GetShotRegulator()->SetRestInterval( 0.30f, 0.30f );
+	GetShotRegulator()->SetBurstInterval( 0.20f, 0.20f );
+	GetShotRegulator()->Reset( true );
+	int nShots = GetShotRegulator()->GetBurstShotsRemaining();
 	return nShots;
 }
 
@@ -3536,7 +3603,11 @@ Activity CNPC_MetroPolice::NPC_TranslateActivity( Activity newActivity )
 	// If we're shoving, see if we should be more forceful in doing so
 	if ( newActivity == ACT_PUSH_PLAYER )
 	{
+#ifdef MAPBASE
+		if ( m_nNumWarnings >= METROPOLICE_MAX_WARNINGS && Weapon_TranslateActivity( ACT_MELEE_ATTACK1, NULL ) == ACT_MELEE_ATTACK_SWING )
+#else
 		if ( m_nNumWarnings >= METROPOLICE_MAX_WARNINGS )
+#endif
 			return ACT_MELEE_ATTACK1;
 	}
 
@@ -3621,6 +3692,10 @@ void CNPC_MetroPolice::ReleaseManhack( void )
 {
 	Assert( m_hManhack );
 
+	if (m_hManhack == NULL) {
+		return;
+	}
+
 	// Make us physical
 	m_hManhack->RemoveSpawnFlags( SF_MANHACK_CARRIED );
 	m_hManhack->CreateVPhysics();
@@ -3681,6 +3756,11 @@ void CNPC_MetroPolice::Event_Killed( const CTakeDamageInfo &info )
 			DropItem( "item_healthvial", WorldSpaceCenter()+RandomVector(-4,4), RandomAngle(0,360) );
 			pHL2GameRules->NPC_DroppedHealth();
 		}
+
+#ifdef MAPBASE
+		// Drop grenades if we should
+		DropGrenadeItemsOnDeath( info, pPlayer );
+#endif
 	}
 	BaseClass::Event_Killed( info );
 }
@@ -3720,8 +3800,25 @@ int CNPC_MetroPolice::SelectRangeAttackSchedule()
 	}
 
 	// Range attack if we're able
-	if( TryToEnterPistolSlot( SQUAD_SLOT_ATTACK1 ) || TryToEnterPistolSlot( SQUAD_SLOT_ATTACK2 ))
+	if ( TryToEnterPistolSlot( SQUAD_SLOT_ATTACK1 ) || TryToEnterPistolSlot( SQUAD_SLOT_ATTACK2 ) ) {
+		if ( HasSpawnFlags( SF_METROPOLICE_PISTOL_BURST ) && EntIsClass( GetActiveWeapon(), gm_isz_class_Pistol ) && !m_bDidBurst ){
+			// try to burst attack
+			float flDist = (GetEnemies()->LastSeenPosition( GetEnemy() ) - GetAbsOrigin()).Length();
+			if ( flDist < sk_metropolice_pistol_burst_distance.GetFloat() ){
+				// determine how likely we are to burst - if the enemy is closer, we have a higher chance of bursting
+				float threshold = -1 * (flDist - sk_metropolice_pistol_burst_distance.GetFloat()) / sk_metropolice_pistol_burst_distance.GetFloat();
+				// normalise to 100% chance to hit at hugging distance, 
+				// as bounding boxes prevent us from getting 100% chance naturally.
+				threshold *= 100 / ((float)(sk_metropolice_pistol_burst_distance.GetFloat() - 28.8) / (float)(sk_metropolice_pistol_burst_distance.GetFloat()));	
+				if ( random->RandomInt( 1, 100 ) < threshold ){
+					m_bDidBurst = true; // don't burst next schedule
+					return SCHED_METROPOLICE_PISTOL_BURST;
+				}
+			}
+		}
+		m_bDidBurst = false;
 		return SCHED_RANGE_ATTACK1;
+	}
 	
 	// We're not in a shoot slot... so we've allowed someone else to grab it
 	m_LastShootSlot = SQUAD_SLOT_NONE;
@@ -3886,6 +3983,15 @@ int CNPC_MetroPolice::SelectScheduleNoDirectEnemy()
 		m_hBlockingProp = NULL;
 		return SCHED_METROPOLICE_SMASH_PROP;
 	}
+
+#ifdef MAPBASE
+	// If you see your enemy and you're still arming yourself, wait and don't just charge in
+	// (if your weapon is holstered, you're probably about to arm yourself)
+	if ( HasCondition( COND_SEE_ENEMY ) && GetWeapon(0) && (IsWeaponHolstered() || FindGestureLayer( TranslateActivity( ACT_ARM ) ) != -1) )
+	{
+		return SCHED_COMBAT_FACE;
+	}
+#endif
 
 	return SCHED_METROPOLICE_CHASE_ENEMY;
 }
@@ -4510,34 +4616,7 @@ int CNPC_MetroPolice::SelectBehaviorOverrideSchedule()
 //-----------------------------------------------------------------------------
 bool CNPC_MetroPolice::IsCrouchedActivity( Activity activity )
 {
-	Activity realActivity = TranslateActivity(activity);
-
-	switch ( realActivity )
-	{
-		case ACT_RELOAD_LOW:
-		case ACT_COVER_LOW:
-		case ACT_COVER_PISTOL_LOW:
-		case ACT_COVER_SMG1_LOW:
-		case ACT_RELOAD_SMG1_LOW:
-		//case ACT_RELOAD_AR2_LOW:
-		case ACT_RELOAD_PISTOL_LOW:
-		case ACT_RELOAD_SHOTGUN_LOW:
-
-			// These animations aren't actually "low" on metrocops
-		//case ACT_RANGE_AIM_LOW:
-		//case ACT_RANGE_AIM_AR2_LOW:
-		//case ACT_RANGE_AIM_SMG1_LOW:
-		//case ACT_RANGE_AIM_PISTOL_LOW:
-
-		//case ACT_RANGE_ATTACK1_LOW:
-		//case ACT_RANGE_ATTACK_AR2_LOW:
-		//case ACT_RANGE_ATTACK_SMG1_LOW:
-		//case ACT_RANGE_ATTACK_PISTOL_LOW:
-		//case ACT_RANGE_ATTACK2_LOW:
-			return true;
-	}
-
-	return false;
+	return BaseClass::IsCrouchedActivity( activity );
 }
 
 //-----------------------------------------------------------------------------
@@ -4933,7 +5012,12 @@ int CNPC_MetroPolice::SelectSchedule( void )
 	// This will cause the cops to run backwards + shoot at the same time
 	if ( !bHighHealth && !HasBaton() )
 	{
+#ifdef MAPBASE
+		// Don't do this with low-capacity weapons or weapons which don't use clips
+		if ( GetActiveWeapon() && GetActiveWeapon()->UsesClipsForAmmo1() && GetActiveWeapon()->GetMaxClip1() > 10 && (GetActiveWeapon()->m_iClip1 <= 5) )
+#else
 		if ( GetActiveWeapon() && (GetActiveWeapon()->m_iClip1 <= 5) )
+#endif
 		{
 #ifdef METROPOLICE_USES_RESPONSE_SYSTEM
 			SpeakIfAllowed( TLK_COP_LOWAMMO );
@@ -5525,6 +5609,10 @@ void CNPC_MetroPolice::StartTask( const Task_t *pTask )
 		}
 		break;
 
+	case TASK_METROPOLICE_PISTOL_BURST:
+		SetupEliteBurstShotRegulator();
+		break;
+
 	default:
 		BaseClass::StartTask( pTask );
 		break;
@@ -5740,7 +5828,20 @@ void CNPC_MetroPolice::RunTask( const Task_t *pTask )
 		RunTask_FaceTossDir( pTask );
 		break;
 #endif
+	case TASK_METROPOLICE_PISTOL_BURST:
+		AutoMovement();
 
+		if ( GetShotRegulator()->GetBurstShotsRemaining() == 1 )
+		{
+			// preempt innate task completion because if we let it complete by itself the cop just keeps spamming bullets
+			TaskComplete();
+		}
+		else
+		{
+			OnRangeAttack1();
+			ResetIdealActivity( ACT_RANGE_ATTACK1 );
+		}
+		break;
 	default:
 		BaseClass::RunTask( pTask );
 		break;
@@ -6170,6 +6271,7 @@ AI_BEGIN_CUSTOM_NPC( npc_metropolice, CNPC_MetroPolice )
 	DECLARE_TASK( TASK_METROPOLICE_FACE_TOSS_DIR )
 	DECLARE_TASK( TASK_METROPOLICE_PLAY_SEQUENCE_FACE_ALTFIRE_TARGET )
 #endif
+	DECLARE_TASK( TASK_METROPOLICE_PISTOL_BURST );
 
 	DECLARE_CONDITION( COND_METROPOLICE_ON_FIRE );
 	DECLARE_CONDITION( COND_METROPOLICE_ENEMY_RESISTING_ARREST );
@@ -6869,5 +6971,25 @@ DEFINE_SCHEDULE
  )
 #endif
 
-AI_END_CUSTOM_NPC()
+ // elitepolice-only
+ DEFINE_SCHEDULE(
+	SCHED_METROPOLICE_PISTOL_BURST,
+"	Tasks"
+"		TASK_STOP_MOVING									0"
+"		TASK_FACE_ENEMY			0"
+"		TASK_ANNOUNCE_ATTACK	1"	// 1 = primary attack
+"		TASK_METROPOLICE_PISTOL_BURST	0"
+""
+"	Interrupts"
+"		COND_NEW_ENEMY"
+"		COND_ENEMY_DEAD"
+"		COND_LIGHT_DAMAGE"
+"		COND_HEAVY_DAMAGE"
+"		COND_ENEMY_OCCLUDED"
+"		COND_NO_PRIMARY_AMMO"
+"		COND_HEAR_DANGER"
+"		COND_WEAPON_BLOCKED_BY_FRIEND"
+"		COND_WEAPON_SIGHT_OCCLUDED"
+ )
 
+AI_END_CUSTOM_NPC()

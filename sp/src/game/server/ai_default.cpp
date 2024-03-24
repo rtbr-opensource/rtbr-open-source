@@ -1202,8 +1202,9 @@ AI_DEFINE_SCHEDULE
 	"	Interrupts"
 	"		COND_NEW_ENEMY"
 	"		COND_ENEMY_DEAD"
-	"		COND_LIGHT_DAMAGE"
-	"		COND_HEAVY_DAMAGE"
+	// Disabled for stunlocking reasons.
+	//"		COND_LIGHT_DAMAGE"
+	//"		COND_HEAVY_DAMAGE"
 	"		COND_ENEMY_OCCLUDED"
 );
 
@@ -1223,8 +1224,9 @@ AI_DEFINE_SCHEDULE
 	"	Interrupts"
 	"		COND_NEW_ENEMY"
 	"		COND_ENEMY_DEAD"
-	"		COND_LIGHT_DAMAGE"
-	"		COND_HEAVY_DAMAGE"
+	// Disabled for stunlocking reasons.
+	//"		COND_LIGHT_DAMAGE"
+	//"		COND_HEAVY_DAMAGE"
 	"		COND_ENEMY_OCCLUDED"
 );
 

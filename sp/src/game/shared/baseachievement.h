@@ -195,7 +195,7 @@ class CMapAchievement : public CBaseAchievement
 {
 	virtual void Init()
 	{
-		SetFlags( ACH_LISTEN_MAP_EVENTS | ACH_SAVE_GLOBAL );
+		SetFlags( ACH_LISTEN_MAP_EVENTS | ACH_SAVE_WITH_GAME);
 		SetGoal( 1 );
 	}
 };

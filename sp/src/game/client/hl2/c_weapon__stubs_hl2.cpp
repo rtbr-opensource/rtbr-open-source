@@ -18,9 +18,6 @@ STUB_WEAPON_CLASS( weapon_binoculars, WeaponBinoculars, C_BaseHLCombatWeapon );
 STUB_WEAPON_CLASS( weapon_bugbait, WeaponBugBait, C_BaseHLCombatWeapon );
 STUB_WEAPON_CLASS( weapon_flaregun, Flaregun, C_BaseHLCombatWeapon );
 STUB_WEAPON_CLASS( weapon_annabelle, WeaponAnnabelle, C_BaseHLCombatWeapon );
-#ifndef RTBR_DLL
-STUB_WEAPON_CLASS( weapon_gauss, WeaponGaussGun, C_BaseHLCombatWeapon );
-#endif
 STUB_WEAPON_CLASS( weapon_cubemap, WeaponCubemap, C_BaseCombatWeapon );
 STUB_WEAPON_CLASS( weapon_alyxgun, WeaponAlyxGun, C_HLSelectFireMachineGun );
 STUB_WEAPON_CLASS( weapon_citizenpackage, WeaponCitizenPackage, C_BaseHLCombatWeapon );
@@ -39,6 +36,7 @@ STUB_WEAPON_CLASS( weapon_crossbow, WeaponCrossbow, C_BaseHLCombatWeapon );
 STUB_WEAPON_CLASS( weapon_slam, Weapon_SLAM, C_BaseHLCombatWeapon );
 #endif
 STUB_WEAPON_CLASS( weapon_crowbar, WeaponCrowbar, C_BaseHLBludgeonWeapon );
+STUB_WEAPON_CLASS(weapon_stunstick, WeaponStunstick, C_BaseHLBludgeonWeapon);
 #ifdef HL2_EPISODIC
 STUB_WEAPON_CLASS( weapon_hopwire, WeaponHopwire, C_BaseHLCombatWeapon );
 //STUB_WEAPON_CLASS( weapon_proto1, WeaponProto1, C_BaseHLCombatWeapon );
@@ -49,5 +47,27 @@ STUB_WEAPON_CLASS( weapon_oldmanharpoon, WeaponOldManHarpoon, C_WeaponCitizenPac
 #endif
 
 #ifdef RTBR_DLL
+STUB_WEAPON_CLASS( weapon_akm, WeaponAKM, C_HLSelectFireMachineGun );
+STUB_WEAPON_CLASS( weapon_cguard, WeaponCGuard, C_BaseHLCombatWeapon );
+STUB_WEAPON_CLASS( weapon_extinguisher, WeaponExtinguisher, C_HLSelectFireMachineGun );
+STUB_WEAPON_CLASS( weapon_smg2, WeaponSMG2, C_HLSelectFireMachineGun );
 STUB_WEAPON_CLASS( weapon_immolator, WeaponImmolator, C_BaseHLCombatWeapon );
 #endif
+
+/*
+Amicus's big dollar
+
+						$
+					$$$$$$$$$
+				   $	$    $
+				  $	    $
+				  $	    $
+				   $    $
+				    $$$$$$$$$
+						$    $
+						$     $
+				    	$     $
+				   $    $    $
+				    $$$$$$$$$
+						$
+*/

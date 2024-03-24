@@ -95,7 +95,7 @@ void CRagdollBoogie::Spawn()
 	SetThink( &CRagdollBoogie::BoogieThink );
 	SetNextThink( gpGlobals->curtime + 0.01f );
 
-	if ( HasSpawnFlags( SF_RAGDOLL_BOOGIE_ELECTRICAL ) )
+	if ( HasSpawnFlags( SF_RAGDOLL_BOOGIE_ELECTRICAL | SF_RAGDOLL_BOOGIE_ELECTRICAL_NARROW_BEAM | SF_RAGDOLL_BOOGIE_ELECTRICAL_LOW ) )
 	{
 		SetContextThink( &CRagdollBoogie::ZapThink, gpGlobals->curtime + random->RandomFloat( 0.1f, 0.3f ), s_pZapContext ); 
 	}
@@ -129,8 +129,8 @@ void CRagdollBoogie::ZapThink()
 		CEffectData	data;
 		
 		data.m_nEntIndex = GetMoveParent()->entindex();
-		data.m_flMagnitude = 4;
-		data.m_flScale = HasSpawnFlags(SF_RAGDOLL_BOOGIE_ELECTRICAL_NARROW_BEAM) ? 1.0f : 2.0f;
+		data.m_flMagnitude = HasSpawnFlags( SF_RAGDOLL_BOOGIE_ELECTRICAL_LOW ) ? 0.75f : 4.0f;
+		data.m_flScale = HasSpawnFlags(SF_RAGDOLL_BOOGIE_ELECTRICAL_NARROW_BEAM | SF_RAGDOLL_BOOGIE_ELECTRICAL_LOW) ? 1.0f : 2.0f;
 #ifdef MAPBASE
 		if (!m_vecColor.IsZero())
 		{
@@ -278,7 +278,8 @@ void CRagdollBoogie::BoogieThink( void )
 		for ( int j = 0; j < pRagdollPhys->listCount; ++j )
 		{
 			float flMass = pRagdollPhys->list[j].pObject->GetMass();
-			float flForce = m_flMagnitude * flMass;
+			float scaleFactor = HasSpawnFlags( SF_RAGDOLL_BOOGIE_ELECTRICAL_LOW ) ? 0.60f : 1.0f;
+			float flForce = m_flMagnitude * flMass * scaleFactor;
 
 			Vector vecForce;
 			vecForce = RandomVector( -flForce, flForce );

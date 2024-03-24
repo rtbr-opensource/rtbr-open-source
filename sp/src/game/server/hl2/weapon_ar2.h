@@ -49,8 +49,6 @@ public:
 	bool	Reload( void );
 
 	int		CapabilitiesGet( void ) { return bits_CAP_WEAPON_RANGE_ATTACK1; }
-
-	Activity	GetPrimaryAttackActivity( void );
 	
 	void	DoImpactEffect( trace_t &tr, int nDamageType );
 
@@ -71,6 +69,9 @@ protected:
 	bool					m_bShotDelayed;
 	int						m_nVentPose;
 	
+#ifdef MAPBASE // Make act table accessible outside class
+public:
+#endif
 	DECLARE_ACTTABLE();
 	DECLARE_DATADESC();
 };

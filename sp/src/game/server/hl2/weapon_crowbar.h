@@ -48,9 +48,16 @@ public:
 
 	virtual int WeaponMeleeAttack1Condition( float flDot, float flDist );
 	void		SecondaryAttack( void )	{	return;	}
+	void		KeyAttack();
 
 	// Animation event
 	virtual void Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatCharacter *pOperator );
+
+#ifdef MAPBASE
+	// Don't use backup activities
+	acttable_t		*GetBackupActivityList() { return NULL; }
+	int				GetBackupActivityListCount() { return 0; }
+#endif
 
 private:
 	// Animation event handlers

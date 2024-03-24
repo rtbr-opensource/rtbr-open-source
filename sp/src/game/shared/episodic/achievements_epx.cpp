@@ -14,8 +14,8 @@
 
 #include "basegrenade_shared.h"
 
-CAchievementMgr g_AchievementMgrEpisodic;	// global achievement mgr for episodic
-
+//CAchievementMgr g_AchievementMgrEpisodic;	// global achievement mgr for episodic
+#ifndef RTBR_DLL
 class CAchievementEpXGetZombineGrenade : public CBaseAchievement
 {
 protected:
@@ -97,5 +97,5 @@ protected:
 	}
 };
 DECLARE_ACHIEVEMENT( CAchievementEpXKillZombiesWithFlares, ACHIEVEMENT_EPX_KILL_ZOMBIES_WITHFLARES, "EPX_KILL_ZOMBIES_WITHFLARES", 5 );
-
+#endif
 #endif // GAME_DLL

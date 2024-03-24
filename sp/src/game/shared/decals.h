@@ -35,7 +35,7 @@
 //#define CHAR_TEX_UNUSED		'U'
 #define CHAR_TEX_VENT			'V'
 #define CHAR_TEX_WOOD			'W'
-//#define CHAR_TEX_UNUSED		'X'
+#define CHAR_TEX_XEN			'X'
 #define CHAR_TEX_GLASS			'Y'
 #define CHAR_TEX_WARPSHIELD		'Z' ///< wierd-looking jello effect for advisor shield.
 

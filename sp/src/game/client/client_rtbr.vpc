@@ -5,7 +5,7 @@
 //-----------------------------------------------------------------------------
 
 $Macro SRCDIR		"..\.."
-$Macro GAMENAME 	"raisingthebarredux"
+$Macro GAMENAME 	"raisingthebarredux_release"
 
 $Include "$SRCDIR\game\client\client_episodic_base.vpc"
 
@@ -14,46 +14,85 @@ $Configuration
 	$Compiler
 	{
 		$AdditionalIncludeDirectories	"$BASE;.\rtbr;$SRCDIR\game\shared\rtbr"
-		$PreprocessorDefinitions		"$BASE;RTBR_DLL;SOURCE_2013"
+		$PreprocessorDefinitions		"$BASE;RTBR_DLL;SOURCE_2013;RTBR_RELEASE;"
+	}
+	$PostBuildEvent [!$ANALYZE]
+	{
+		$CommandLine		"if not exist $QUOTE$OUTBINDIR\release_binaries$QUOTE mkdir $QUOTE$OUTBINDIR\release_binaries$QUOTE" "\n" \
+							"if not exist $QUOTE$OUTBINDIR$QUOTE mkdir $QUOTE$OUTBINDIR$QUOTE" "\n" 
+		$CommandLine		"$BASE" "copy $QUOTE$(TargetDir)$(TargetFileName)$QUOTE $QUOTE$OUTBINDIR\release_binaries\$(TargetFileName)$QUOTE" "\n" 
+		$CommandLine		"$BASE" "copy $QUOTE$(TargetDir)$(TargetFileName)$QUOTE $QUOTE$OUTBINDIR\$(TargetFileName)$QUOTE" "\n" \
+							"if ERRORLEVEL 1 goto BuildEventFailed" "\n" \
+							"goto BuildEventOK" "\n" \
+							":BuildEventFailed" "\n" \
+							"echo *** ERROR! PostBuildStep FAILED for $(ProjectName)! EXE or DLL is probably running. ***" "\n" \
+							"del /q $QUOTE$(TargetDir)$(TargetFileName)$QUOTE" "\n" \
+							"exit 1" "\n" \
+							":BuildEventOK" "\n" 
+
+		$CommandLine		"$BASE" "\n" \
+							"call $SRCDIR\devtools\bin\vsign.bat -sign $OUTBINDIR\$(TargetFileName)" "\n" [$RETAIL && $PUBLISH]
+
+		$CommandLine		"$BASE" "\n" \
+							"call $SRCDIR\devtools\bin\vsign.bat -signvalve $OUTBINDIR\$(TargetFileName)" "\n" [!$RETAIL && !$PUBLISH && !$SOURCESDK]
+
+		$Description		"Publishing to $OUTBINDIR"
+		$ExcludedFromBuild	"No"
 	}
 }
 
-$Project "Client (RTBR)"
+$Project "Client (RTBR Release)"
 {
-	$Folder "Source Files"
-	{
-	    
-		$Folder "Shader Editor" [$WIN32]
-		{
-			$Folder	"Header Files"
-		   {
-				$File	"$SRCDIR\game\client\ShaderEditor\ISEdit_ModelRender.h"
-				$File	"$SRCDIR\game\client\ShaderEditor\IVShaderEditor.h"
-				$File	"$SRCDIR\game\client\ShaderEditor\ShaderEditorSystem.h"
-				$File	"$SRCDIR\game\client\ShaderEditor\SEdit_ModelRender.h"
-				//$File	"$SRCDIR\game\client\ShaderEditor\Grass\CGrassCluster.h"
-			}
-		
-			$Folder	"Implementation Files"
+	$Folder "Source Files"	
+	{	
+	    	
+		$Folder "Shader Editor" [$WIN32]	
+		{	
+			$Folder	"Header Files"	
+		   {	
+				$File	"$SRCDIR\game\client\ShaderEditor\ISEdit_ModelRender.h"	
+				$File	"$SRCDIR\game\client\ShaderEditor\IVShaderEditor.h"	
+				$File	"$SRCDIR\game\client\ShaderEditor\ShaderEditorSystem.h"	
+				$File	"$SRCDIR\game\client\ShaderEditor\SEdit_ModelRender.h"	
+				//$File	"$SRCDIR\game\client\ShaderEditor\Grass\CGrassCluster.h"	
+			}	
+			
+			$Folder	"Implementation Files"	
+			{	
+				$File	"$SRCDIR\game\client\ShaderEditor\ShaderEditorSystem.cpp"	
+				$File	"$SRCDIR\game\client\ShaderEditor\SEdit_ModelRender.cpp"	
+				//$File	"$SRCDIR\game\client\ShaderEditor\Grass\CGrassCluster.cpp"	
+			}	
+		}	
+			
+		-$File	"$SRCDIR\game\shared\weapon_parse_default.cpp"	
+			
+		$Folder "RTBR"	
+		{	
+			$Folder "Weapons"	
+			{	
+				$File	"hl2\c_extinguisher.cpp"	
+				$File   "rtbr\c_weapon_oicw.cpp"	
+				$File	"rtbr\c_weapon_stunstick.cpp"	
+				$File	"rtbr\c_weapon_stunstick.h"	
+				$File	"$SRCDIR\game\shared\rtbr\weapon_parse_rtbr.cpp"	
+			}	
+			$Folder "Misc"	
+			{	
+				$File "rtbr\rtbr_misc.cpp"	
+				$File	"$SRCDIR\game\shared\rtbr\achievements_rtbr.cpp"	
+			}	
+			$Folder "NPCs"
 			{
-				$File	"$SRCDIR\game\client\ShaderEditor\ShaderEditorSystem.cpp"
-				$File	"$SRCDIR\game\client\ShaderEditor\SEdit_ModelRender.cpp"
-				//$File	"$SRCDIR\game\client\ShaderEditor\Grass\CGrassCluster.cpp"
+				$File	"rtbr\c_npc_cremator.cpp"
+				$File	"$SRCDIR\game\shared\rtbr\npc_cremator_shared.h"
 			}
-		}
-		
-		-$File	"$SRCDIR\game\shared\weapon_parse_default.cpp"
-		
-		$Folder "RTBR"
-		{
-			$Folder "Weapons"
-			{
-				$File	"hl2\c_extinguisher.cpp"
-				$File	"$SRCDIR\game\shared\rtbr\weapon_parse_rtbr.cpp"
-			}
-			$Folder "Misc"
-			{
-			}
-		}
-	}
+			$Folder "HUD"	
+			{	
+				$File "rtbr\hud_grenadetimer.cpp"	
+				$File "rtbr\hud_screendamagefx.cpp"	
+				$File "rtbr\hud_damagetiles.cpp"	
+			}	
+		}	
+	}	
 }

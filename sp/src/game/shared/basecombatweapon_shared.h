@@ -233,6 +233,9 @@ public:
 	static WeaponClass_t	WeaponClassFromString(const char *str);
 
 	virtual bool			SupportsBackupActivity(Activity activity);
+	virtual acttable_t		*GetBackupActivityList();
+	virtual int				GetBackupActivityListCount();
+	static acttable_t		*GetDefaultBackupActivityList( acttable_t *pTable, int &actCount );
 #endif
 
 	virtual void			Equip( CBaseCombatCharacter *pOwner );
@@ -254,6 +257,8 @@ public:
 	virtual bool			ShouldDisplayAltFireHUDHint();
 	virtual void			DisplayAltFireHudHint();	
 	virtual void			RescindAltFireHudHint(); ///< undisplay the hud hint and pretend it never showed.
+
+	int						GetHudHintCount() { return m_iAltFireHudHintCount; }
 
 	virtual bool			ShouldDisplayReloadHUDHint();
 	virtual void			DisplayReloadHudHint();
@@ -295,6 +300,7 @@ public:
 	virtual void			Detach() {}
 
 	// Weapon behaviour
+	bool					m_bDrawFramesOver = false;
 	virtual void			ItemPreFrame( void );					// called each frame by the player PreThink
 	virtual void			ItemPostFrame( void );					// called each frame by the player PostThink
 	virtual void			ItemBusyFrame( void );					// called each frame by the player PostThink, if the player's not ready to attack yet
@@ -322,7 +328,7 @@ public:
 	bool					ReloadsSingly( void ) const;
 #ifdef MAPBASE
 	// Originally created for the crossbow, can be used to add special NPC reloading behavior
-	virtual void			Reload_NPC( void ) { WeaponSound(RELOAD_NPC); m_iClip1 = GetMaxClip1(); }
+	virtual void			Reload_NPC( bool bPlaySound = true );
 #endif
 
 	virtual bool			AutoFiresFullClip( void ) { return false; }
@@ -421,6 +427,14 @@ public:
 	virtual bool			UsesClipsForAmmo1( void ) const;
 	virtual bool			UsesClipsForAmmo2( void ) const;
 	bool					IsMeleeWeapon() const;
+#ifdef MAPBASE
+	float					GetViewmodelFOVOverride() const;
+	float					GetBobScale() const;
+	float					GetSwayScale() const;
+	float					GetSwaySpeedScale() const;
+	virtual const char		*GetDroppedModel( void ) const;
+	bool					UsesHands( void ) const;
+#endif
 
 	// derive this function if you mod uses encrypted weapon info files
 	virtual const unsigned char *GetEncryptionKey( void );
@@ -683,6 +697,9 @@ public:
 	// Weapon art
 	CNetworkVar( int, m_iViewModelIndex );
 	CNetworkVar( int, m_iWorldModelIndex );
+#ifdef MAPBASE
+	CNetworkVar( int, m_iDroppedModelIndex );
+#endif
 	// Sounds
 	float					m_flNextEmptySoundTime;				// delay on empty sound playing
 
@@ -724,6 +741,8 @@ public:
 	bool					m_bReloadsSingly;		// True if this weapon reloads 1 round at a time
 	float					m_fFireDuration;		// The amount of time that the weapon has sustained firing
 	int						m_iSubType;
+	float					m_flNextFidgetReload;
+	bool					m_bNoEmptyReload;
 
 	float					m_flUnlockTime;
 	EHANDLE					m_hLocker;				// Who locked this weapon.

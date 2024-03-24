@@ -44,6 +44,7 @@ public:
 	void				SetSpitSize( int nSize );
 	void				Detonate( void );
 	void				Think( void );
+	void				SetBullsquidSpit( bool bSquid ) { m_bIsBullsquidSpit = bSquid; }
 
 private:
 	DECLARE_DATADESC();
@@ -53,6 +54,7 @@ private:
 	CHandle< CParticleSystem >	m_hSpitEffect;
 	CSoundPatch		*m_pHissSound;
 	bool			m_bPlaySound;
+	bool			m_bIsBullsquidSpit = false;
 };
 
 #endif	//GRENADESPIT_H

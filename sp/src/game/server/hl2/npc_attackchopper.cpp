@@ -15,6 +15,7 @@
 #include "basecombatweapon.h"
 #include "soundenvelope.h"
 #include "gib.h"
+#include "prop_vehiclegib.h"
 #include "gamerules.h"
 #include "ammodef.h"
 #include "grenade_homer.h"
@@ -42,6 +43,10 @@
 #include "physics_bone_follower.h"
 #endif // HL2_EPISODIC
 
+#ifdef MAPBASE
+#include "filters.h"
+#endif
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -55,20 +60,9 @@
 
 #define CHOPPER_MAX_SMALL_CHUNKS	1
 #define CHOPPER_MAX_CHUNKS	3
-static const char *s_pChunkModelName[CHOPPER_MAX_CHUNKS] = 
-{
-	"models/gibs/helicopter_brokenpiece_01.mdl",
-	"models/gibs/helicopter_brokenpiece_02.mdl",
-	"models/gibs/helicopter_brokenpiece_03.mdl",
-};
 
 #define BOMB_SKIN_LIGHT_ON		1
 #define BOMB_SKIN_LIGHT_OFF		0
-
-
-#define	HELICOPTER_CHUNK_COCKPIT	"models/gibs/helicopter_brokenpiece_04_cockpit.mdl"
-#define	HELICOPTER_CHUNK_TAIL		"models/gibs/helicopter_brokenpiece_05_tailfan.mdl"
-#define	HELICOPTER_CHUNK_BODY		"models/gibs/helicopter_brokenpiece_06_body.mdl"
 
 
 #define CHOPPER_MAX_SPEED			(60 * 17.6f)
@@ -710,7 +704,6 @@ private:
 	CHandle<CBombDropSensor>	m_hSensor;
 	float		m_flAvoidMetric;
 	AngularImpulse m_vecLastAngVelocity;
-	CHandle<CBaseEntity>	m_hSmokeTrail[MAX_SMOKE_TRAILS];
 	int			m_nSmokeTrailCount;
 	bool		m_bIndestructible;
 	float		m_flGracePeriod;
@@ -816,7 +809,6 @@ BEGIN_DATADESC( CNPC_AttackHelicopter )
 	DEFINE_FIELD( m_hSensor,			FIELD_EHANDLE ),
 	DEFINE_FIELD( m_flAvoidMetric,		FIELD_FLOAT ),
 	DEFINE_FIELD( m_vecLastAngVelocity,	FIELD_VECTOR ),
-	DEFINE_AUTO_ARRAY( m_hSmokeTrail,	FIELD_EHANDLE ),
 	DEFINE_FIELD( m_nSmokeTrailCount,	FIELD_INTEGER ),
 	DEFINE_FIELD( m_nNearShots,			FIELD_INTEGER ),
 	DEFINE_FIELD( m_nMaxNearShots,		FIELD_INTEGER ),
@@ -946,14 +938,6 @@ void CNPC_AttackHelicopter::StopLoopingSounds()
 //------------------------------------------------------------------------------
 void Chopper_PrecacheChunks( CBaseEntity *pChopper )
 {
-	for ( int i = 0; i < CHOPPER_MAX_CHUNKS; ++i )
-	{
-		pChopper->PrecacheModel( s_pChunkModelName[i] );
-	}
-
-	pChopper->PrecacheModel( HELICOPTER_CHUNK_COCKPIT );
-	pChopper->PrecacheModel( HELICOPTER_CHUNK_TAIL );
-	pChopper->PrecacheModel( HELICOPTER_CHUNK_BODY );
 }
  
 //------------------------------------------------------------------------------
@@ -1013,6 +997,9 @@ void CNPC_AttackHelicopter::Precache( void )
 
 	PrecacheScriptSound( "ReallyLoudSpark" );
 	PrecacheScriptSound( "NPC_AttackHelicopterGrenade.Ping" );
+
+	PrecacheParticleSystem("npc_helicopter_damage");
+	PrecacheParticleSystem("npc_helicopter_damage_smoke");
 }
 
 int CNPC_AttackHelicopter::ObjectCaps() 
@@ -2074,11 +2061,12 @@ void CNPC_AttackHelicopter::DoMuzzleFlash( void )
 {
 	BaseClass::DoMuzzleFlash();
 	
-	CEffectData data;
+	DispatchParticleEffect("weapon_muzzle_flash_pulse_heavy", PATTACH_POINT_FOLLOW, this, "muzzle", true);
+	/*CEffectData data;
 
 	data.m_nAttachmentIndex = LookupAttachment( "muzzle" );
 	data.m_nEntIndex = entindex();
-	DispatchEffect( "ChopperMuzzleFlash", data );
+	DispatchEffect( "ChopperMuzzleFlash", data );*/
 }
 
 //------------------------------------------------------------------------------
@@ -3332,41 +3320,11 @@ void CNPC_AttackHelicopter::AddSmokeTrail( const Vector &vecPos )
 	// The final smoke trail is a flaming engine
 	if ( m_nSmokeTrailCount == 0 || m_nSmokeTrailCount % 2 )
 	{
-		CFireTrail *pFireTrail = CFireTrail::CreateFireTrail();
-
-		if ( pFireTrail == NULL )
-			return;
-
-		m_hSmokeTrail[m_nSmokeTrailCount] = pFireTrail;
-
-		pFireTrail->FollowEntity( this, UTIL_VarArgs( "damage%d", m_nSmokeTrailCount ) );
-		pFireTrail->SetParent( this, nAttachment );
-		pFireTrail->SetLocalOrigin( vec3_origin );
-		pFireTrail->SetMoveType( MOVETYPE_NONE );
-		pFireTrail->SetLifetime( -1 );
+		DispatchParticleEffect("npc_helicopter_damage", PATTACH_POINT_FOLLOW, this, nAttachment);
 	}
 	else
 	{
-		SmokeTrail *pSmokeTrail =  SmokeTrail::CreateSmokeTrail();
-		if( !pSmokeTrail )
-			return;
-
-		m_hSmokeTrail[m_nSmokeTrailCount] = pSmokeTrail;
-
-		pSmokeTrail->m_SpawnRate = 48;
-		pSmokeTrail->m_ParticleLifetime = 0.5f;
-		pSmokeTrail->m_StartColor.Init(0.15, 0.15, 0.15);
-		pSmokeTrail->m_EndColor.Init(0.0, 0.0, 0.0);
-		pSmokeTrail->m_StartSize = 24;
-		pSmokeTrail->m_EndSize = 80;
-		pSmokeTrail->m_SpawnRadius = 8;
-		pSmokeTrail->m_Opacity = 0.2;
-		pSmokeTrail->m_MinSpeed = 16;
-		pSmokeTrail->m_MaxSpeed = 64;
-		pSmokeTrail->SetLifetime(-1);
-		pSmokeTrail->SetParent( this, nAttachment );
-		pSmokeTrail->SetLocalOrigin( vec3_origin );
-		pSmokeTrail->SetMoveType( MOVETYPE_NONE );
+		DispatchParticleEffect("npc_helicopter_damage_smoke", PATTACH_POINT_FOLLOW, this, nAttachment);
 	}
 
 	m_nSmokeTrailCount++;
@@ -3378,11 +3336,9 @@ void CNPC_AttackHelicopter::AddSmokeTrail( const Vector &vecPos )
 //-----------------------------------------------------------------------------
 void CNPC_AttackHelicopter::DestroySmokeTrails()
 {
-	for ( int i = m_nSmokeTrailCount; --i >= 0; )
-	{
-		UTIL_Remove( m_hSmokeTrail[i] );
-		m_hSmokeTrail[i] = NULL;
-	}
+	DevMsg("Destroy Smoke Trails \n");
+
+	StopParticleEffects(this);
 }
 	
 //-----------------------------------------------------------------------------
@@ -3392,28 +3348,15 @@ void CNPC_AttackHelicopter::DestroySmokeTrails()
 void Chopper_CreateChunk( CBaseEntity *pChopper, const Vector &vecChunkPos, const QAngle &vecChunkAngles, const char *pszChunkName, bool bSmall )
 {
 	// Drop a flaming, smoking chunk.
-	CGib *pChunk = CREATE_ENTITY( CGib, "gib" );
-	pChunk->Spawn( pszChunkName );
-	pChunk->SetBloodColor( DONT_BLEED );
+	CPropVehicleGib *pChunk = (CPropVehicleGib*)CreateEntityByName("prop_vehiclegib");
 
 	pChunk->SetAbsOrigin( vecChunkPos );
 	pChunk->SetAbsAngles( vecChunkAngles );
 
 	pChunk->SetOwnerEntity( pChopper );
 	
-	if ( bSmall )
-	{
-		pChunk->m_lifeTime = random->RandomFloat( 0.5f, 1.0f );
-		pChunk->SetSolidFlags( FSOLID_NOT_SOLID );
-		pChunk->SetSolid( SOLID_BBOX );
-		pChunk->AddEffects( EF_NODRAW );
-		pChunk->SetGravity( UTIL_ScaleForGravity( 400 ) );
-	}
-	else
-	{
-		pChunk->m_lifeTime = 5.0f;
-	}
-	
+	pChunk->SetGibModel(random->RandomInt(0, 3));
+
 	pChunk->SetCollisionGroup( COLLISION_GROUP_DEBRIS );
 	
 	// Set the velocity
@@ -3435,13 +3378,8 @@ void Chopper_CreateChunk( CBaseEntity *pChopper, const Vector &vecChunkPos, cons
 
 	if ( bSmall == false )
 	{
-		IPhysicsObject *pPhysicsObject = pChunk->VPhysicsInitNormal( SOLID_VPHYSICS, pChunk->GetSolidFlags(), false );
-		
-		if ( pPhysicsObject )
-		{
-			pPhysicsObject->EnableMotion( true );
-			pPhysicsObject->SetVelocity(&vecVelocity, &angImpulse );
-		}
+		pChunk->SetGibModel(random->RandomInt(0, 2));
+		pChunk->SetGibType(VG_TYPE_GENERIC_GIB);
 	}
 	
 	CFireTrail *pFireTrail = CFireTrail::CreateFireTrail();
@@ -3453,7 +3391,9 @@ void Chopper_CreateChunk( CBaseEntity *pChopper, const Vector &vecChunkPos, cons
 	pFireTrail->SetParent( pChunk, 0 );
 	pFireTrail->SetLocalOrigin( vec3_origin );
 	pFireTrail->SetMoveType( MOVETYPE_NONE );
-	pFireTrail->SetLifetime( pChunk->m_lifeTime );
+	pFireTrail->SetLifetime( -1 );
+
+	pChunk->Spawn();
 }
 
 //------------------------------------------------------------------------------
@@ -3479,12 +3419,12 @@ void CNPC_AttackHelicopter::ExplodeAndThrowChunk( const Vector &vecExplosionPos 
 	{
 		for ( int i = 0; i < 2; i++ )
 		{
-			Chopper_CreateChunk( this, vecExplosionPos, RandomAngle(0, 360), g_PropDataSystem.GetRandomChunkModel( "MetalChunks" ), true );
+			Chopper_CreateChunk( this, vecExplosionPos, RandomAngle(0, 360), NULL, true );
 		}
 	}
 	else
 	{
-		Chopper_CreateChunk( this, vecExplosionPos, RandomAngle(0, 360), s_pChunkModelName[random->RandomInt( 0, CHOPPER_MAX_SMALL_CHUNKS - 1 )], false );
+		Chopper_CreateChunk( this, vecExplosionPos, RandomAngle(0, 360), NULL, false );
 	}
 }
 
@@ -3722,52 +3662,42 @@ void Chopper_BecomeChunks( CBaseEntity *pChopper )
 		// that the chopper plays before crashing.
 		pChopper->GetVectors( NULL, &vecRight, NULL );
 	}
-
+	
 	// Body
-	CHelicopterChunk *pBodyChunk = CHelicopterChunk::CreateHelicopterChunk( vecChunkPos, vecChunkAngles, pChopper->GetAbsVelocity(), HELICOPTER_CHUNK_BODY, CHUNK_BODY );
-	Chopper_CreateChunk( pChopper, vecChunkPos, RandomAngle( 0, 360 ), s_pChunkModelName[random->RandomInt( 0, CHOPPER_MAX_CHUNKS - 1 )], false );
+	CPropVehicleGib *pBodyChunk = (CPropVehicleGib*)CreateEntityByName("prop_vehiclegib");
+	pBodyChunk->SetGibType(VG_TYPE_CHOPPER_GIB);
+	pBodyChunk->SetGibModel(VG_CHOPPER_06_BODY);
+	pBodyChunk->SetAbsOrigin(vecChunkPos);
+	pBodyChunk->SetAbsAngles(RandomAngle(0, 360));
+	pBodyChunk->Spawn();
+
+	Chopper_CreateChunk( pChopper, vecChunkPos, RandomAngle( 0, 360 ), NULL, false );
 
 	vecChunkPos = pChopper->GetAbsOrigin() + ( vecForward * 100.0f ) + ( vecUp * -38.0f );
 
 	// Cockpit
-	CHelicopterChunk *pCockpitChunk = CHelicopterChunk::CreateHelicopterChunk( vecChunkPos, vecChunkAngles, pChopper->GetAbsVelocity() + vecRight * -800.0f, HELICOPTER_CHUNK_COCKPIT, CHUNK_COCKPIT );
-	Chopper_CreateChunk( pChopper, vecChunkPos, RandomAngle( 0, 360 ), s_pChunkModelName[random->RandomInt( 0, CHOPPER_MAX_CHUNKS - 1 )], false );
+	CPropVehicleGib *pCockpitChunk = (CPropVehicleGib*)CreateEntityByName("prop_vehiclegib");
+	pCockpitChunk->SetGibType(VG_TYPE_CHOPPER_GIB);
+	pCockpitChunk->SetGibModel(VG_CHOPPER_04_COCKPIT);
+	pCockpitChunk->SetAbsOrigin(vecChunkPos);
+	pCockpitChunk->SetAbsAngles(RandomAngle(0, 360));
+	pCockpitChunk->Spawn();
 
-	pCockpitChunk->m_hMaster = pBodyChunk;
+	Chopper_CreateChunk( pChopper, vecChunkPos, RandomAngle( 0, 360 ), NULL, false );
 
 	vecChunkPos = pChopper->GetAbsOrigin() + ( vecForward * -175.0f );
 
 	// Tail
-	CHelicopterChunk *pTailChunk = CHelicopterChunk::CreateHelicopterChunk( vecChunkPos, vecChunkAngles, pChopper->GetAbsVelocity() + vecRight * 800.0f, HELICOPTER_CHUNK_TAIL, CHUNK_TAIL );
-	Chopper_CreateChunk( pChopper, vecChunkPos, RandomAngle( 0, 360 ), s_pChunkModelName[random->RandomInt( 0, CHOPPER_MAX_CHUNKS - 1 )], false );
+	CPropVehicleGib *pTailChunk = (CPropVehicleGib*)CreateEntityByName("prop_vehiclegib");
+	pTailChunk->SetGibType(VG_TYPE_CHOPPER_GIB);
+	pTailChunk->SetGibModel(VG_CHOPPER_05_TAIL);
+	pTailChunk->SetAbsOrigin(vecChunkPos);
+	pTailChunk->SetAbsAngles(RandomAngle(0, 360));
+	pTailChunk->Spawn();
 
-	pTailChunk->m_hMaster = pBodyChunk;
+	Chopper_CreateChunk(pChopper, vecChunkPos, RandomAngle(0, 360), NULL, false);
 
-	// Constrain all the pieces together loosely
-	IPhysicsObject *pBodyObject = pBodyChunk->VPhysicsGetObject();
-	Assert( pBodyObject );
-
-	IPhysicsObject *pCockpitObject = pCockpitChunk->VPhysicsGetObject();
-	Assert( pCockpitObject );
-
-	IPhysicsObject *pTailObject = pTailChunk->VPhysicsGetObject();
-	Assert( pTailObject );
-
-	IPhysicsConstraintGroup *pGroup = NULL;
-	
-	// Create the constraint
-	constraint_fixedparams_t fixed;
-	fixed.Defaults();
-	fixed.InitWithCurrentObjectState( pBodyObject, pTailObject );
-	fixed.constraint.Defaults();
-
-	pBodyChunk->m_pTailConstraint = physenv->CreateFixedConstraint( pBodyObject, pTailObject, pGroup, fixed );
-
-	fixed.Defaults();
-	fixed.InitWithCurrentObjectState( pBodyObject, pCockpitObject );
-	fixed.constraint.Defaults();
-
-	pBodyChunk->m_pCockpitConstraint = physenv->CreateFixedConstraint( pBodyObject, pCockpitObject, pGroup, fixed );
+	ExplosionCreate(pChopper->GetAbsOrigin(), QAngle(0, 0, 0), NULL, 10, 10, false, 15, false, false);
 }
 
 //-----------------------------------------------------------------------------
@@ -4795,12 +4725,6 @@ void CNPC_AttackHelicopter::SetTransmit( CCheckTransmitInfo *pInfo, bool bAlways
 		return;
 
 	BaseClass::SetTransmit( pInfo, bAlways );
-	
-	// Make our smoke trails always come with us
-	for ( int i = 0; i < m_nSmokeTrailCount; i++ )
-	{
-		m_hSmokeTrail[i]->SetTransmit( pInfo, bAlways );
-	}
 }
 
 //------------------------------------------------------------------------------
@@ -5060,6 +4984,8 @@ void CGrenadeHelicopter::Precache( void )
 	PrecacheScriptSound( "NPC_AttackHelicopterGrenade.Ping" );
 	PrecacheScriptSound( "NPC_AttackHelicopterGrenade.PingCaptured" );
 	PrecacheScriptSound( "NPC_AttackHelicopterGrenade.HardImpact" );
+
+	PrecacheParticleSystem("weapon_muzzle_flash_pulse_heavy");
 }
 
 
@@ -5680,6 +5606,9 @@ LINK_ENTITY_TO_CLASS( npc_heli_avoidsphere, CAvoidSphere );
 BEGIN_DATADESC( CAvoidSphere )
 
 	DEFINE_KEYFIELD( m_flRadius, FIELD_FLOAT, "radius" ),
+#ifdef MAPBASE
+	DEFINE_KEYFIELD( m_iszAvoidFilter, FIELD_STRING, "AvoidFilter" ),
+#endif
 
 END_DATADESC()
 
@@ -5720,6 +5649,18 @@ void CAvoidSphere::Activate( )
 {
 	BaseClass::Activate();
 	s_AvoidSpheres.AddToTail( this );
+
+#ifdef MAPBASE
+	m_hAvoidFilter = gEntList.FindEntityByName( NULL, m_iszAvoidFilter, this );
+	if (m_hAvoidFilter)
+	{
+		if (dynamic_cast<CBaseFilter*>(m_hAvoidFilter.Get()) == NULL)
+		{
+			Warning( "%s: \"%s\" is not a valid filter", GetDebugName(), m_hAvoidFilter->GetDebugName() );
+			m_hAvoidFilter = NULL;
+		}
+	}
+#endif
 }
 
 void CAvoidSphere::UpdateOnRemove( )
@@ -5745,6 +5686,12 @@ void CAvoidSphere::ComputeAvoidanceForces( CBaseEntity *pEntity, float flEntityR
 	{
 		CAvoidSphere *pSphere = s_AvoidSpheres[i].Get();
 		const Vector &vecAvoidCenter = pSphere->WorldSpaceCenter();
+
+#ifdef MAPBASE
+		// Continue if not passing the avoid sphere filter
+		if ( pSphere->m_hAvoidFilter && !(static_cast<CBaseFilter*>( pSphere->m_hAvoidFilter.Get())->PassesFilter(pSphere, pEntity )) )
+			continue;
+#endif
 
 		// NOTE: This test can be thought of sweeping a sphere through space
 		// and seeing if it intersects the avoidance sphere

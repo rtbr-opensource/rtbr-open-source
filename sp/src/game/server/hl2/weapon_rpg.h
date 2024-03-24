@@ -75,12 +75,12 @@ protected:
 	virtual int AugerHealth() { return m_iMaxHealth - 20; }
 
 	// Creates the smoke trail
-	void CreateSmokeTrail( void );
+	//void CreateSmokeTrail( void );
 
 	// Gets the shooting position 
 	void GetShootPosition( CLaserDot *pLaserDot, Vector *pShootPosition );
 
-	CHandle<RocketTrail>	m_hRocketTrail;
+	//CHandle<RocketTrail>	m_hRocketTrail;
 	float					m_flAugerTime;		// Amount of time to auger before blowing up anyway
 	float					m_flMarkDeadTime;
 	float					m_flDamage;
@@ -196,7 +196,7 @@ public:
 	void	DecrementAmmo( CBaseCombatCharacter *pOwner );
 
 	bool	Deploy( void );
-	bool	Holster( CBaseCombatWeapon *pSwitchingTo = NULL );
+	bool Holster(CBaseCombatWeapon * pSwitchingTo);
 	bool	Reload( void );
 	bool	WeaponShouldBeLowered( void );
 	bool	Lower( void );
@@ -216,6 +216,9 @@ public:
 	int		WeaponRangeAttack1Condition( float flDot, float flDist );
 
 	void	Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatCharacter *pOperator );
+#ifdef MAPBASE
+	void	Operator_ForceNPCFire( CBaseCombatCharacter  *pOperator, bool bSecondary );
+#endif
 	void	StartGuiding( void );
 	void	StopGuiding( void );
 	void	ToggleGuiding( void );

@@ -900,7 +900,7 @@ C_WaterExplosionEffect &WaterExplosionEffect( void )
 //-----------------------------------------------------------------------------
 void C_WaterExplosionEffect::Create( const Vector &position, float force, float scale, int flags )
 {
-	m_vecOrigin = position;
+	/*m_vecOrigin = position;
 
 	// Find our water surface by tracing up till we're out of the water
 	trace_t tr;
@@ -942,7 +942,9 @@ void C_WaterExplosionEffect::Create( const Vector &position, float force, float 
 	}
 
 	// Get our lighting information
-	FX_GetSplashLighting( m_vecOrigin + Vector( 0, 0, 32 ), &m_vecColor, &m_flLuminosity );
+	FX_GetSplashLighting( m_vecOrigin + Vector( 0, 0, 32 ), &m_vecColor, &m_flLuminosity );*/
+
+	DispatchParticleEffect("explosion_water", position, QAngle(0, 0, 0));
 
 	BaseClass::Create( position, force, scale, flags );
 }

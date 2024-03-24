@@ -39,6 +39,8 @@
 #include "ndebugoverlay.h"
 #include "rope.h"
 #include "rope_shared.h"
+#include "te_particlesystem.h"
+#include "particle_parse.h"
 #include "igamesystem.h"
 #include "vstdlib/random.h"
 #include "engine/IEngineSound.h"
@@ -223,6 +225,7 @@ BEGIN_DATADESC( CNPC_BaseZombie )
 	DEFINE_FIELD( m_iMoanSound, FIELD_INTEGER ),
 	DEFINE_FIELD( m_hObstructor, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_bIsSlumped, FIELD_BOOLEAN ),
+	DEFINE_FIELD(m_iAnnabelleAmmoType, FIELD_INTEGER),
 
 #ifdef MAPBASE
 	DEFINE_OUTPUT( m_OnSwattedProp, "OnSwattedProp" ),
@@ -253,6 +256,7 @@ CNPC_BaseZombie::CNPC_BaseZombie()
 	m_iMoanSound = g_numZombies;
 
 	g_numZombies++;
+	m_iAnnabelleAmmoType = GetAmmoDef()->Index("Annabelle");
 }
 
 
@@ -686,6 +690,7 @@ float CNPC_BaseZombie::GetHitgroupDamageMultiplier( int iHitGroup, const CTakeDa
 					return 3.0f;
 				}
 			}
+			else if (info.GetAmmoType() == m_iAnnabelleAmmoType){ return sk_npc_head.GetFloat();  }
 			else
 			{
 				return 2.0f;
@@ -845,7 +850,8 @@ int CNPC_BaseZombie::OnTakeDamage_Alive( const CTakeDamageInfo &inputInfo )
 		// If a zombie is on fire it only takes damage from the fire that's attached to it. (DMG_DIRECT)
 		// This is to stop zombies from burning to death 10x faster when they're standing around
 		// 10 fire entities.
-		if( IsOnFire() && !(inputInfo.GetDamageType() & DMG_DIRECT) )
+		// We have a check for making sure it's not a slow burn, as direct immolator hits will deal 0 damage otherwise.
+		if (IsOnFire() && !(inputInfo.GetDamageType() & (DMG_DIRECT | DMG_SLOWBURN)))
 		{
 			return 0;
 		}
@@ -853,8 +859,8 @@ int CNPC_BaseZombie::OnTakeDamage_Alive( const CTakeDamageInfo &inputInfo )
 		Scorch( ZOMBIE_SCORCH_RATE, ZOMBIE_MIN_RENDERCOLOR );
 	}
 
-	// Take some percentage of damage from bullets (unless hit in the crab). Always take full buckshot & sniper damage
-	if ( !m_bHeadShot && (info.GetDamageType() & DMG_BULLET) && !(info.GetDamageType() & (DMG_BUCKSHOT|DMG_SNIPER)) )
+	// Take some percentage of damage from bullets (unless hit in the crab). Always take full buckshot, sniper and annabelle damage
+	if (!m_bHeadShot && (info.GetDamageType() & DMG_BULLET) && !((info.GetDamageType() & (DMG_BUCKSHOT | DMG_SNIPER)) || info.GetAmmoType() == m_iAnnabelleAmmoType))
 	{
 		info.ScaleDamage( ZOMBIE_BULLET_DAMAGE_SCALE );
 	}
@@ -1210,6 +1216,10 @@ void CNPC_BaseZombie::DieChopped( const CTakeDamageInfo &info )
 		if( pAnimating )
 		{
 			pAnimating->SetBodygroup( ZOMBIE_BODYGROUP_HEADCRAB, !m_fIsHeadless );
+#ifdef MAPBASE
+			// Inherit some animating properties
+			pAnimating->m_nSkin = m_nSkin;
+#endif
 		}
 
 #ifdef MAPBASE
@@ -1950,7 +1960,6 @@ int	CNPC_BaseZombie::SelectFailSchedule( int failedSchedule, int failedTask, AI_
 	return BaseClass::SelectFailSchedule( failedSchedule, failedTask, taskFailCode );
 }
 
-
 //---------------------------------------------------------
 //---------------------------------------------------------
 int CNPC_BaseZombie::SelectSchedule ( void )
@@ -1959,7 +1968,7 @@ int CNPC_BaseZombie::SelectSchedule ( void )
 	{
 		// Death waits for no man. Or zombie. Or something.
 		return SCHED_ZOMBIE_RELEASECRAB;
-	}
+	} 
 
 	if ( BehaviorSelectSchedule() )
 	{
@@ -2350,11 +2359,14 @@ void CNPC_BaseZombie::BecomeTorso( const Vector &vecTorsoForce, const Vector &ve
 		if ( m_bForceServerRagdoll )
 		{
 			pGib = CreateServerRagdollSubmodel( this, GetLegsModel(), GetAbsOrigin() - Vector(0, 0, 40), GetAbsAngles(), COLLISION_GROUP_INTERACTIVE_DEBRIS );
-			pGib->VPhysicsGetObject()->AddVelocity( &vecLegsForce, NULL );
-
-			if (flFadeTime > 0.0)
+			if (pGib && pGib->VPhysicsGetObject())
 			{
-				pGib->SUB_StartFadeOut( flFadeTime, false );
+				pGib->VPhysicsGetObject()->AddVelocity( &vecLegsForce, NULL );
+
+				if (flFadeTime > 0.0)
+				{
+					pGib->SUB_StartFadeOut( flFadeTime, false );
+				}
 			}
 		}
 		else
@@ -2502,12 +2514,14 @@ void CNPC_BaseZombie::ReleaseHeadcrab( const Vector &vecOrigin, const Vector &ve
 		if ( m_bForceServerRagdoll )
 		{
 			pGib = CreateServerRagdollSubmodel( this, GetHeadcrabModel(), vecOrigin, GetLocalAngles(), COLLISION_GROUP_INTERACTIVE_DEBRIS );
-			pGib->VPhysicsGetObject()->AddVelocity(&vecVelocity, NULL);
-			
-			if (ShouldIgniteZombieGib())
-				static_cast<CBaseAnimating*>(pGib)->Ignite( random->RandomFloat( 8.0, 12.0 ), false );
+			if (pGib && pGib->VPhysicsGetObject())
+			{
+				pGib->VPhysicsGetObject()->AddVelocity(&vecVelocity, NULL);
+				if (ShouldIgniteZombieGib())
+					static_cast<CBaseAnimating*>(pGib)->Ignite( random->RandomFloat( 8.0, 12.0 ), false );
 
-			pGib->SUB_StartFadeOut( 15, false );
+				pGib->SUB_StartFadeOut( 15, false );
+			}
 		}
 		else
 			pGib = CreateRagGib( GetHeadcrabModel(), vecOrigin, GetLocalAngles(), vecVelocity, 15, ShouldIgniteZombieGib() );

@@ -810,6 +810,8 @@ void CHudHintKeyDisplay::MsgFunc_KeyHintText( bf_read &msg )
 	{
 		SetVisible( true );
  		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "KeyHintMessageShow" ); 
+		C_BasePlayer *pLocalPlayer = C_BasePlayer::GetLocalPlayer();
+		pLocalPlayer->EmitSound( "Instructor.LessonStart" );
 	}
 	else
 	{

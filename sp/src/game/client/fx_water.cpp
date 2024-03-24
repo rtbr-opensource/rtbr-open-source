@@ -119,12 +119,12 @@ void FX_WaterRipple( const Vector &origin, float scale, Vector *pColor, float fl
 //-----------------------------------------------------------------------------
 void FX_GunshotSplash( const Vector &origin, const Vector &normal, float scale )
 {
-	VPROF_BUDGET( "FX_GunshotSplash", VPROF_BUDGETGROUP_PARTICLE_RENDERING );
+	//VPROF_BUDGET( "FX_GunshotSplash", VPROF_BUDGETGROUP_PARTICLE_RENDERING );
 	
 	if ( cl_show_splashes.GetBool() == false )
 		return;
 
-	Vector	color;
+	/*Vector	color;
 	float	luminosity;
 	
 	// Get our lighting information
@@ -233,19 +233,156 @@ void FX_GunshotSplash( const Vector &origin, const Vector &normal, float scale )
 
 	// Do a ripple
 	FX_WaterRipple( origin, flScale, &color, 1.5f, luminosity );
+	*/
+	//QAngle splashVector;
+	//VectorAngles(normal, splashVector);
+	DispatchParticleEffect("impact_water", origin, QAngle(0, 0, 0));
 
 	//Play a sound
 	CLocalPlayerFilter filter;
-
 	EmitSound_t ep;
 	ep.m_nChannel = CHAN_VOICE;
 	ep.m_pSoundName =  "Physics.WaterSplash";
 	ep.m_flVolume = 1.0f;
 	ep.m_SoundLevel = SNDLVL_NORM;
 	ep.m_pOrigin = &origin;
-
+	
 
 	C_BaseEntity::EmitSound( filter, SOUND_FROM_WORLD, ep );
+}
+
+void FX_PhysSplash(const Vector &origin, const Vector &normal, float scale)
+{
+	//VPROF_BUDGET( "FX_GunshotSplash", VPROF_BUDGETGROUP_PARTICLE_RENDERING );
+
+	if (cl_show_splashes.GetBool() == false)
+		return;
+
+	/*Vector	color;
+	float	luminosity;
+
+	// Get our lighting information
+	FX_GetSplashLighting( origin + ( normal * scale ), &color, &luminosity );
+
+	float flScale = scale / 8.0f;
+
+	if ( flScale > 4.0f )
+	{
+	flScale = 4.0f;
+	}
+
+	// Setup our trail emitter
+	CSmartPtr<CTrailParticles> sparkEmitter = CTrailParticles::Create( "splash" );
+
+	if ( !sparkEmitter )
+	return;
+
+	sparkEmitter->SetSortOrigin( origin );
+	sparkEmitter->m_ParticleCollision.SetGravity( 800.0f );
+	sparkEmitter->SetFlag( bitsPARTICLE_TRAIL_VELOCITY_DAMPEN );
+	sparkEmitter->SetVelocityDampen( 2.0f );
+	sparkEmitter->GetBinding().SetBBox( origin - Vector( 32, 32, 32 ), origin + Vector( 32, 32, 32 ) );
+
+	PMaterialHandle	hMaterial = ParticleMgr()->GetPMaterial( "effects/splash2" );
+
+	TrailParticle	*tParticle;
+
+	Vector	offDir;
+	Vector	offset;
+	float	colorRamp;
+
+	//Dump out drops
+	for ( int i = 0; i < 16; i++ )
+	{
+	offset = origin;
+	offset[0] += random->RandomFloat( -8.0f, 8.0f ) * flScale;
+	offset[1] += random->RandomFloat( -8.0f, 8.0f ) * flScale;
+
+	tParticle = (TrailParticle *) sparkEmitter->AddParticle( sizeof(TrailParticle), hMaterial, offset );
+
+	if ( tParticle == NULL )
+	break;
+
+	tParticle->m_flLifetime	= 0.0f;
+	tParticle->m_flDieTime	= random->RandomFloat( 0.25f, 0.5f );
+
+	offDir = normal + RandomVector( -0.8f, 0.8f );
+
+	tParticle->m_vecVelocity = offDir * random->RandomFloat( SPLASH_MIN_SPEED * flScale * 3.0f, SPLASH_MAX_SPEED * flScale * 3.0f );
+	tParticle->m_vecVelocity[2] += random->RandomFloat( 32.0f, 64.0f ) * flScale;
+
+	tParticle->m_flWidth		= random->RandomFloat( 1.0f, 3.0f );
+	tParticle->m_flLength		= random->RandomFloat( 0.025f, 0.05f );
+
+	colorRamp = random->RandomFloat( 0.75f, 1.25f );
+
+	tParticle->m_color.r = MIN( 1.0f, color[0] * colorRamp ) * 255;
+	tParticle->m_color.g = MIN( 1.0f, color[1] * colorRamp ) * 255;
+	tParticle->m_color.b = MIN( 1.0f, color[2] * colorRamp ) * 255;
+	tParticle->m_color.a = luminosity * 255;
+	}
+
+	// Setup the particle emitter
+	CSmartPtr<CSplashParticle> pSimple = CSplashParticle::Create( "splish" );
+	pSimple->SetSortOrigin( origin );
+	pSimple->SetClipHeight( origin.z );
+	pSimple->SetParticleCullRadius( scale * 2.0f );
+	pSimple->GetBinding().SetBBox( origin - Vector( 32, 32, 32 ), origin + Vector( 32, 32, 32 ) );
+
+	SimpleParticle	*pParticle;
+
+	//Main gout
+	for ( int i = 0; i < 8; i++ )
+	{
+	pParticle = (SimpleParticle *) pSimple->AddParticle( sizeof( SimpleParticle ), hMaterial, origin );
+
+	if ( pParticle == NULL )
+	break;
+
+	pParticle->m_flLifetime = 0.0f;
+	pParticle->m_flDieTime	= 2.0f;	//NOTENOTE: We use a clip plane to realistically control our lifespan
+
+	pParticle->m_vecVelocity.Random( -0.2f, 0.2f );
+	pParticle->m_vecVelocity += ( normal * random->RandomFloat( 4.0f, 6.0f ) );
+
+	VectorNormalize( pParticle->m_vecVelocity );
+
+	pParticle->m_vecVelocity *= 50 * flScale * (8-i);
+
+	colorRamp = random->RandomFloat( 0.75f, 1.25f );
+
+	pParticle->m_uchColor[0]	= MIN( 1.0f, color[0] * colorRamp ) * 255.0f;
+	pParticle->m_uchColor[1]	= MIN( 1.0f, color[1] * colorRamp ) * 255.0f;
+	pParticle->m_uchColor[2]	= MIN( 1.0f, color[2] * colorRamp ) * 255.0f;
+
+	pParticle->m_uchStartSize	= 24 * flScale * RemapValClamped( i, 7, 0, 1, 0.5f );
+	pParticle->m_uchEndSize		= MIN( 255, pParticle->m_uchStartSize * 2 );
+
+	pParticle->m_uchStartAlpha	= RemapValClamped( i, 7, 0, 255, 32 ) * luminosity;
+	pParticle->m_uchEndAlpha	= 0;
+
+	pParticle->m_flRoll			= random->RandomInt( 0, 360 );
+	pParticle->m_flRollDelta	= random->RandomFloat( -4.0f, 4.0f );
+	}
+
+	// Do a ripple
+	FX_WaterRipple( origin, flScale, &color, 1.5f, luminosity );
+	*/
+	//QAngle splashVector;
+	//VectorAngles(normal, splashVector);
+	DispatchParticleEffect("physics_splash_water", origin, QAngle(0, 0, 0));
+
+	//Play a sound
+	CLocalPlayerFilter filter;
+	EmitSound_t ep;
+	ep.m_nChannel = CHAN_VOICE;
+	ep.m_pSoundName = "Physics.WaterSplash";
+	ep.m_flVolume = 1.0f;
+	ep.m_SoundLevel = SNDLVL_NORM;
+	ep.m_pOrigin = &origin;
+
+
+	C_BaseEntity::EmitSound(filter, SOUND_FROM_WORLD, ep);
 }
 
 //-----------------------------------------------------------------------------
@@ -377,24 +514,11 @@ void FX_GunshotSlimeSplash( const Vector &origin, const Vector &normal, float sc
 		pParticle->m_flRollDelta	= random->RandomFloat( -4.0f, 4.0f );
 	}
 	
-#else
-	
-	QAngle vecAngles;
-	VectorAngles( normal, vecAngles );
-	if ( scale < 2.0f )
-	{
-		DispatchParticleEffect( "slime_splash_01", origin, vecAngles );
-	}
-	else if ( scale < 4.0f )
-	{
-		DispatchParticleEffect( "slime_splash_02", origin, vecAngles );
-	}
-	else
-	{
-		DispatchParticleEffect( "slime_splash_03", origin, vecAngles );
-	}
-
 #endif
+	
+	DispatchParticleEffect( "impact_slime", origin, QAngle(0, 0, 0) );
+
+
 
 	//Play a sound
 	CLocalPlayerFilter filter;
@@ -407,6 +531,145 @@ void FX_GunshotSlimeSplash( const Vector &origin, const Vector &normal, float sc
 	ep.m_pOrigin = &origin;
 
 	C_BaseEntity::EmitSound( filter, SOUND_FROM_WORLD, ep );
+}
+
+void FX_PhysSlimeSplash(const Vector &origin, const Vector &normal, float scale)
+{
+	if (cl_show_splashes.GetBool() == false)
+		return;
+
+	VPROF_BUDGET("FX_GunshotSlimeSplash", VPROF_BUDGETGROUP_PARTICLE_RENDERING);
+
+#if 0
+
+	float	colorRamp;
+	float	flScale = MIN(1.0f, scale / 8.0f);
+
+	PMaterialHandle	hMaterial = ParticleMgr()->GetPMaterial("effects/slime1");
+	PMaterialHandle	hMaterial2 = ParticleMgr()->GetPMaterial("effects/splash4");
+
+	Vector	color;
+	float	luminosity;
+
+	// Get our lighting information
+	FX_GetSplashLighting(origin + (normal * scale), &color, &luminosity);
+
+	Vector	offDir;
+	Vector	offset;
+
+	TrailParticle	*tParticle;
+
+	CSmartPtr<CTrailParticles> sparkEmitter = CTrailParticles::Create("splash");
+
+	if (!sparkEmitter)
+		return;
+
+	sparkEmitter->SetSortOrigin(origin);
+	sparkEmitter->m_ParticleCollision.SetGravity(800.0f);
+	sparkEmitter->SetFlag(bitsPARTICLE_TRAIL_VELOCITY_DAMPEN);
+	sparkEmitter->SetVelocityDampen(2.0f);
+	if (IsXbox())
+	{
+		sparkEmitter->GetBinding().SetBBox(origin - Vector(32, 32, 64), origin + Vector(32, 32, 64));
+	}
+
+	//Dump out drops
+	for (int i = 0; i < 24; i++)
+	{
+		offset = origin;
+		offset[0] += random->RandomFloat(-16.0f, 16.0f) * flScale;
+		offset[1] += random->RandomFloat(-16.0f, 16.0f) * flScale;
+
+		tParticle = (TrailParticle *)sparkEmitter->AddParticle(sizeof(TrailParticle), hMaterial, offset);
+
+		if (tParticle == NULL)
+			break;
+
+		tParticle->m_flLifetime = 0.0f;
+		tParticle->m_flDieTime = random->RandomFloat(0.25f, 0.5f);
+
+		offDir = normal + RandomVector(-0.6f, 0.6f);
+
+		tParticle->m_vecVelocity = offDir * random->RandomFloat(SPLASH_MIN_SPEED * flScale * 3.0f, SPLASH_MAX_SPEED * flScale * 3.0f);
+		tParticle->m_vecVelocity[2] += random->RandomFloat(32.0f, 64.0f) * flScale;
+
+		tParticle->m_flWidth = random->RandomFloat(3.0f, 6.0f) * flScale;
+		tParticle->m_flLength = random->RandomFloat(0.025f, 0.05f) * flScale;
+
+		colorRamp = random->RandomFloat(0.75f, 1.25f);
+
+		tParticle->m_color.r = MIN(1.0f, color.x * colorRamp) * 255;
+		tParticle->m_color.g = MIN(1.0f, color.y * colorRamp) * 255;
+		tParticle->m_color.b = MIN(1.0f, color.z * colorRamp) * 255;
+		tParticle->m_color.a = 255 * luminosity;
+	}
+
+	// Setup splash emitter
+	CSmartPtr<CSplashParticle> pSimple = CSplashParticle::Create("splish");
+	pSimple->SetSortOrigin(origin);
+	pSimple->SetClipHeight(origin.z);
+	pSimple->SetParticleCullRadius(scale * 2.0f);
+
+	if (IsXbox())
+	{
+		pSimple->GetBinding().SetBBox(origin - Vector(32, 32, 64), origin + Vector(32, 32, 64));
+	}
+
+	SimpleParticle	*pParticle;
+
+	// Tint
+	colorRamp = random->RandomFloat(0.75f, 1.0f);
+	color = Vector(1.0f, 0.8f, 0.0f) * color * colorRamp;
+
+	//Main gout
+	for (int i = 0; i < 8; i++)
+	{
+		pParticle = (SimpleParticle *)pSimple->AddParticle(sizeof(SimpleParticle), hMaterial2, origin);
+
+		if (pParticle == NULL)
+			break;
+
+		pParticle->m_flLifetime = 0.0f;
+		pParticle->m_flDieTime = 2.0f;	//NOTENOTE: We use a clip plane to realistically control our lifespan
+
+		pParticle->m_vecVelocity.Random(-0.2f, 0.2f);
+		pParticle->m_vecVelocity += (normal * random->RandomFloat(4.0f, 6.0f));
+
+		VectorNormalize(pParticle->m_vecVelocity);
+
+		pParticle->m_vecVelocity *= 50 * flScale * (8 - i);
+
+		colorRamp = random->RandomFloat(0.75f, 1.25f);
+
+		pParticle->m_uchColor[0] = MIN(1.0f, color[0] * colorRamp) * 255.0f;
+		pParticle->m_uchColor[1] = MIN(1.0f, color[1] * colorRamp) * 255.0f;
+		pParticle->m_uchColor[2] = MIN(1.0f, color[2] * colorRamp) * 255.0f;
+
+		pParticle->m_uchStartSize = 24 * flScale * RemapValClamped(i, 7, 0, 1, 0.5f);
+		pParticle->m_uchEndSize = MIN(255, pParticle->m_uchStartSize * 2);
+
+		pParticle->m_uchStartAlpha = RemapValClamped(i, 7, 0, 255, 32) * luminosity;
+		pParticle->m_uchEndAlpha = 0;
+
+		pParticle->m_flRoll = random->RandomInt(0, 360);
+		pParticle->m_flRollDelta = random->RandomFloat(-4.0f, 4.0f);
+	}
+
+#endif
+
+		DispatchParticleEffect("physics_splash_slime", origin, QAngle(0, 0, 0));
+
+	//Play a sound
+	CLocalPlayerFilter filter;
+
+	EmitSound_t ep;
+	ep.m_nChannel = CHAN_VOICE;
+	ep.m_pSoundName = "Physics.WaterSplash";
+	ep.m_flVolume = 1.0f;
+	ep.m_SoundLevel = SNDLVL_NORM;
+	ep.m_pOrigin = &origin;
+
+	C_BaseEntity::EmitSound(filter, SOUND_FROM_WORLD, ep);
 }
 
 //-----------------------------------------------------------------------------

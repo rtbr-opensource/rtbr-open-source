@@ -35,7 +35,7 @@ void r_newflashlightCallback_f( IConVar *pConVar, const char *pOldString, float 
 static ConVar r_newflashlight( "r_newflashlight", "1", FCVAR_CHEAT, "", r_newflashlightCallback_f );
 static ConVar r_swingflashlight( "r_swingflashlight", "1", FCVAR_CHEAT );
 static ConVar r_flashlightlockposition( "r_flashlightlockposition", "0", FCVAR_CHEAT );
-static ConVar r_flashlightfov( "r_flashlightfov", "45.0", FCVAR_CHEAT );
+static ConVar r_flashlightfov( "r_flashlightfov", "100.0", FCVAR_CHEAT );
 static ConVar r_flashlightoffsetx( "r_flashlightoffsetx", "10.0", FCVAR_CHEAT );
 static ConVar r_flashlightoffsety( "r_flashlightoffsety", "-20.0", FCVAR_CHEAT );
 static ConVar r_flashlightoffsetz( "r_flashlightoffsetz", "24.0", FCVAR_CHEAT );
@@ -52,11 +52,15 @@ static ConVar r_flashlightladderdist( "r_flashlightladderdist", "40.0", FCVAR_CH
 static ConVar mat_slopescaledepthbias_shadowmap( "mat_slopescaledepthbias_shadowmap", "16", FCVAR_CHEAT );
 static ConVar mat_depthbias_shadowmap(	"mat_depthbias_shadowmap", "0.0005", FCVAR_CHEAT  );
 #else
-static ConVar mat_slopescaledepthbias_shadowmap( "mat_slopescaledepthbias_shadowmap", "4", FCVAR_CHEAT );
-static ConVar mat_depthbias_shadowmap(	"mat_depthbias_shadowmap", "0.00001", FCVAR_CHEAT  );
+extern ConVarRef mat_slopescaledepthbias_shadowmap;
+extern ConVarRef mat_depthbias_shadowmap;
 #endif
 #ifdef MAPBASE
 static ConVar r_flashlighttextureoverride( "r_flashlighttextureoverride", "", FCVAR_CHEAT );
+#endif
+#ifdef RTBR_DLL
+static ConVar r_airboatflashlighthfov("r_airboatflashlighthfov", "120", FCVAR_CHEAT);
+static ConVar r_airboatflashlightvfov("r_airboatflashlightvfov", "120", FCVAR_CHEAT);
 #endif
 
 
@@ -99,7 +103,7 @@ CFlashlightEffect::CFlashlightEffect(int nEntIndex)
 	}
 	else
 	{
-		m_FlashlightTexture.Init( "effects/flashlight001", TEXTURE_GROUP_OTHER, true );
+		m_FlashlightTexture.Init( "effects/flashlight001rtbr", TEXTURE_GROUP_OTHER, true );
 	}
 }
 
@@ -500,7 +504,7 @@ void CFlashlightEffect::LightOff()
 
 CHeadlightEffect::CHeadlightEffect() 
 {
-
+	m_HeadlightTexture.Init("effects/headlight001", TEXTURE_GROUP_OTHER, true);
 }
 
 CHeadlightEffect::~CHeadlightEffect()
@@ -526,8 +530,8 @@ void CHeadlightEffect::UpdateLight( const Vector &vecPos, const Vector &vecDir, 
 		
 	state.m_vecLightOrigin = vecPos;
 
-	state.m_fHorizontalFOVDegrees = 45.0f;
-	state.m_fVerticalFOVDegrees = 30.0f;
+	state.m_fHorizontalFOVDegrees = r_airboatflashlighthfov.GetFloat();
+	state.m_fVerticalFOVDegrees = r_airboatflashlightvfov.GetFloat();
 	state.m_fQuadraticAtten = r_flashlightquadratic.GetFloat();
 	state.m_fLinearAtten = r_flashlightlinear.GetFloat();
 	state.m_fConstantAtten = r_flashlightconstant.GetFloat();
@@ -538,7 +542,7 @@ void CHeadlightEffect::UpdateLight( const Vector &vecPos, const Vector &vecDir, 
 	state.m_NearZ = r_flashlightnear.GetFloat();
 	state.m_FarZ = r_flashlightfar.GetFloat();
 	state.m_bEnableShadows = true;
-	state.m_pSpotlightTexture = m_FlashlightTexture;
+	state.m_pSpotlightTexture = m_HeadlightTexture;
 	state.m_nSpotlightTextureFrame = 0;
 	
 	if( GetFlashlightHandle() == CLIENTSHADOW_INVALID_HANDLE )

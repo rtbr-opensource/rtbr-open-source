@@ -19,7 +19,6 @@
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
-
 //Concussive explosion entity
 
 class CTEConcussiveExplosion : public CTEParticleSystem
@@ -86,6 +85,10 @@ void TE_ConcussiveExplosion( IRecipientFilter& filter, float delay,
 
 //Temp ent for the blast
 
+#ifdef MAPBASE
+#define SF_CONCUSSIVEBLAST_REPEATABLE 0x00000001
+#endif
+
 class CConcussiveBlast : public CBaseEntity
 {
 	DECLARE_DATADESC();
@@ -93,6 +96,13 @@ public:
 	DECLARE_CLASS( CConcussiveBlast, CBaseEntity );
 
 	int		m_spriteTexture;
+
+#ifdef MAPBASE
+	float	m_flDamage = 200;
+	float	m_flRadius = 256;
+	float	m_flMagnitude = 1.0;
+	string_t	m_iszSoundName;
+#endif
 
 	CConcussiveBlast( void ) {}
 
@@ -103,6 +113,11 @@ public:
 	void Precache( void )
 	{
 		m_spriteTexture = PrecacheModel( "sprites/lgtning.vmt" );
+
+#ifdef MAPBASE
+		if (m_iszSoundName != NULL_STRING)
+			PrecacheScriptSound(STRING(m_iszSoundName));
+#endif
 
 		BaseClass::Precache();
 	}
@@ -150,10 +165,32 @@ public:
 			);
 
 		//Do the radius damage
+#ifdef MAPBASE
+		RadiusDamage( CTakeDamageInfo( this, GetOwnerEntity(), m_flDamage, DMG_BLAST|DMG_DISSOLVE ), GetAbsOrigin(), m_flRadius, CLASS_NONE, NULL );
+#else
 		RadiusDamage( CTakeDamageInfo( this, GetOwnerEntity(), 200, DMG_BLAST|DMG_DISSOLVE ), GetAbsOrigin(), 256, CLASS_NONE, NULL );
+#endif
 
+#ifdef MAPBASE
+		if (m_iszSoundName != NULL_STRING)
+			EmitSound(STRING(m_iszSoundName));
+
+		if (!HasSpawnFlags(SF_CONCUSSIVEBLAST_REPEATABLE))
+#endif
 		UTIL_Remove( this );
 	}
+
+#ifdef MAPBASE
+	void InputExplode( inputdata_t &inputdata )
+	{
+		Explode(m_flMagnitude);
+	}
+
+	void InputExplodeWithMagnitude( inputdata_t &inputdata )
+	{
+		Explode(inputdata.value.Int());
+	}
+#endif
 };
 
 LINK_ENTITY_TO_CLASS( concussiveblast, CConcussiveBlast );
@@ -165,8 +202,17 @@ BEGIN_DATADESC( CConcussiveBlast )
 
 //	DEFINE_FIELD( m_spriteTexture,	FIELD_INTEGER ),
 
-END_DATADESC()
+#ifdef MAPBASE
+	DEFINE_KEYFIELD( m_flDamage, FIELD_FLOAT, "damage" ),
+	DEFINE_KEYFIELD( m_flRadius, FIELD_FLOAT, "radius" ),
+	DEFINE_KEYFIELD( m_flMagnitude, FIELD_FLOAT, "magnitude" ),
+	DEFINE_KEYFIELD( m_iszSoundName, FIELD_SOUNDNAME, "soundname" ),
 
+	DEFINE_INPUTFUNC( FIELD_VOID, "Explode", InputExplode ),
+	DEFINE_INPUTFUNC( FIELD_INTEGER, "ExplodeWithMagnitude", InputExplodeWithMagnitude ),
+#endif
+
+END_DATADESC()
 
 //-----------------------------------------------------------------------------
 // Purpose: Create a concussive blast entity and detonate it
@@ -182,11 +228,7 @@ void CreateConcussiveBlast( const Vector &origin, const Vector &surfaceNormal, C
 		pBlast->Explode( magnitude );
 	}
 }
-
 // Combine Guard weapon
-
-#if 0
-
 class CWeaponCGuard : public CBaseHLCombatWeapon
 {
 	DECLARE_DATADESC();
@@ -283,7 +325,7 @@ void CWeaponCGuard::AlertTargets( void )
 
 	// Fire the bullets
 	Vector vecSrc	 = pPlayer->Weapon_ShootPosition( );
-	Vector vecAiming = pPlayer->GetRadialAutoVector( NEW_AUTOAIM_RADIUS, NEW_AUTOAIM_DIST );
+	Vector vecAiming = pPlayer->GetAutoaimVector( AUTOAIM_SCALE_DEFAULT );
 
 	Vector	impactPoint	= vecSrc + ( vecAiming * MAX_TRACE_LENGTH );
 
@@ -374,8 +416,11 @@ void CWeaponCGuard::PrimaryAttack( void )
 
 	//UTIL_ScreenShake( GetAbsOrigin(), 10.0f, 100.0f, 2.0f, 128, SHAKE_START, false );
 
-	m_flChargeTime	= gpGlobals->curtime + 1.0f;
+	m_flChargeTime = gpGlobals->curtime;
 	m_bFired		= false;
+
+	// 1upD - Play the charge up and fire animation
+	SendWeaponAnim(ACT_VM_PRIMARYATTACK);
 }
 
 //-----------------------------------------------------------------------------
@@ -437,7 +482,7 @@ void CWeaponCGuard::DelayedFire( void )
 
 	// Fire the bullets
 	Vector vecSrc	 = pPlayer->Weapon_ShootPosition( );
-	Vector vecAiming = pPlayer->GetRadialAutoVector( NEW_AUTOAIM_RADIUS, NEW_AUTOAIM_DIST );
+	Vector vecAiming = pPlayer->GetAutoaimVector( AUTOAIM_SCALE_DEFAULT );
 
 	//Factor in the view kick
 	AddViewKick();
@@ -477,5 +522,3 @@ void CWeaponCGuard::AddViewKick( void )
 	
 	pPlayer->ViewPunch( QAngle( random->RandomInt( -8, -12 ), random->RandomInt( -2, 2 ), random->RandomInt( -8, 8 ) ) );
 }
-
-#endif

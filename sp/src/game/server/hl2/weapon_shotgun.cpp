@@ -107,6 +107,57 @@ END_DATADESC()
 
 acttable_t	CWeaponShotgun::m_acttable[] = 
 {
+#if EXPANDED_HL2_WEAPON_ACTIVITIES
+	// Note that ACT_IDLE_SHOTGUN_AGITATED seems to be a stand-in for ACT_IDLE_SHOTGUN on citizens,
+	// but that isn't acceptable for NPCs which don't use readiness activities.
+	{ ACT_IDLE,						ACT_IDLE_SHOTGUN,		true },
+
+	{ ACT_RANGE_ATTACK1,			ACT_RANGE_ATTACK_SHOTGUN,			true },
+	{ ACT_RELOAD,					ACT_RELOAD_SHOTGUN,					false },
+	{ ACT_WALK,						ACT_WALK_SHOTGUN,					true },
+	{ ACT_IDLE_ANGRY,				ACT_IDLE_ANGRY_SHOTGUN,				true },
+
+// Readiness activities (not aiming)
+	{ ACT_IDLE_RELAXED,				ACT_IDLE_SHOTGUN_RELAXED,		false },//never aims
+	{ ACT_IDLE_STIMULATED,			ACT_IDLE_SHOTGUN_STIMULATED,	false },
+	{ ACT_IDLE_AGITATED,			ACT_IDLE_ANGRY_SHOTGUN,			false },//always aims
+
+	{ ACT_WALK_RELAXED,				ACT_WALK_SHOTGUN_RELAXED,		false },//never aims
+	{ ACT_WALK_STIMULATED,			ACT_WALK_SHOTGUN_STIMULATED,	false },
+	{ ACT_WALK_AGITATED,			ACT_WALK_AIM_SHOTGUN,			false },//always aims
+
+	{ ACT_RUN_RELAXED,				ACT_RUN_SHOTGUN_RELAXED,		false },//never aims
+	{ ACT_RUN_STIMULATED,			ACT_RUN_SHOTGUN_STIMULATED,		false },
+	{ ACT_RUN_AGITATED,				ACT_RUN_AIM_SHOTGUN,			false },//always aims
+
+// Readiness activities (aiming)
+	{ ACT_IDLE_AIM_RELAXED,			ACT_IDLE_SHOTGUN_RELAXED,			false },//never aims	
+	{ ACT_IDLE_AIM_STIMULATED,		ACT_IDLE_AIM_SHOTGUN_STIMULATED,	false },
+	{ ACT_IDLE_AIM_AGITATED,		ACT_IDLE_ANGRY_SHOTGUN,				false },//always aims
+
+	{ ACT_WALK_AIM_RELAXED,			ACT_WALK_SHOTGUN_RELAXED,			false },//never aims
+	{ ACT_WALK_AIM_STIMULATED,		ACT_WALK_AIM_SHOTGUN_STIMULATED,	false },
+	{ ACT_WALK_AIM_AGITATED,		ACT_WALK_AIM_SHOTGUN,				false },//always aims
+
+	{ ACT_RUN_AIM_RELAXED,			ACT_RUN_SHOTGUN_RELAXED,			false },//never aims
+	{ ACT_RUN_AIM_STIMULATED,		ACT_RUN_AIM_SHOTGUN_STIMULATED,		false },
+	{ ACT_RUN_AIM_AGITATED,			ACT_RUN_AIM_SHOTGUN,				false },//always aims
+//End readiness activities
+
+	{ ACT_WALK_AIM,					ACT_WALK_AIM_SHOTGUN,				true },
+	{ ACT_WALK_CROUCH,				ACT_WALK_CROUCH_RIFLE,				true },
+	{ ACT_WALK_CROUCH_AIM,			ACT_WALK_CROUCH_AIM_RIFLE,			true },
+	{ ACT_RUN,						ACT_RUN_SHOTGUN,					true },
+	{ ACT_RUN_AIM,					ACT_RUN_AIM_SHOTGUN,				true },
+	{ ACT_RUN_CROUCH,				ACT_RUN_CROUCH_RIFLE,				true },
+	{ ACT_RUN_CROUCH_AIM,			ACT_RUN_CROUCH_AIM_RIFLE,			true },
+	{ ACT_GESTURE_RANGE_ATTACK1,	ACT_GESTURE_RANGE_ATTACK_SHOTGUN,	true },
+	{ ACT_RANGE_ATTACK1_LOW,		ACT_RANGE_ATTACK_SHOTGUN_LOW,		true },
+	{ ACT_RELOAD_LOW,				ACT_RELOAD_SHOTGUN_LOW,				false },
+	{ ACT_GESTURE_RELOAD,			ACT_GESTURE_RELOAD_SHOTGUN,			false },
+	{ ACT_COVER_LOW,				ACT_COVER_SHOTGUN_LOW,				false },
+	{ ACT_RANGE_AIM_LOW,			ACT_RANGE_AIM_SHOTGUN_LOW,			false },
+#else
 	{ ACT_IDLE,						ACT_IDLE_SMG1,					true },	// FIXME: hook to shotgun unique
 
 	{ ACT_RANGE_ATTACK1,			ACT_RANGE_ATTACK_SHOTGUN,			true },
@@ -152,9 +203,48 @@ acttable_t	CWeaponShotgun::m_acttable[] =
 	{ ACT_RANGE_ATTACK1_LOW,		ACT_RANGE_ATTACK_SHOTGUN_LOW,		true },
 	{ ACT_RELOAD_LOW,				ACT_RELOAD_SHOTGUN_LOW,				false },
 	{ ACT_GESTURE_RELOAD,			ACT_GESTURE_RELOAD_SHOTGUN,			false },
+#endif
+
+#if EXPANDED_HL2_WEAPON_ACTIVITIES
+	{ ACT_ARM,						ACT_ARM_SHOTGUN,				true },
+	{ ACT_DISARM,					ACT_DISARM_SHOTGUN,				true },
+#endif
+
+#if EXPANDED_HL2_COVER_ACTIVITIES
+	{ ACT_RANGE_AIM_MED,			ACT_RANGE_AIM_SHOTGUN_MED,			false },
+	{ ACT_RANGE_ATTACK1_MED,		ACT_RANGE_ATTACK_SHOTGUN_MED,		false },
+#endif
+
+#ifdef MAPBASE
+	// HL2:DM activities (for third-person animations in SP)
+	{ ACT_HL2MP_IDLE,                    ACT_HL2MP_IDLE_SHOTGUN,                    false },
+	{ ACT_HL2MP_RUN,                    ACT_HL2MP_RUN_SHOTGUN,                    false },
+	{ ACT_HL2MP_IDLE_CROUCH,            ACT_HL2MP_IDLE_CROUCH_SHOTGUN,            false },
+	{ ACT_HL2MP_WALK_CROUCH,            ACT_HL2MP_WALK_CROUCH_SHOTGUN,            false },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK,    ACT_HL2MP_GESTURE_RANGE_ATTACK_SHOTGUN,    false },
+	{ ACT_HL2MP_GESTURE_RELOAD,            ACT_HL2MP_GESTURE_RELOAD_SHOTGUN,        false },
+	{ ACT_HL2MP_JUMP,                    ACT_HL2MP_JUMP_SHOTGUN,                    false },
+#if EXPANDED_HL2DM_ACTIVITIES
+	{ ACT_HL2MP_WALK,					ACT_HL2MP_WALK_SHOTGUN,						false },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK2,	ACT_HL2MP_GESTURE_RANGE_ATTACK2_SHOTGUN,	false },
+#endif
+#endif
 };
 
 IMPLEMENT_ACTTABLE(CWeaponShotgun);
+
+#ifdef MAPBASE
+// Allows Weapon_BackupActivity() to access the shotgun's activity table.
+acttable_t *GetShotgunActtable()
+{
+	return CWeaponShotgun::m_acttable;
+}
+
+int GetShotgunActtableCount()
+{
+	return ARRAYSIZE(CWeaponShotgun::m_acttable);
+}
+#endif
 
 void CWeaponShotgun::Precache( void )
 {
@@ -315,6 +405,13 @@ bool CWeaponShotgun::StartReload( void )
 	pOwner->m_flNextAttack = gpGlobals->curtime;
 	m_flNextPrimaryAttack = gpGlobals->curtime + SequenceDuration();
 
+#ifdef MAPBASE
+	if ( pOwner->IsPlayer() )
+	{
+		static_cast<CBasePlayer*>(pOwner)->SetAnimation( PLAYER_RELOAD );
+	}
+#endif
+
 	m_bInReload = true;
 	return true;
 }
@@ -468,7 +565,11 @@ void CWeaponShotgun::PrimaryAttack( void )
 	pPlayer->SetAnimation( PLAYER_ATTACK1 );
 
 	// Don't fire again until fire animation has completed
+#ifdef MAPBASE
+	m_flNextPrimaryAttack = gpGlobals->curtime + GetViewModelSequenceDuration();
+#else
 	m_flNextPrimaryAttack = gpGlobals->curtime + SequenceDuration();
+#endif
 	m_iClip1 -= 1;
 
 	Vector	vecSrc		= pPlayer->Weapon_ShootPosition( );
@@ -507,57 +608,58 @@ void CWeaponShotgun::PrimaryAttack( void )
 void CWeaponShotgun::SecondaryAttack( void )
 {
 	// Only the player fires this way so we can cast
-	CBasePlayer *pPlayer = ToBasePlayer( GetOwner() );
+	CBasePlayer *pPlayer = ToBasePlayer(GetOwner());
 
 	if (!pPlayer)
 	{
 		return;
 	}
 
-	pPlayer->m_nButtons &= ~IN_ATTACK2;
 	// MUST call sound before removing a round from the clip of a CMachineGun
-	WeaponSound(WPN_DOUBLE);
+	WeaponSound(SINGLE);
 
 	pPlayer->DoMuzzleFlash();
 
-	SendWeaponAnim( ACT_VM_SECONDARYATTACK );
+	SendWeaponAnim(ACT_VM_SECONDARYATTACK);
 
 	// player "shoot" animation
-	pPlayer->SetAnimation( PLAYER_ATTACK1 );
+	pPlayer->SetAnimation(PLAYER_ATTACK1);
+
 
 	// Don't fire again until fire animation has completed
-	m_flNextPrimaryAttack = gpGlobals->curtime + SequenceDuration();
-	m_iClip1 -= 2;	// Shotgun uses same clip for primary and secondary attacks
-
-	Vector vecSrc	 = pPlayer->Weapon_ShootPosition();
-	Vector vecAiming = pPlayer->GetAutoaimVector( AUTOAIM_SCALE_DEFAULT );	
-
-	// Fire the bullets
 #ifdef MAPBASE
-	pPlayer->FireBullets( sk_plr_num_shotgun_pellets_double.GetInt(), vecSrc, vecAiming, GetBulletSpread(), MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 0, -1, -1, 0, NULL, false, false );
+	m_flNextPrimaryAttack = gpGlobals->curtime + GetViewModelSequenceDuration();
 #else
-	pPlayer->FireBullets( 12, vecSrc, vecAiming, GetBulletSpread(), MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 0, -1, -1, 0, NULL, false, false );
+	m_flNextPrimaryAttack = gpGlobals->curtime + SequenceDuration();
 #endif
-	pPlayer->ViewPunch( QAngle(random->RandomFloat( -5, 5 ),0,0) );
+	m_iClip1 -= 1;
 
-	pPlayer->SetMuzzleFlashTime( gpGlobals->curtime + 1.0 );
+	Vector	vecSrc = pPlayer->Weapon_ShootPosition();
+	Vector	vecAiming = pPlayer->GetAutoaimVector(AUTOAIM_SCALE_DEFAULT);
 
-	CSoundEnt::InsertSound( SOUND_COMBAT, GetAbsOrigin(), SOUNDENT_VOLUME_SHOTGUN, 0.2 );
+	pPlayer->SetMuzzleFlashTime(gpGlobals->curtime + 1.0);
+
+	// Fire the bullets, and force the first shot to be perfectly accuracy
+	pPlayer->FireBullets(sk_plr_num_shotgun_pellets.GetInt(), vecSrc, vecAiming, GetBulletSpread() * 2, MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 0, -1, -1, 0, NULL, true, true);
+
+	pPlayer->ViewPunch( QAngle( random->RandomFloat( -2, -1 ), random->RandomFloat( -2, 2 ), 0 ) );
+
+	CSoundEnt::InsertSound(SOUND_COMBAT, GetAbsOrigin(), SOUNDENT_VOLUME_SHOTGUN, 0.2, GetOwner());
 
 	if (!m_iClip1 && pPlayer->GetAmmoCount(m_iPrimaryAmmoType) <= 0)
 	{
 		// HEV suit - indicate out of ammo condition
-		pPlayer->SetSuitUpdate("!HEV_AMO0", FALSE, 0); 
+		pPlayer->SetSuitUpdate("!HEV_AMO0", FALSE, 0);
 	}
 
-	if( m_iClip1 )
+	if (m_iClip1)
 	{
 		// pump so long as some rounds are left.
-		m_bNeedPump = true;
+		m_bNeedPump = false;
 	}
 
-	m_iSecondaryAttacks++;
-	gamestats->Event_WeaponFired( pPlayer, false, GetClassname() );
+	m_iPrimaryAttacks++;
+	gamestats->Event_WeaponFired(pPlayer, true, GetClassname());
 }
 	
 //-----------------------------------------------------------------------------

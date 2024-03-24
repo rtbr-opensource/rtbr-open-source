@@ -22,6 +22,7 @@
 
 #ifdef CLIENT_DLL
 	#include "c_te_effect_dispatch.h"
+#include "util_shared.h"
 #else
 	#include "te_effect_dispatch.h"
 	#include "soundent.h"
@@ -74,8 +75,6 @@ ConVar hl2_episodic( "hl2_episodic", "0", FCVAR_REPLICATED );
 
 bool CBaseEntity::m_bAllowPrecache = false;
 
-Vector playerMuzzleVector;
-
 // Set default max values for entities based on the existing constants from elsewhere
 float k_flMaxEntityPosCoord = MAX_COORD_FLOAT;
 float k_flMaxEntityEulerAngle = 360.0 * 1000.0f; // really should be restricted to +/-180, but some code doesn't adhere to this.  let's just trap NANs, etc
@@ -85,9 +84,13 @@ float k_flMaxEntityEulerAngle = 360.0 * 1000.0f; // really should be restricted 
 float k_flMaxEntitySpeed = k_flMaxVelocity * 2.0f;
 float k_flMaxEntitySpinRate = k_flMaxAngularVelocity * 10.0f;
 
+Vector playerMuzzleVector;
+
 ConVar	ai_shot_bias_min( "ai_shot_bias_min", "-1.0", FCVAR_REPLICATED );
 ConVar	ai_shot_bias_max( "ai_shot_bias_max", "1.0", FCVAR_REPLICATED );
 ConVar	ai_debug_shoot_positions( "ai_debug_shoot_positions", "0", FCVAR_REPLICATED | FCVAR_CHEAT );
+
+ConVar	tracer_debug_effect("tracer_debug_effect", "0", FCVAR_NONE);
 
 // Utility func to throttle rate at which the "reasonable position" spew goes out
 static double s_LastEntityReasonableEmitTime;
@@ -1619,7 +1622,7 @@ typedef CTraceFilterSimpleList CBulletsTraceFilter;
 void CBaseEntity::FireBullets( const FireBulletsInfo_t &info )
 {
 #if defined(MAPBASE_VSCRIPT) && defined(GAME_DLL)
-	if (m_ScriptScope.IsInitialized())
+	if ( m_ScriptScope.IsInitialized() && g_Hook_FireBullets.CanRunInScope( m_ScriptScope ) )
 	{
 		HSCRIPT hInfo = g_pScriptVM->RegisterInstance( const_cast<FireBulletsInfo_t*>(&info) );
 
@@ -1766,7 +1769,6 @@ void CBaseEntity::FireBullets( const FireBulletsInfo_t &info )
 		}
 		else
 		{
-
 			// Don't run the biasing code for the player at the moment.
 			vecDir = Manipulator.ApplySpread( info.m_vecSpread );
 		}
@@ -1937,7 +1939,11 @@ void CBaseEntity::FireBullets( const FireBulletsInfo_t &info )
 			{
 				flActualDamage = g_pGameRules->GetAmmoDamage( pAttacker, tr.m_pEnt, info.m_iAmmoType );
 			}
+#ifdef MAPBASE
+			else if ((info.m_nFlags & FIRE_BULLETS_NO_AUTO_GIB_TYPE) == 0)
+#else
 			else
+#endif
 			{
 				nActualDamageType = nDamageType | ((flActualDamage > 16) ? DMG_ALWAYSGIB : DMG_NEVERGIB );
 			}
@@ -2022,24 +2028,30 @@ void CBaseEntity::FireBullets( const FireBulletsInfo_t &info )
 					Tracer.endpos = info.m_vecSrc + ( vecEnd - info.m_vecSrc ) * fPortalFraction;
 				}
 #endif //#ifdef PORTAL
-
+#ifdef GAME_DLL
 				//MakeTracer( vecTracerSrc, Tracer, pAmmoDef->TracerType(info.m_iAmmoType) );
 				// Particle Tracer Code
 				QAngle vecMuzzleAngles;
 				CBaseCombatCharacter *pBCC = MyCombatCharacterPointer();
+				//DevMsg("Entity: %s \n", this->GetClassname());
 
 				if (pBCC != NULL)
 				{
+					//DevMsg("Character: %s \n", pBCC->GetDebugName());
 					VectorAngles(Vector(Tracer.startpos - Tracer.endpos), vecMuzzleAngles);
+					//vecMuzzleAngles = QAngle(vecMuzzleAngles.x * -1, vecMuzzleAngles.y * -1, vecMuzzleAngles.z * -1);
 
 					CBaseCombatWeapon* weaponActive = pBCC->GetActiveWeapon();
 					if (weaponActive != NULL) {
+						//DevMsg("Ammo Type: %i \n", weaponActive->GetPrimaryAmmoType());
 
 						CBasePlayer *pPlayer = ToBasePlayer(this);
 
 						if (pPlayer != NULL) {
 							vecTracerSrc = playerMuzzleVector;
 						}
+
+						//DispatchParticleEffect("weapon_tracer_debug", vecTracerSrc, vecTracerDest, vecMuzzleAngles);
 
 						switch (weaponActive->GetPrimaryAmmoType()) {
 						case 1:
@@ -2073,16 +2085,15 @@ void CBaseEntity::FireBullets( const FireBulletsInfo_t &info )
 					else if (FClassnameIs(pBCC, "npc_helicopter") || FClassnameIs(pBCC, "npc_combinegunship") || FClassnameIs(pBCC, "npc_combinedropship"))
 						DispatchParticleEffect("weapon_tracer_pulse_heavy", vecTracerSrc, vecTracerDest, vecMuzzleAngles);
 				} else if(this != NULL) {
-					if (FClassnameIs(this, "func_tank")) {
-						DispatchParticleEffect("weapon_tracer_gr9", vecTracerSrc, vecTracerDest, vecMuzzleAngles);
-					}
-					else if (FClassnameIs(this, "prop_vehicle_airboat") || FClassnameIs(this, "func_tankairboatgun")) {
-						DispatchParticleEffect("weapon_tracer_pulse", vecTracerSrc, vecTracerDest, vecMuzzleAngles);
-					}
+						if (FClassnameIs(this, "func_tank")) {
+							DispatchParticleEffect("weapon_tracer_gr9", vecTracerSrc, vecTracerDest, vecMuzzleAngles);
+						}
+						else if (FClassnameIs(this, "prop_vehicle_airboat") || FClassnameIs(this, "func_tankairboatgun")) {
+							DispatchParticleEffect("weapon_tracer_pulse", vecTracerSrc, vecTracerDest, vecMuzzleAngles);
+						}
 				}
 
-
-
+#endif
 #ifdef PORTAL
 				if ( pShootThroughPortal )
 				{
@@ -2131,7 +2142,6 @@ void CBaseEntity::FireBullets( const FireBulletsInfo_t &info )
 		TE_HL2MPFireBullets( entindex(), tr.startpos, info.m_vecDirShooting, info.m_iAmmoType, iEffectSeed, info.m_iShots, info.m_vecSpread.x, bDoTracers, bDoImpacts );
 	}
 #endif
-
 #ifdef GAME_DLL
 	ApplyMultiDamage();
 
@@ -2143,16 +2153,15 @@ void CBaseEntity::FireBullets( const FireBulletsInfo_t &info )
 	}
 #endif
 }
-
 #ifdef GAME_DLL
 void MuzzleVec_CC(const CCommand &args)
 {
 	playerMuzzleVector = Vector(V_atof(args.Arg(1)), V_atof(args.Arg(2)), V_atof(args.Arg(3)));
+	//DevMsg("Muzzle Vectors: %.2f %.2f %.2f \n", playerMuzzleVector.x, playerMuzzleVector.y, playerMuzzleVector.z);
 }
 
 ConCommand send_muzzle_vectors("send_muzzle_vectors", MuzzleVec_CC, "Used by game.", FCVAR_HIDDEN);
 #endif
-
 //-----------------------------------------------------------------------------
 // Should we draw bubbles underwater?
 //-----------------------------------------------------------------------------
@@ -2300,6 +2309,7 @@ void CBaseEntity::ComputeTracerStartPosition( const Vector &vecShotSrc, Vector *
 		// adjust tracer position for player
 		Vector forward, right;
 		CBasePlayer *pPlayer = ToBasePlayer( this );
+
 		pPlayer->EyeVectors( &forward, &right, NULL );
 		*pVecTracerStart = vecShotSrc + Vector ( 0 , 0 , -4 ) + right * 2 + forward * 16;
 	}
@@ -2465,7 +2475,66 @@ void CBaseEntity::ModifyEmitSoundParams( EmitSound_t &params )
 		params.m_pSoundName = GameRules()->TranslateEffectForVisionFilter( "sounds", params.m_pSoundName );
 	}
 #endif
+
+#ifdef MAPBASE_VSCRIPT
+	if (m_ScriptScope.IsInitialized() && g_Hook_ModifyEmitSoundParams.CanRunInScope( m_ScriptScope ))
+	{
+		HSCRIPT hParams = g_pScriptVM->RegisterInstance( reinterpret_cast<ScriptEmitSound_t*>(&params) );
+
+		// params
+		ScriptVariant_t functionReturn;
+		ScriptVariant_t args[] = { ScriptVariant_t( hParams ) };
+		g_Hook_ModifyEmitSoundParams.Call( m_ScriptScope, &functionReturn, args );
+
+		g_pScriptVM->RemoveInstance( hParams );
+	}
+#endif
 }
+
+#if defined(MAPBASE) && defined(GAME_DLL)
+void CBaseEntity::ModifySentenceParams( int &iSentenceIndex, int &iChannel, float &flVolume, soundlevel_t &iSoundlevel, int &iFlags, int &iPitch,
+	const Vector **pOrigin, const Vector **pDirection, bool &bUpdatePositions, float &soundtime, int &iSpecialDSP, int &iSpeakerIndex )
+{
+#ifdef MAPBASE_VSCRIPT
+	if (m_ScriptScope.IsInitialized() && g_Hook_ModifySentenceParams.CanRunInScope( m_ScriptScope ))
+	{
+		// This is a bit of a hack, but for consistency with ModifyEmitSoundParams, put them into an EmitSound_t params
+		ScriptEmitSound_t params;
+		params.m_pSoundName = engine->SentenceNameFromIndex( iSentenceIndex );
+		params.m_nChannel = iChannel;
+		params.m_flVolume = flVolume;
+		params.m_SoundLevel = iSoundlevel;
+		params.m_nFlags = iFlags;
+		params.m_nPitch = iPitch;
+		params.m_pOrigin = *pOrigin;
+		params.m_flSoundTime = soundtime;
+		params.m_nSpecialDSP = iSpecialDSP;
+		params.m_nSpeakerEntity = iSpeakerIndex;
+
+		HSCRIPT hParams = g_pScriptVM->RegisterInstance( &params );
+
+		// params
+		ScriptVariant_t functionReturn;
+		ScriptVariant_t args[] = { ScriptVariant_t( hParams ) };
+		if (g_Hook_ModifySentenceParams.Call( m_ScriptScope, &functionReturn, args ))
+		{
+			iSentenceIndex = engine->SentenceIndexFromName( params.m_pSoundName );
+			iChannel = params.m_nChannel;
+			flVolume = params.m_flVolume;
+			iSoundlevel = params.m_SoundLevel;
+			iFlags = params.m_nFlags;
+			iPitch = params.m_nPitch;
+			*pOrigin = params.m_pOrigin;
+			soundtime = params.m_flSoundTime;
+			iSpecialDSP = params.m_nSpecialDSP;
+			iSpeakerIndex = params.m_nSpeakerEntity;
+		}
+
+		g_pScriptVM->RemoveInstance( hParams );
+	}
+#endif
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // These methods encapsulate MOVETYPE_FOLLOW, which became obsolete
@@ -2489,6 +2558,18 @@ void CBaseEntity::FollowEntity( CBaseEntity *pBaseEntity, bool bBoneMerge )
 		StopFollowingEntity();
 	}
 }
+
+#ifdef MAPBASE_VSCRIPT
+void CBaseEntity::ScriptFollowEntity( HSCRIPT hBaseEntity, bool bBoneMerge )
+{
+	FollowEntity( ToEnt( hBaseEntity ), bBoneMerge );
+}
+
+HSCRIPT CBaseEntity::ScriptGetFollowedEntity()
+{
+	return ToHScript( GetFollowedEntity() );
+}
+#endif
 
 void CBaseEntity::SetEffectEntity( CBaseEntity *pEffectEnt )
 {
@@ -2678,4 +2759,359 @@ bool CBaseEntity::IsToolRecording() const
 	return false;
 #endif
 }
+#endif
+
+#ifdef MAPBASE_VSCRIPT
+HSCRIPT CBaseEntity::GetOrCreatePrivateScriptScope()
+{
+	ValidateScriptScope();
+	return m_ScriptScope;
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CBaseEntity::ScriptSetParent(HSCRIPT hParent, const char *szAttachment)
+{
+	CBaseEntity *pParent = ToEnt(hParent);
+	if ( !pParent )
+	{
+		SetParent(NULL);
+		return;
+	}
+
+	// if an attachment is specified, the parent needs to be CBaseAnimating
+	if ( szAttachment && szAttachment[0] != '\0' )
+	{
+		CBaseAnimating *pAnimating = pParent->GetBaseAnimating();
+		if ( !pAnimating )
+		{
+			Warning("ERROR: Tried to set parent for entity %s (%s), but its parent has no model.\n", GetClassname(), GetDebugName());
+			return;
+		}
+		
+		int iAttachment = pAnimating->LookupAttachment(szAttachment);
+		if ( iAttachment <= 0 )
+		{
+			Warning("ERROR: Tried to set parent for entity %s (%s), but it has no attachment named %s.\n", GetClassname(), GetDebugName(), szAttachment);
+			return;
+		}
+
+		SetParent(pParent, iAttachment);
+		SetMoveType(MOVETYPE_NONE);
+		return;
+	}
+	
+	SetParent(pParent);
+}
+
+HSCRIPT	CBaseEntity::GetScriptOwnerEntity()
+{
+	return ToHScript(GetOwnerEntity());
+}
+
+void CBaseEntity::SetScriptOwnerEntity(HSCRIPT pOwner)
+{
+	SetOwnerEntity(ToEnt(pOwner));
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+const Vector& CBaseEntity::ScriptGetColorVector()
+{
+	static Vector vecColor;
+	vecColor.Init( m_clrRender.GetR(), m_clrRender.GetG(), m_clrRender.GetB() );
+	return vecColor;
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CBaseEntity::ScriptSetColorVector( const Vector& vecColor )
+{
+	SetRenderColor( vecColor.x, vecColor.y, vecColor.z );
+}
+
+void CBaseEntity::ScriptSetColor( int r, int g, int b )
+{
+	SetRenderColor( r, g, b );
+}
+
+//-----------------------------------------------------------------------------
+// Vscript: Gets the entity matrix transform
+//-----------------------------------------------------------------------------
+HSCRIPT CBaseEntity::ScriptEntityToWorldTransform( void )
+{
+	return g_pScriptVM->RegisterInstance( &EntityToWorldTransform() );
+}
+
+//-----------------------------------------------------------------------------
+// Vscript: Gets the entity's physics object if it has one
+//-----------------------------------------------------------------------------
+HSCRIPT CBaseEntity::ScriptGetPhysicsObject( void )
+{
+	if (VPhysicsGetObject())
+		return g_pScriptVM->RegisterInstance( VPhysicsGetObject() );
+	else
+		return NULL;
+}
+
+
+#ifdef GAME_DLL
+#define SCRIPT_NEVER_THINK TICK_NEVER_THINK
+#else
+#define SCRIPT_NEVER_THINK CLIENT_THINK_NEVER
+#endif
+
+static inline void ScriptStopContextThink( scriptthinkfunc_t *context )
+{
+	Assert( context->m_hfnThink );
+	Assert( context->m_flNextThink == SCRIPT_NEVER_THINK );
+
+	g_pScriptVM->ReleaseScript( context->m_hfnThink );
+	context->m_hfnThink = NULL;
+}
+
+//-----------------------------------------------------------------------------
+//
+//-----------------------------------------------------------------------------
+void CBaseEntity::ScriptContextThink()
+{ 
+
+	float flNextThink = FLT_MAX;
+	float flScheduled = 0.0f;
+
+	ScriptVariant_t arg = m_hScriptInstance;
+
+	for ( int i = 0; i < m_ScriptThinkFuncs.Count(); ++i )
+	{
+		scriptthinkfunc_t *cur = m_ScriptThinkFuncs[i];
+
+		if ( cur->m_flNextThink == SCRIPT_NEVER_THINK )
+		{
+			continue;
+		}
+
+		if ( cur->m_flNextThink > gpGlobals->curtime )
+		{
+			if ( ( flScheduled == 0.0f ) || ( flScheduled > cur->m_flNextThink ) )
+			{
+				flScheduled = cur->m_flNextThink;
+			}
+			continue;
+		}
+
+#ifdef _DEBUG
+		// going to run the script func
+		cur->m_flNextThink = 0;
+#endif
+
+		ScriptVariant_t varReturn;
+
+#ifndef CLIENT_DLL
+		if ( !cur->m_bNoParam )
+		{
+#endif
+			g_pScriptVM->ExecuteFunction( cur->m_hfnThink, &arg, 1, &varReturn, NULL, true );
+#ifndef CLIENT_DLL
+		}
+		else
+		{
+			g_pScriptVM->ExecuteFunction( cur->m_hfnThink, NULL, 0, &varReturn, NULL, true );
+		}
+#endif
+
+		if ( cur->m_flNextThink == SCRIPT_NEVER_THINK )
+		{
+			// stopped from script while thinking
+			continue;
+		}
+
+		float flReturn;
+		if ( !varReturn.AssignTo( &flReturn ) )
+		{
+			varReturn.Free();
+			cur->m_flNextThink = SCRIPT_NEVER_THINK;
+			continue;
+		}
+
+		if ( flReturn < 0.0f )
+		{
+			cur->m_flNextThink = SCRIPT_NEVER_THINK;
+			continue;
+		}
+
+		if ( flReturn < flNextThink )
+		{
+			flNextThink = flReturn;
+		}
+
+		cur->m_flNextThink = gpGlobals->curtime + flReturn - 0.001f;
+	}
+
+	// deferred safe removal
+	for ( int i = 0; i < m_ScriptThinkFuncs.Count(); )
+	{
+		scriptthinkfunc_t *cur = m_ScriptThinkFuncs[i];
+		if ( cur->m_flNextThink == SCRIPT_NEVER_THINK )
+		{
+			ScriptStopContextThink( cur );
+			delete cur;
+			m_ScriptThinkFuncs.Remove(i);
+		}
+		else ++i;
+	}
+
+	if ( flNextThink < FLT_MAX )
+	{
+		if ( flScheduled > 0.0f )
+		{
+			flNextThink = min( gpGlobals->curtime + flNextThink, flScheduled );
+		}
+		else
+		{
+			flNextThink = gpGlobals->curtime + flNextThink;
+		}
+	}
+	else
+	{
+		if ( flScheduled > 0.0f )
+		{
+			flNextThink = flScheduled;
+		}
+		else
+		{
+			flNextThink = SCRIPT_NEVER_THINK;
+		}
+	}
+
+#ifdef _DEBUG
+#ifdef GAME_DLL
+	int nNextThinkTick = GetNextThinkTick("ScriptContextThink");
+	float flNextThinkTime = TICKS_TO_TIME(nNextThinkTick);
+
+	// If internal next think tick is earlier than what we have here with flNextThink,
+	// whoever set that think may fail. In worst case scenario the entity may stop thinking.
+	if ( nNextThinkTick > gpGlobals->tickcount )
+	{
+		if ( flNextThink == SCRIPT_NEVER_THINK )
+			Assert(0);
+		if ( flNextThinkTime < flNextThink )
+			Assert(0);
+	}
+#endif
+#endif
+
+#ifdef GAME_DLL
+	SetNextThink( flNextThink, "ScriptContextThink" );
+#else
+	SetNextClientThink( flNextThink );
+#endif
+}
+
+#ifndef CLIENT_DLL
+// see ScriptSetThink
+static bool s_bScriptContextThinkNoParam = false;
+#endif
+
+//-----------------------------------------------------------------------------
+//
+//-----------------------------------------------------------------------------
+void CBaseEntity::ScriptSetContextThink( const char* szContext, HSCRIPT hFunc, float flTime )
+{
+#ifdef CLIENT_DLL
+	// Context thinking is not yet supported on client, entities can only have 1 think function.
+	// C_World does not have one by default, so it is safe to set its.
+	if ( !IsWorld() )
+	{
+		g_pScriptVM->RaiseException("SetContextThink is only supported on C_World");
+		return;
+	}
+#endif
+
+	scriptthinkfunc_t *pf = NULL;
+	unsigned hash = szContext ? HashString( szContext ) : 0;
+
+	FOR_EACH_VEC( m_ScriptThinkFuncs, i )
+	{
+		scriptthinkfunc_t *f = m_ScriptThinkFuncs[i];
+		if ( hash == f->m_iContextHash )
+		{
+			pf = f;
+			break;
+		}
+	}
+
+	if ( hFunc )
+	{
+		// add new
+		if ( !pf )
+		{
+			pf = new scriptthinkfunc_t;
+
+			m_ScriptThinkFuncs.SetGrowSize(1);
+			m_ScriptThinkFuncs.AddToTail( pf );
+
+			pf->m_iContextHash = hash;
+#ifndef CLIENT_DLL
+			pf->m_bNoParam = s_bScriptContextThinkNoParam;
+#endif
+		}
+		// update existing
+		else
+		{
+#ifdef _DEBUG
+			if ( pf->m_flNextThink == 0 )
+			{
+				Warning("Script think ('%s') was changed while it was thinking!\n", szContext);
+			}
+#endif
+			g_pScriptVM->ReleaseScript( pf->m_hfnThink );
+		}
+
+		float nextthink = gpGlobals->curtime + flTime;
+
+		pf->m_hfnThink = hFunc;
+		pf->m_flNextThink = nextthink;
+
+#ifdef GAME_DLL
+		int nexttick = GetNextThinkTick( RegisterThinkContext( "ScriptContextThink" ) );
+		if ( nexttick <= 0 || TICKS_TO_TIME(nexttick) > nextthink )
+		{
+			SetContextThink( &CBaseEntity::ScriptContextThink, nextthink, "ScriptContextThink" );
+		}
+#else
+		{
+			// let it self adjust
+			SetNextClientThink( gpGlobals->curtime );
+		}
+#endif
+	}
+	// null func input, think exists
+	else if ( pf )
+	{
+		pf->m_flNextThink = SCRIPT_NEVER_THINK;
+	}
+}
+
+#ifndef CLIENT_DLL
+//-----------------------------------------------------------------------------
+// m_bNoParam and s_bScriptContextThinkNoParam exist only to keep backwards compatibility
+// and are an alternative to this script closure:
+//
+//	function CBaseEntity::SetThink( func, time )
+//	{
+//		SetContextThink( "", function(_){ return func() }, time )
+//	}
+//-----------------------------------------------------------------------------
+void CBaseEntity::ScriptSetThink( HSCRIPT hFunc, float time )
+{
+	s_bScriptContextThinkNoParam = true;
+	ScriptSetContextThink( NULL, hFunc, time );
+	s_bScriptContextThinkNoParam = false;
+}
+
+void CBaseEntity::ScriptStopThink()
+{
+	ScriptSetContextThink( NULL, NULL, 0.0f );
+}
+#endif
 #endif

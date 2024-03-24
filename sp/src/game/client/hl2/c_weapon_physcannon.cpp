@@ -10,88 +10,174 @@
 #include "fx.h"
 #include "particles_localspace.h"
 #include "view.h"
+#include "particles_new.h"
 #include "particles_attractor.h"
 
-class C_WeaponPhysCannon: public C_BaseHLCombatWeapon
+class C_WeaponPhysCannon : public C_BaseHLCombatWeapon
 {
-	DECLARE_CLASS( C_WeaponPhysCannon, C_BaseHLCombatWeapon );
+	DECLARE_CLASS(C_WeaponPhysCannon, C_BaseHLCombatWeapon);
 public:
-	C_WeaponPhysCannon( void );
+	C_WeaponPhysCannon(void);
 
 	DECLARE_CLIENTCLASS();
 	DECLARE_PREDICTABLE();
+	DECLARE_DATADESC();
 
-	virtual void OnDataChanged( DataUpdateType_t updateType );
-	virtual int DrawModel( int flags );
-	virtual void ClientThink( void );
+	virtual void OnDataChanged(DataUpdateType_t updateType);
+	virtual int DrawModel(int flags);
+	virtual void ClientThink(void);
+	virtual void Precache(void);
+	virtual void ItemPostFrame(void);
+	virtual void OnRestore(void);
 
-	virtual bool ShouldUseLargeViewModelVROverride() OVERRIDE { return true; }
+	void StartParticles(void);
+	void StopParticles(void);
+	void StartHoldParticles();
+	void StopHoldParticles();
+	void RemovePuntParticle();
+
+	virtual bool ShouldUseLargeViewModelVROverride() OVERRIDE{ return true; }
 
 private:
 
-	bool	SetupEmitter( void );
+	bool	SetupEmitter(void);
 
 	bool	m_bIsCurrentlyUpgrading;
 	float	m_flTimeForceView;
 	float	m_flTimeIgnoreForceView;
 	bool	m_bWasUpgraded;
 
+	bool m_bWeaponActive;
+	bool m_bIsHolding;
+	bool m_bEffectsOn;
+
+	float m_flWeaponHoldingStartTime;
+
+	bool m_bEffectsEmitting;
+
+	float m_flScaleFactor;
+	float m_flInterpolatedScaleFactor;
+
+	Vector m_vLaunchPos;
+	Vector m_vClientLaunchPos;
+
+	CNewParticleEffect *m_hProngIdle;
+	CNewParticleEffect *m_hCoreIdle;
+	CNewParticleEffect *m_hPuntBeam;
+	CNewParticleEffect *m_hHoldBeam1;
+	CNewParticleEffect *m_hHoldBeam2;
+
 	CSmartPtr<CLocalSpaceEmitter>	m_pLocalEmitter;
 	CSmartPtr<CSimpleEmitter>		m_pEmitter;
 	CSmartPtr<CParticleAttractor>	m_pAttractor;
 };
 
-STUB_WEAPON_CLASS_IMPLEMENT( weapon_physcannon, C_WeaponPhysCannon );
+STUB_WEAPON_CLASS_IMPLEMENT(weapon_physcannon, C_WeaponPhysCannon);
 
-IMPLEMENT_CLIENTCLASS_DT( C_WeaponPhysCannon, DT_WeaponPhysCannon, CWeaponPhysCannon )
-	RecvPropBool( RECVINFO( m_bIsCurrentlyUpgrading ) ),
-	RecvPropFloat( RECVINFO( m_flTimeForceView) ), 
+#define CORE_IDLE_ATTACH PATTACH_WORLDORIGIN
+#define CORE_IDLE_LIN_INTERP_TIME 0.25f
+
+
+IMPLEMENT_CLIENTCLASS_DT(C_WeaponPhysCannon, DT_WeaponPhysCannon, CWeaponPhysCannon)
+RecvPropBool(RECVINFO(m_bIsCurrentlyUpgrading)),
+RecvPropFloat(RECVINFO(m_flTimeForceView)),
+RecvPropBool(RECVINFO(m_bWeaponActive)),
+RecvPropBool(RECVINFO(m_bIsHolding)),
+RecvPropBool(RECVINFO(m_bEffectsOn)),
+RecvPropVector(RECVINFO(m_vLaunchPos)),
+RecvPropFloat(RECVINFO(m_flScaleFactor)),
 END_RECV_TABLE()
+
+BEGIN_DATADESC(C_WeaponPhysCannon)
+DEFINE_FIELD(m_bEffectsEmitting, FIELD_BOOLEAN),
+DEFINE_FIELD(m_bIsHolding, FIELD_BOOLEAN),
+DEFINE_FIELD(m_bEffectsOn, FIELD_BOOLEAN),
+DEFINE_FIELD(m_flScaleFactor, FIELD_FLOAT),
+DEFINE_FIELD(m_vLaunchPos, FIELD_VECTOR),
+DEFINE_FIELD(m_bWeaponActive, FIELD_BOOLEAN),
+DEFINE_FIELD(m_flWeaponHoldingStartTime, FIELD_FLOAT),
+DEFINE_FIELD(m_flInterpolatedScaleFactor, FIELD_FLOAT),
+END_DATADESC()
 
 //-----------------------------------------------------------------------------
 // Constructor
 //-----------------------------------------------------------------------------
-C_WeaponPhysCannon::C_WeaponPhysCannon( void )
+C_WeaponPhysCannon::C_WeaponPhysCannon(void)
 {
 	m_bWasUpgraded = false;
 	m_flTimeIgnoreForceView = -1;
 }
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-void C_WeaponPhysCannon::OnDataChanged( DataUpdateType_t updateType )
+void C_WeaponPhysCannon::Precache() {
+	PrecacheParticleSystem("weapon_physgun_prongidle");
+	PrecacheParticleSystem("weapon_physgun_coreidle");
+	PrecacheParticleSystem("weapon_physgun_holdbeam");
+	PrecacheParticleSystem("weapon_physgun_puntbeam");
+	BaseClass::Precache();
+}
+
+void C_WeaponPhysCannon::OnRestore() {
+
+	BaseClass::OnRestore();
+
+	m_bEffectsEmitting = false;
+}
+
+
+
+void C_WeaponPhysCannon::ItemPostFrame() {
+	BaseClass::ItemPostFrame();
+}
+//----------------------------------------------------------------------------
+//----------------------------------------------------------------------------
+void C_WeaponPhysCannon::OnDataChanged(DataUpdateType_t updateType)
 {
-	BaseClass::OnDataChanged( updateType );
-	SetNextClientThink( CLIENT_THINK_ALWAYS );
+	CBasePlayer *pOwner = ToBasePlayer(GetOwner());
+
+	if (m_vClientLaunchPos != m_vLaunchPos && pOwner) {
+		if ( pOwner->GetActiveWeapon() == this ) {
+			m_vClientLaunchPos = m_vLaunchPos;
+
+			CNewParticleEffect *pPuntBeam = ParticleProp()->Create( "weapon_physgun_puntbeam", PATTACH_ABSORIGIN_FOLLOW );
+
+			ParticleProp()->AddControlPoint( pPuntBeam, 0, pOwner->GetViewModel(), PATTACH_POINT_FOLLOW, "muzzle" );
+			ParticleProp()->AddControlPoint( pPuntBeam, 1, NULL, PATTACH_WORLDORIGIN, 0, m_vClientLaunchPos );
+			m_hPuntBeam = pPuntBeam;
+		}
+	}
+
+	BaseClass::OnDataChanged(updateType);
+	SetNextClientThink(CLIENT_THINK_ALWAYS);
+
 }
 
 //-----------------------------------------------------------------------------
 // Purpose: 
 // Output : Returns true on success, false on failure.
 //-----------------------------------------------------------------------------
-bool C_WeaponPhysCannon::SetupEmitter( void )
+bool C_WeaponPhysCannon::SetupEmitter(void)
 {
-	if ( !m_pLocalEmitter.IsValid() )
+	if (!m_pLocalEmitter.IsValid())
 	{
-		m_pLocalEmitter = CLocalSpaceEmitter::Create( "physpowerup", GetRefEHandle(), LookupAttachment( "core" ) );
+		m_pLocalEmitter = CLocalSpaceEmitter::Create("physpowerup", GetRefEHandle(), LookupAttachment("core"));
 
-		if ( m_pLocalEmitter.IsValid() == false )
+		if (m_pLocalEmitter.IsValid() == false)
 			return false;
 	}
 
-	if ( !m_pAttractor.IsValid() )
+	if (!m_pAttractor.IsValid())
 	{
-		m_pAttractor = CParticleAttractor::Create( vec3_origin, "physpowerup_att" );
+		m_pAttractor = CParticleAttractor::Create(vec3_origin, "physpowerup_att");
 
-		if ( m_pAttractor.IsValid() == false )
+		if (m_pAttractor.IsValid() == false)
 			return false;
 	}
 
-	if ( !m_pEmitter.IsValid() )
+	if (!m_pEmitter.IsValid())
 	{
-		m_pEmitter = CSimpleEmitter::Create( "physpowerup_glow" );
+		m_pEmitter = CSimpleEmitter::Create("physpowerup_glow");
 
-		if ( m_pEmitter.IsValid() == false )
+		if (m_pEmitter.IsValid() == false)
 			return false;
 	}
 
@@ -101,9 +187,9 @@ bool C_WeaponPhysCannon::SetupEmitter( void )
 //-----------------------------------------------------------------------------
 // Sorts the components of a vector
 //-----------------------------------------------------------------------------
-static inline void SortAbsVectorComponents( const Vector& src, int* pVecIdx )
+static inline void SortAbsVectorComponents(const Vector& src, int* pVecIdx)
 {
-	Vector absVec( fabs(src[0]), fabs(src[1]), fabs(src[2]) );
+	Vector absVec(fabs(src[0]), fabs(src[1]), fabs(src[2]));
 
 	int maxIdx = (absVec[0] > absVec[1]) ? 0 : 1;
 	if (absVec[2] > absVec[maxIdx])
@@ -112,7 +198,7 @@ static inline void SortAbsVectorComponents( const Vector& src, int* pVecIdx )
 	}
 
 	// always choose something right-handed....
-	switch(	maxIdx )
+	switch (maxIdx)
 	{
 	case 0:
 		pVecIdx[0] = 1;
@@ -132,40 +218,41 @@ static inline void SortAbsVectorComponents( const Vector& src, int* pVecIdx )
 	}
 }
 
+
 //-----------------------------------------------------------------------------
 // Compute the bounding box's center, size, and basis
 //-----------------------------------------------------------------------------
-void ComputeRenderInfo( mstudiobbox_t *pHitBox, const matrix3x4_t &hitboxToWorld, 
-										 Vector *pVecAbsOrigin, Vector *pXVec, Vector *pYVec )
+void ComputeRenderInfo(mstudiobbox_t *pHitBox, const matrix3x4_t &hitboxToWorld,
+	Vector *pVecAbsOrigin, Vector *pXVec, Vector *pYVec)
 {
 	// Compute the center of the hitbox in worldspace
 	Vector vecHitboxCenter;
-	VectorAdd( pHitBox->bbmin, pHitBox->bbmax, vecHitboxCenter );
+	VectorAdd(pHitBox->bbmin, pHitBox->bbmax, vecHitboxCenter);
 	vecHitboxCenter *= 0.5f;
-	VectorTransform( vecHitboxCenter, hitboxToWorld, *pVecAbsOrigin );
+	VectorTransform(vecHitboxCenter, hitboxToWorld, *pVecAbsOrigin);
 
 	// Get the object's basis
 	Vector vec[3];
-	MatrixGetColumn( hitboxToWorld, 0, vec[0] );
-	MatrixGetColumn( hitboxToWorld, 1, vec[1] );
-	MatrixGetColumn( hitboxToWorld, 2, vec[2] );
-//	vec[1] *= -1.0f;
+	MatrixGetColumn(hitboxToWorld, 0, vec[0]);
+	MatrixGetColumn(hitboxToWorld, 1, vec[1]);
+	MatrixGetColumn(hitboxToWorld, 2, vec[2]);
+	//	vec[1] *= -1.0f;
 
 	Vector vecViewDir;
-	VectorSubtract( CurrentViewOrigin(), *pVecAbsOrigin, vecViewDir );
-	VectorNormalize( vecViewDir );
+	VectorSubtract(CurrentViewOrigin(), *pVecAbsOrigin, vecViewDir);
+	VectorNormalize(vecViewDir);
 
 	// Project the shadow casting direction into the space of the hitbox
 	Vector localViewDir;
-	localViewDir[0] = DotProduct( vec[0], vecViewDir );
-	localViewDir[1] = DotProduct( vec[1], vecViewDir );
-	localViewDir[2] = DotProduct( vec[2], vecViewDir );
+	localViewDir[0] = DotProduct(vec[0], vecViewDir);
+	localViewDir[1] = DotProduct(vec[1], vecViewDir);
+	localViewDir[2] = DotProduct(vec[2], vecViewDir);
 
 	// Figure out which vector has the largest component perpendicular
 	// to the view direction...
 	// Sort by how perpendicular it is
 	int vecIdx[3];
-	SortAbsVectorComponents( localViewDir, vecIdx );
+	SortAbsVectorComponents(localViewDir, vecIdx);
 
 	// Here's our hitbox basis vectors; namely the ones that are
 	// most perpendicular to the view direction
@@ -173,30 +260,30 @@ void ComputeRenderInfo( mstudiobbox_t *pHitBox, const matrix3x4_t &hitboxToWorld
 	*pYVec = vec[vecIdx[1]];
 
 	// Project them into a plane perpendicular to the view direction
-	*pXVec -= vecViewDir * DotProduct( vecViewDir, *pXVec );
-	*pYVec -= vecViewDir * DotProduct( vecViewDir, *pYVec );
-	VectorNormalize( *pXVec );
-	VectorNormalize( *pYVec );
+	*pXVec -= vecViewDir * DotProduct(vecViewDir, *pXVec);
+	*pYVec -= vecViewDir * DotProduct(vecViewDir, *pYVec);
+	VectorNormalize(*pXVec);
+	VectorNormalize(*pYVec);
 
 	// Compute the hitbox size
 	Vector boxSize;
-	VectorSubtract( pHitBox->bbmax, pHitBox->bbmin, boxSize );
+	VectorSubtract(pHitBox->bbmax, pHitBox->bbmin, boxSize);
 
 	// We project the two longest sides into the vectors perpendicular
 	// to the projection direction, then add in the projection of the perp direction
-	Vector2D size( boxSize[vecIdx[0]], boxSize[vecIdx[1]] );
-	size.x *= fabs( DotProduct( vec[vecIdx[0]], *pXVec ) );
-	size.y *= fabs( DotProduct( vec[vecIdx[1]], *pYVec ) );
+	Vector2D size(boxSize[vecIdx[0]], boxSize[vecIdx[1]]);
+	size.x *= fabs(DotProduct(vec[vecIdx[0]], *pXVec));
+	size.y *= fabs(DotProduct(vec[vecIdx[1]], *pYVec));
 
 	// Add the third component into x and y
-	size.x += boxSize[vecIdx[2]] * fabs( DotProduct( vec[vecIdx[2]], *pXVec ) );
-	size.y += boxSize[vecIdx[2]] * fabs( DotProduct( vec[vecIdx[2]], *pYVec ) );
+	size.x += boxSize[vecIdx[2]] * fabs(DotProduct(vec[vecIdx[2]], *pXVec));
+	size.y += boxSize[vecIdx[2]] * fabs(DotProduct(vec[vecIdx[2]], *pYVec));
 
 	// Bloat a bit, since the shadow wants to extend outside the model a bit
 	size *= 2.0f;
 
 	// Clamp the minimum size
-	Vector2DMax( size, Vector2D(10.0f, 10.0f), size );
+	Vector2DMax(size, Vector2D(10.0f, 10.0f), size);
 
 	// Factor the size into the xvec + yvec
 	(*pXVec) *= size.x * 0.5f;
@@ -208,27 +295,27 @@ void ComputeRenderInfo( mstudiobbox_t *pHitBox, const matrix3x4_t &hitboxToWorld
 // Input  : flags - 
 // Output : int
 //-----------------------------------------------------------------------------
-int C_WeaponPhysCannon::DrawModel( int flags )
+int C_WeaponPhysCannon::DrawModel(int flags)
 {
 	// If we're not ugrading, don't do anything special
-	if ( m_bIsCurrentlyUpgrading == false && m_bWasUpgraded == false )
-		return BaseClass::DrawModel( flags );
+	if (m_bIsCurrentlyUpgrading == false && m_bWasUpgraded == false)
+		return BaseClass::DrawModel(flags);
 
-	if ( gpGlobals->frametime == 0 )
-		return BaseClass::DrawModel( flags );
+	if (gpGlobals->frametime == 0)
+		return BaseClass::DrawModel(flags);
 
-	if ( !m_bReadyToDraw )
+	if (!m_bReadyToDraw)
 		return 0;
 
 	m_bWasUpgraded = true;
 
 	// Create the particle emitter if it's not already
-	if ( SetupEmitter() )
+	if (SetupEmitter())
 	{
 		// Add the power-up particles
 
 		// See if we should draw
-		if ( m_bReadyToDraw == false )
+		if (m_bReadyToDraw == false)
 			return 0;
 
 		C_BaseAnimating *pAnimating = GetBaseAnimating();
@@ -236,22 +323,22 @@ int C_WeaponPhysCannon::DrawModel( int flags )
 			return 0;
 
 		matrix3x4_t	*hitboxbones[MAXSTUDIOBONES];
-		if ( !pAnimating->HitboxToWorldTransforms( hitboxbones ) )
+		if (!pAnimating->HitboxToWorldTransforms(hitboxbones))
 			return 0;
 
-		studiohdr_t *pStudioHdr = modelinfo->GetStudiomodel( pAnimating->GetModel() );
+		studiohdr_t *pStudioHdr = modelinfo->GetStudiomodel(pAnimating->GetModel());
 		if (!pStudioHdr)
 			return false;
 
-		mstudiohitboxset_t *set = pStudioHdr->pHitboxSet( pAnimating->GetHitboxSet() );
-		if ( !set )
+		mstudiohitboxset_t *set = pStudioHdr->pHitboxSet(pAnimating->GetHitboxSet());
+		if (!set)
 			return false;
 
 		int i;
 
 		float fadePerc = 1.0f;
 
-		if ( m_bIsCurrentlyUpgrading )
+		if (m_bIsCurrentlyUpgrading)
 		{
 			Vector	vecSkew = vec3_origin;
 
@@ -259,147 +346,147 @@ int C_WeaponPhysCannon::DrawModel( int flags )
 			vecSkew = CurrentViewForward() * 4.0f;
 
 			float spriteScale = 1.0f;
-			spriteScale = clamp( spriteScale, 0.75f, 1.0f );
+			spriteScale = clamp(spriteScale, 0.75f, 1.0f);
 
 			SimpleParticle *sParticle;
 
-			for ( i = 0; i < set->numhitboxes; ++i )
+			for (i = 0; i < set->numhitboxes; ++i)
 			{
 				Vector vecAbsOrigin, xvec, yvec;
 				mstudiobbox_t *pBox = set->pHitbox(i);
-				ComputeRenderInfo( pBox, *hitboxbones[pBox->bone], &vecAbsOrigin, &xvec, &yvec );
+				ComputeRenderInfo(pBox, *hitboxbones[pBox->bone], &vecAbsOrigin, &xvec, &yvec);
 
 				Vector offset;
 				Vector	xDir, yDir;
 
 				xDir = xvec;
-				float xScale = VectorNormalize( xDir ) * 0.75f;
+				float xScale = VectorNormalize(xDir) * 0.75f;
 
 				yDir = yvec;
-				float yScale = VectorNormalize( yDir ) * 0.75f;
+				float yScale = VectorNormalize(yDir) * 0.75f;
 
-				int numParticles = clamp( 4.0f * fadePerc, 1, 3 );
+				int numParticles = clamp(4.0f * fadePerc, 1, 3);
 
-				for ( int j = 0; j < numParticles; j++ )
+				for (int j = 0; j < numParticles; j++)
 				{
-					offset = xDir * Helper_RandomFloat( -xScale*0.5f, xScale*0.5f ) + yDir * Helper_RandomFloat( -yScale*0.5f, yScale*0.5f );
+					offset = xDir * Helper_RandomFloat(-xScale*0.5f, xScale*0.5f) + yDir * Helper_RandomFloat(-yScale*0.5f, yScale*0.5f);
 					offset += vecSkew;
 
-					sParticle = (SimpleParticle *) m_pEmitter->AddParticle( sizeof(SimpleParticle), m_pEmitter->GetPMaterial( "effects/combinemuzzle1" ), vecAbsOrigin + offset );
+					sParticle = (SimpleParticle *)m_pEmitter->AddParticle(sizeof(SimpleParticle), m_pEmitter->GetPMaterial("effects/combinemuzzle1"), vecAbsOrigin + offset);
 
-					if ( sParticle == NULL )
+					if (sParticle == NULL)
 						return 1;
-					
-					sParticle->m_vecVelocity	= vec3_origin;
-					sParticle->m_uchStartSize	= 16.0f * spriteScale;
-					sParticle->m_flDieTime		= 0.2f;
-					sParticle->m_flLifetime		= 0.0f;
 
-					sParticle->m_flRoll			= Helper_RandomInt( 0, 360 );
-					sParticle->m_flRollDelta	= Helper_RandomFloat( -2.0f, 2.0f );
+					sParticle->m_vecVelocity = vec3_origin;
+					sParticle->m_uchStartSize = 16.0f * spriteScale;
+					sParticle->m_flDieTime = 0.2f;
+					sParticle->m_flLifetime = 0.0f;
+
+					sParticle->m_flRoll = Helper_RandomInt(0, 360);
+					sParticle->m_flRollDelta = Helper_RandomFloat(-2.0f, 2.0f);
 
 					float alpha = 40;
 
-					sParticle->m_uchColor[0]	= alpha;
-					sParticle->m_uchColor[1]	= alpha;
-					sParticle->m_uchColor[2]	= alpha;
-					sParticle->m_uchStartAlpha	= alpha;
-					sParticle->m_uchEndAlpha	= 0;
-					sParticle->m_uchEndSize		= sParticle->m_uchStartSize * 2;
+					sParticle->m_uchColor[0] = alpha;
+					sParticle->m_uchColor[1] = alpha;
+					sParticle->m_uchColor[2] = alpha;
+					sParticle->m_uchStartAlpha = alpha;
+					sParticle->m_uchEndAlpha = 0;
+					sParticle->m_uchEndSize = sParticle->m_uchStartSize * 2;
 				}
 			}
 		}
 	}
 
-	int		attachment = LookupAttachment( "core" );
+	int		attachment = LookupAttachment("core");
 	Vector	coreOrigin;
 	QAngle	coreAngles;
 
-	GetAttachment( attachment, coreOrigin, coreAngles );
+	GetAttachment(attachment, coreOrigin, coreAngles);
 
 	SimpleParticle *sParticle;
 
 	// Do the core effects
-	for ( int i = 0; i < 4; i++ )
+	for (int i = 0; i < 4; i++)
 	{
-		sParticle = (SimpleParticle *) m_pLocalEmitter->AddParticle( sizeof(SimpleParticle), m_pLocalEmitter->GetPMaterial( "effects/strider_muzzle" ), vec3_origin );
+		sParticle = (SimpleParticle *)m_pLocalEmitter->AddParticle(sizeof(SimpleParticle), m_pLocalEmitter->GetPMaterial("effects/strider_muzzle"), vec3_origin);
 
-		if ( sParticle == NULL )
+		if (sParticle == NULL)
 			return 1;
-		
-		sParticle->m_vecVelocity	= vec3_origin;
-		sParticle->m_flDieTime		= 0.1f;
-		sParticle->m_flLifetime		= 0.0f;
 
-		sParticle->m_flRoll			= Helper_RandomInt( 0, 360 );
-		sParticle->m_flRollDelta	= 0.0f;
+		sParticle->m_vecVelocity = vec3_origin;
+		sParticle->m_flDieTime = 0.1f;
+		sParticle->m_flLifetime = 0.0f;
+
+		sParticle->m_flRoll = Helper_RandomInt(0, 360);
+		sParticle->m_flRollDelta = 0.0f;
 
 		float alpha = 255;
 
-		sParticle->m_uchColor[0]	= alpha;
-		sParticle->m_uchColor[1]	= alpha;
-		sParticle->m_uchColor[2]	= alpha;
-		sParticle->m_uchStartAlpha	= alpha;
-		sParticle->m_uchEndAlpha	= 0;
+		sParticle->m_uchColor[0] = alpha;
+		sParticle->m_uchColor[1] = alpha;
+		sParticle->m_uchColor[2] = alpha;
+		sParticle->m_uchStartAlpha = alpha;
+		sParticle->m_uchEndAlpha = 0;
 
-		if ( i < 2 )
+		if (i < 2)
 		{
-			sParticle->m_uchStartSize	= random->RandomFloat( 1, 2 ) * (i+1);
-			sParticle->m_uchEndSize		= sParticle->m_uchStartSize * 2.0f;
+			sParticle->m_uchStartSize = random->RandomFloat(1, 2) * (i + 1);
+			sParticle->m_uchEndSize = sParticle->m_uchStartSize * 2.0f;
 		}
 		else
 		{
-			if ( random->RandomInt( 0, 20 ) == 0 )
+			if (random->RandomInt(0, 20) == 0)
 			{
-				sParticle->m_uchStartSize	= random->RandomFloat( 1, 2 ) * (i+1);
-				sParticle->m_uchEndSize		= sParticle->m_uchStartSize * 4.0f;
-				sParticle->m_flDieTime		= 0.25f;
+				sParticle->m_uchStartSize = random->RandomFloat(1, 2) * (i + 1);
+				sParticle->m_uchEndSize = sParticle->m_uchStartSize * 4.0f;
+				sParticle->m_flDieTime = 0.25f;
 			}
 			else
 			{
-				sParticle->m_uchStartSize	= random->RandomFloat( 1, 2 ) * (i+1);
-				sParticle->m_uchEndSize		= sParticle->m_uchStartSize * 2.0f;
+				sParticle->m_uchStartSize = random->RandomFloat(1, 2) * (i + 1);
+				sParticle->m_uchEndSize = sParticle->m_uchStartSize * 2.0f;
 			}
 		}
 	}
 
-	if ( m_bWasUpgraded && m_bIsCurrentlyUpgrading )
+	if (m_bWasUpgraded && m_bIsCurrentlyUpgrading)
 	{
 		// Update our attractor point
-		m_pAttractor->SetAttractorOrigin( coreOrigin );
+		m_pAttractor->SetAttractorOrigin(coreOrigin);
 
 		Vector offset;
 
-		for ( int i = 0; i < 4; i++ )
+		for (int i = 0; i < 4; i++)
 		{
-			offset = coreOrigin + RandomVector( -32.0f, 32.0f );
+			offset = coreOrigin + RandomVector(-32.0f, 32.0f);
 
-			sParticle = (SimpleParticle *) m_pAttractor->AddParticle( sizeof(SimpleParticle), m_pAttractor->GetPMaterial( "effects/strider_muzzle" ), offset );
+			sParticle = (SimpleParticle *)m_pAttractor->AddParticle(sizeof(SimpleParticle), m_pAttractor->GetPMaterial("effects/strider_muzzle"), offset);
 
-			if ( sParticle == NULL )
+			if (sParticle == NULL)
 				return 1;
-			
-			sParticle->m_vecVelocity	= Vector(0,0,8);
-			sParticle->m_flDieTime		= 0.5f;
-			sParticle->m_flLifetime		= 0.0f;
 
-			sParticle->m_flRoll			= Helper_RandomInt( 0, 360 );
-			sParticle->m_flRollDelta	= 0.0f;
+			sParticle->m_vecVelocity = Vector(0, 0, 8);
+			sParticle->m_flDieTime = 0.5f;
+			sParticle->m_flLifetime = 0.0f;
+
+			sParticle->m_flRoll = Helper_RandomInt(0, 360);
+			sParticle->m_flRollDelta = 0.0f;
 
 			float alpha = 255;
 
-			sParticle->m_uchColor[0]	= alpha;
-			sParticle->m_uchColor[1]	= alpha;
-			sParticle->m_uchColor[2]	= alpha;
-			sParticle->m_uchStartAlpha	= alpha;
-			sParticle->m_uchEndAlpha	= 0;
+			sParticle->m_uchColor[0] = alpha;
+			sParticle->m_uchColor[1] = alpha;
+			sParticle->m_uchColor[2] = alpha;
+			sParticle->m_uchStartAlpha = alpha;
+			sParticle->m_uchEndAlpha = 0;
 
-			sParticle->m_uchStartSize	= random->RandomFloat( 1, 2 );
-			sParticle->m_uchEndSize		= 0;
+			sParticle->m_uchStartSize = random->RandomFloat(1, 2);
+			sParticle->m_uchEndSize = 0;
 		}
 	}
 
-	return BaseClass::DrawModel( flags );
+	return BaseClass::DrawModel(flags);
 }
 
 //---------------------------------------------------------
@@ -407,23 +494,63 @@ int C_WeaponPhysCannon::DrawModel( int flags )
 // asked us to.
 //---------------------------------------------------------
 #define PHYSCANNON_RAISE_VIEW_GOAL	0.0f
-void C_WeaponPhysCannon::ClientThink( void )
+void C_WeaponPhysCannon::ClientThink(void)
 {
-	if( m_flTimeIgnoreForceView > gpGlobals->curtime )
+	if (!m_bWeaponActive) {
+		if (m_bEffectsEmitting) {
+			m_bEffectsEmitting = false;
+			StopParticles();
+		}
+	}
+	CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
+	if ( !pOwner ) { return; }
+	if (m_bWeaponActive && pOwner->GetActiveWeapon() == this) {
+		if (!m_bEffectsEmitting) {
+			m_bEffectsEmitting = true;
+			StartParticles();
+		}
+		if (m_bEffectsEmitting) {
+
+			if (m_bIsHolding && (m_hHoldBeam1 == null && m_hHoldBeam2 == null)) {
+				StartHoldParticles();
+			}
+			else if (!m_bIsHolding && (m_hHoldBeam1 != null && m_hHoldBeam2 != null)) {
+				StopHoldParticles();
+			}
+
+			
+
+			if (m_flScaleFactor != m_flInterpolatedScaleFactor) {
+				float scaleRequired = ((m_flScaleFactor * 2) - 1) * ((gpGlobals->curtime - m_flWeaponHoldingStartTime) * (1 / CORE_IDLE_LIN_INTERP_TIME));
+				
+				m_flInterpolatedScaleFactor += scaleRequired;
+
+				if (m_flInterpolatedScaleFactor > 1 || m_flInterpolatedScaleFactor < 0) {
+					m_flInterpolatedScaleFactor = m_flScaleFactor;
+				}
+			}
+
+			m_flWeaponHoldingStartTime = gpGlobals->curtime;
+
+			ParticleProp()->AddControlPoint(m_hCoreIdle, 1, NULL, CORE_IDLE_ATTACH, 0, Vector(m_flInterpolatedScaleFactor, 0, 0));
+		}
+	}
+
+	if (m_flTimeIgnoreForceView > gpGlobals->curtime)
 		return;
 
 	float flTime = (m_flTimeForceView - gpGlobals->curtime);
-	
-	if( flTime < 0.0f )
+
+	if (flTime < 0.0f)
 		return;
 
 	float flDT = 1.0f - flTime;
-	if( flDT > 0.0f )
+	if (flDT > 0.0f)
 	{
 		QAngle viewangles;
-		engine->GetViewAngles( viewangles );
+		engine->GetViewAngles(viewangles);
 
-		if( viewangles.x > PHYSCANNON_RAISE_VIEW_GOAL + 1.0f )
+		if (viewangles.x > PHYSCANNON_RAISE_VIEW_GOAL + 1.0f)
 		{
 			float flDelta = PHYSCANNON_RAISE_VIEW_GOAL - viewangles.x;
 			viewangles.x += (flDelta * flDT);
@@ -439,4 +566,74 @@ void C_WeaponPhysCannon::ClientThink( void )
 	return BaseClass::ClientThink();
 }
 
+//-----------------------------------------------------------------------------
+// Purpose: Starts the gravity gun particle effects.
+//-----------------------------------------------------------------------------
+void C_WeaponPhysCannon::StartParticles() {
+	CBasePlayer *pOwner = ToBasePlayer(GetOwner());
 
+	CNewParticleEffect *pProngIdleEffect = ParticleProp()->Create("weapon_physgun_prongidle", PATTACH_ABSORIGIN_FOLLOW);
+
+	ParticleProp()->AddControlPoint(pProngIdleEffect, 0, pOwner->GetViewModel(), PATTACH_POINT_FOLLOW, "fork1b");
+	ParticleProp()->AddControlPoint(pProngIdleEffect, 1, pOwner->GetViewModel(), PATTACH_POINT_FOLLOW, "fork1m");
+	ParticleProp()->AddControlPoint(pProngIdleEffect, 2, pOwner->GetViewModel(), PATTACH_POINT_FOLLOW, "fork1t");
+	ParticleProp()->AddControlPoint(pProngIdleEffect, 3, pOwner->GetViewModel(), PATTACH_POINT_FOLLOW, "fork3b");
+	ParticleProp()->AddControlPoint(pProngIdleEffect, 4, pOwner->GetViewModel(), PATTACH_POINT_FOLLOW, "fork3m");
+	ParticleProp()->AddControlPoint(pProngIdleEffect, 5, pOwner->GetViewModel(), PATTACH_POINT_FOLLOW, "fork3t");
+
+	m_hProngIdle = pProngIdleEffect;
+
+
+	CNewParticleEffect *pCoreIdleEffect = ParticleProp()->Create("weapon_physgun_coreidle", PATTACH_ABSORIGIN_FOLLOW);
+
+	ParticleProp()->AddControlPoint(pCoreIdleEffect, 0, pOwner->GetViewModel(), PATTACH_POINT_FOLLOW, "muzzle");
+	ParticleProp()->AddControlPoint(pCoreIdleEffect, 1, NULL, CORE_IDLE_ATTACH, 0, Vector(m_flInterpolatedScaleFactor, 0, 0));
+	m_hCoreIdle = pCoreIdleEffect;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Starts the gravity gun holding particle effects.
+//-----------------------------------------------------------------------------
+
+void C_WeaponPhysCannon::StartHoldParticles() {
+	CBasePlayer *pOwner = ToBasePlayer(GetOwner());
+
+	CNewParticleEffect *pProngHoldEffect1 = ParticleProp()->Create("weapon_physgun_holdbeam", PATTACH_ABSORIGIN_FOLLOW);
+
+	ParticleProp()->AddControlPoint(pProngHoldEffect1, 0, pOwner->GetViewModel(), PATTACH_POINT_FOLLOW, "muzzle");
+	ParticleProp()->AddControlPoint(pProngHoldEffect1, 1, pOwner->GetViewModel(), PATTACH_POINT_FOLLOW, "fork1t");
+
+	m_hHoldBeam1 = pProngHoldEffect1;
+
+	CNewParticleEffect *pProngHoldEffect2 = ParticleProp()->Create("weapon_physgun_holdbeam", PATTACH_ABSORIGIN_FOLLOW);
+
+	ParticleProp()->AddControlPoint(pProngHoldEffect2, 0, pOwner->GetViewModel(), PATTACH_POINT_FOLLOW, "muzzle");
+	ParticleProp()->AddControlPoint(pProngHoldEffect2, 1, pOwner->GetViewModel(), PATTACH_POINT_FOLLOW, "fork3t");
+
+	m_hHoldBeam2 = pProngHoldEffect2;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Stops the gravity gun particle effects.
+//-----------------------------------------------------------------------------
+void C_WeaponPhysCannon::StopParticles() {
+	StopHoldParticles();
+	ParticleProp()->StopEmissionAndDestroyImmediately(m_hCoreIdle);
+	ParticleProp()->StopEmissionAndDestroyImmediately(m_hProngIdle);
+
+	CBasePlayer *pOwner = ToBasePlayer(GetOwner());
+	if (pOwner) {
+		StopParticleEffects(pOwner->GetViewModel()); // iridilockout strikes again
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Stops the gravity gun hold particle effects.
+//-----------------------------------------------------------------------------
+
+void C_WeaponPhysCannon::StopHoldParticles() {
+	ParticleProp()->StopEmissionAndDestroyImmediately(m_hHoldBeam1);
+	m_hHoldBeam1 = NULL;
+	ParticleProp()->StopEmissionAndDestroyImmediately(m_hHoldBeam2);
+	m_hHoldBeam2 = NULL;
+}

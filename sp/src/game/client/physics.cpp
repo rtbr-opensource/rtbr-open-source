@@ -764,6 +764,8 @@ static int BestAxisMatchingNormal( matrix3x4_t &matrix, const Vector &normal )
 //-----------------------------------------------------------------------------
 void PhysicsSplash( IPhysicsFluidController *pFluid, IPhysicsObject *pObject, CBaseEntity *pEntity )
 {
+	return;
+
 	//FIXME: For now just allow ragdolls for E3 - jdw
 	if ( ( pObject->GetGameFlags() & FVPHYSICS_PART_OF_RAGDOLL ) == false )
 		return;
@@ -858,11 +860,11 @@ void PhysicsSplash( IPhysicsFluidController *pFluid, IPhysicsObject *pObject, CB
 	{
 		if ( bInSlime )
 		{
-			FX_GunshotSlimeSplash( centerPoint, normal, random->RandomFloat( 8, 10 ) );
+			FX_PhysSlimeSplash( centerPoint, normal, random->RandomFloat( 8, 10 ) );
 		}
 		else
 		{
-			FX_GunshotSplash( centerPoint, normal, random->RandomFloat( 8, 10 ) );
+			FX_PhysSplash( centerPoint, normal, random->RandomFloat( 8, 10 ) );
 		}
 	}
 	else if ( !bInSlime )
@@ -884,11 +886,11 @@ void PhysicsSplash( IPhysicsFluidController *pFluid, IPhysicsObject *pObject, CB
 		{
 			if ( bInSlime )
 			{
-				FX_GunshotSlimeSplash( centerPoint, normal, random->RandomFloat( 4, 6 ) );
+				FX_PhysSlimeSplash( centerPoint, normal, random->RandomFloat( 4, 6 ) );
 			}
 			else
 			{
-				FX_GunshotSplash( centerPoint, normal, random->RandomFloat( 4, 6 ) );
+				FX_PhysSplash( centerPoint, normal, random->RandomFloat( 4, 6 ) );
 			}
 		}
 		else if ( !bInSlime )

@@ -9,6 +9,7 @@
 
 #ifdef GAME_DLL
 
+
 // this gets compiled in for HL2 + Ep(X) only
 #if ( defined( HL2_DLL ) || defined( HL2_EPISODIC ) ) && ( !defined ( PORTAL ) )
 
@@ -18,6 +19,26 @@
 #include "basegrenade_shared.h"
 #include "basehlcombatweapon_shared.h"
 #include "ammodef.h"
+
+class CAchievementRTBRCommitManySins : public CBaseAchievement
+{
+protected:
+	virtual void Init()
+	{
+		SetFlags(ACH_LISTEN_PLAYER_KILL_ENEMY_EVENTS | ACH_SAVE_WITH_GAME);
+		SetVictimFilter("npc_combine_s");
+		SetGoal(5);
+
+	}
+
+	virtual void Event_EntityKilled(CBaseEntity* pVictim, CBaseEntity* pAttacker, CBaseEntity* pInflictor, IGameEvent* event)
+	{
+		IncrementCount();
+	}
+};
+DECLARE_ACHIEVEMENT(CAchievementRTBRCommitManySins, ACHIEVEMENT_HLX_KILL_ENEMIES_WITHPHYSICS, "HLX_KILL_ENEMIES_WITHPHYSICS", 10);
+
+#ifndef RTBR_DLL
 
 class CAchievementHLXKillWithPhysicsObjects : public CBaseAchievement
 {
@@ -193,7 +214,7 @@ protected:
 		if ( IsPC() )
 		{
 			// only in Ep2 for PC. (Shared across HLX for X360.)
-			SetGameDirFilter( "episodic" );
+			//SetGameDirFilter( "episodic" );
 		}
 	}
 
@@ -213,6 +234,7 @@ protected:
 	}
 };
 DECLARE_ACHIEVEMENT( CAchievementHLXKillEliteSoldierWithOwnEnergyBall, ACHIEVEMENT_HLX_KILL_ELITESOLDIER_WITHHISENERGYBALL, "HLX_KILL_ELITESOLDIER_WITHHISENERGYBALL", 10 );
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: Counts the accumulated # of primary and secondary attacks from all

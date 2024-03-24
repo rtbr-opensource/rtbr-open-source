@@ -87,6 +87,7 @@ IMPLEMENT_CLIENTCLASS_DT( C_FireSmoke, DT_FireSmoke, CFireSmoke )
 	RecvPropInt( RECVINFO( m_nFlags ) ),
 	RecvPropInt( RECVINFO( m_nFlameModelIndex ) ),
 	RecvPropInt( RECVINFO( m_nFlameFromAboveModelIndex ) ),
+	RecvPropBool(RECVINFO(m_bIsFlareFire)),
 END_RECV_TABLE()
 
 //==================================================
@@ -166,25 +167,30 @@ bool C_FireSmoke::ShouldDraw()
 void C_FireSmoke::Start( void )
 {
 	const char *lpszEffectName;
-	int nSize = (int) floor( m_flStartScale / 36.0f );
-	switch ( nSize )
-	{
-	case 0:
-		lpszEffectName = ( m_nFlags & bitsFIRESMOKE_SMOKE ) ? "env_fire_tiny_smoke" : "env_fire_tiny";
-		break;
+		int nSize = (int)floor(m_flStartScale / 36.0f);
+		if (!m_bIsFlareFire) {
+		switch (nSize)
+		{
+		case 0:
+			lpszEffectName = (m_nFlags & bitsFIRESMOKE_SMOKE) ? "env_fire_tiny_smoke" : "env_fire_tiny";
+			break;
 
-	case 1:
-		lpszEffectName = ( m_nFlags & bitsFIRESMOKE_SMOKE ) ? "env_fire_small_smoke" : "env_fire_small";
-		break;
+		case 1:
+			lpszEffectName = (m_nFlags & bitsFIRESMOKE_SMOKE) ? "env_fire_small_smoke" : "env_fire_small";
+			break;
 
-	case 2:
-		lpszEffectName = ( m_nFlags & bitsFIRESMOKE_SMOKE ) ? "env_fire_medium_smoke" : "env_fire_medium";
-		break;
+		case 2:
+			lpszEffectName = (m_nFlags & bitsFIRESMOKE_SMOKE) ? "env_fire_medium_smoke" : "env_fire_medium";
+			break;
 
-	case 3:
-	default:
-		lpszEffectName = ( m_nFlags & bitsFIRESMOKE_SMOKE ) ? "env_fire_large_smoke" : "env_fire_large";
-		break;
+		case 3:
+		default:
+			lpszEffectName = (m_nFlags & bitsFIRESMOKE_SMOKE) ? "env_fire_large_smoke" : "env_fire_large";
+			break;
+		}
+	}
+	else {
+		lpszEffectName = "weapon_flare_fire";
 	}
 
 	// Create the effect of the correct size

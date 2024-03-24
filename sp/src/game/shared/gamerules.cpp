@@ -726,7 +726,6 @@ void CGameRules::MarkAchievement( IRecipientFilter& filter, char const *pchAchie
 
 #endif //} !CLIENT_DLL
 
-
 // ----------------------------------------------------------------------------- //
 // Shared CGameRules implementation.
 // ----------------------------------------------------------------------------- //

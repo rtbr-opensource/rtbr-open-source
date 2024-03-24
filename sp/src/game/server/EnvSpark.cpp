@@ -9,6 +9,7 @@
 #include "IEffects.h"
 #include "engine/IEngineSound.h"
 #include "envspark.h"
+#include "particle_parse.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -25,6 +26,56 @@ void DoSpark( CBaseEntity *ent, const Vector &location, int nMagnitude, int nTra
 	if ( bPlaySound )
 	{
 		ent->EmitSound( "DoSpark" );
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Emits particle sparks from the given location and plays a random spark sound.
+// Input  : pev - 
+//			location - 
+//-----------------------------------------------------------------------------
+void DoParticleSpark(CBaseEntity *ent, const Vector &location, int nMagnitude, int nTrailLength, bool bPlaySound, bool bOmni, bool bNoGlow, const QAngle &angDir)
+{
+	/*
+	Original Values:
+	1: Small
+	2: Medium
+	5: Large
+	8: Huge
+
+	New Values:
+	1: Small
+	2: Medium
+	4: Large
+	7: Huge
+*/
+	int nParticleMagnitude;
+
+	switch (nMagnitude)
+	{
+	case 1:
+		nParticleMagnitude = 1;
+	case 2:
+		nParticleMagnitude = 2;
+	case 5:
+		nParticleMagnitude = 4;
+	case 8:
+		nParticleMagnitude = 7;
+	default:
+		nParticleMagnitude = 2;
+	}
+
+	int nGlow = !bNoGlow;
+	if (!bOmni) {
+		DispatchParticleEffect("env_spark_directional", location, Vector(nTrailLength, nMagnitude, nGlow), angDir);
+	}
+	else {
+		DispatchParticleEffect("env_spark_omni", location, Vector(nTrailLength, nMagnitude, nGlow), QAngle(0,0,0));
+	}
+
+	if (bPlaySound)
+	{
+		ent->EmitSound("DoSpark");
 	}
 }
 
@@ -106,6 +157,9 @@ void CEnvSpark::Precache(void)
 {
 	m_nGlowSpriteIndex = PrecacheModel( "sprites/glow01.vmt" );
 
+	PrecacheParticleSystem("env_spark_directional");
+	PrecacheParticleSystem("env_spark_omni");
+
 	PrecacheScriptSound( "DoSpark" );
 }
 
@@ -119,16 +173,19 @@ void CEnvSpark::SparkThink(void)
 	SetNextThink( gpGlobals->curtime + 0.1 + random->RandomFloat(0, m_flDelay) );
 
 	Vector vecDir = vec3_origin;
-	if ( FBitSet( m_spawnflags, SF_SPARK_DIRECTIONAL ) )
+	//if ( FBitSet( m_spawnflags, SF_SPARK_DIRECTIONAL ) )
+	if (false)
 	{
 		AngleVectors( GetAbsAngles(), &vecDir );
 	}
 
-	DoSpark( this, WorldSpaceCenter(), m_nMagnitude, m_nTrailLength, !( m_spawnflags & SF_SPARK_SILENT ), vecDir );
+	//DoSpark( this, WorldSpaceCenter(), m_nMagnitude, m_nTrailLength, !( m_spawnflags & SF_SPARK_SILENT ), vecDir );
+	DoParticleSpark(this, WorldSpaceCenter(), m_nMagnitude, m_nTrailLength, !(m_spawnflags & SF_SPARK_SILENT), !(m_spawnflags & SF_SPARK_DIRECTIONAL), !(m_spawnflags & SF_SPARK_GLOW), GetAbsAngles());
 
 	m_OnSpark.FireOutput( this, this );
 
-	if (FBitSet(m_spawnflags, SF_SPARK_GLOW))
+	//if (FBitSet(m_spawnflags, SF_SPARK_GLOW))
+	if (false)
 	{
 		CPVSFilter filter( GetAbsOrigin() );
 		te->GlowSprite( filter, 0.0, &GetAbsOrigin(), m_nGlowSpriteIndex, 0.2, 1.5, 25 );

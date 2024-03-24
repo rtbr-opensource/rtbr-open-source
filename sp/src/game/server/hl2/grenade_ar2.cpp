@@ -16,6 +16,11 @@
 #include "vstdlib/random.h"
 #include "engine/IEngineSound.h"
 #include "world.h"
+#include "fire.h"
+#include "particle_parse.h"
+#include "ai_basenpc.h"
+#include "props.h"
+#include "particles\particles.h"
 
 #ifdef PORTAL
 	#include "portal_util_shared.h"
@@ -25,6 +30,9 @@
 #include "tier0/memdbgon.h"
 
 #define AR2_GRENADE_MAX_DANGER_RADIUS	300
+#define FIRERADIUS 50
+#define FIRECOUNT 15
+#define FIREATTACK 30
 
 extern short	g_sModelIndexFireball;			// (in combatweapon.cpp) holds the index for the smoke cloud
 
@@ -45,6 +53,7 @@ BEGIN_DATADESC( CGrenadeAR2 )
 	DEFINE_FIELD( m_hSmokeTrail, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_fSpawnTime, FIELD_TIME ),
 	DEFINE_FIELD( m_fDangerRadius, FIELD_FLOAT ),
+	DEFINE_FIELD( m_bIsFireGrenade, FIELD_BOOLEAN ),
 
 	// Function pointers
 	DEFINE_ENTITYFUNC( GrenadeAR2Touch ),
@@ -184,7 +193,19 @@ void CGrenadeAR2::GrenadeAR2Touch( CBaseEntity *pOther )
 	// If I'm live go ahead and blow up
 	if (m_bIsLive)
 	{
-		Detonate();
+		if (!m_bIsFireGrenade) {
+			Detonate();
+		}
+		else {
+			CBaseCombatCharacter *pBCC = ToBaseCombatCharacter(pOther);
+			if (pBCC){
+				CTakeDamageInfo info(pOther, GetOwnerEntity(), m_flDamage, DMG_BLAST);
+				pBCC->TakeDamage(info);
+			}
+			DetonateFire();
+			
+		}
+		
 	}
 	else
 	{
@@ -252,13 +273,124 @@ void CGrenadeAR2::Detonate(void)
 	UTIL_Remove( this );
 }
 
+void CGrenadeAR2::DetonateFire(void)
+{
+	if (!m_bIsLive)
+	{
+		return;
+	}
+	m_bIsLive = false;
+	m_takedamage = DAMAGE_NO;
+
+	if (m_hSmokeTrail)
+	{
+		UTIL_Remove(m_hSmokeTrail);
+		m_hSmokeTrail = NULL;
+	}
+	FireSystem_StartFire(GetAbsOrigin(), 2, FIREATTACK, RandomFloat(25, 30), 0, NULL, FIRE_FLARE);
+	DispatchParticleEffect("weapon_flare_impact", GetAbsOrigin(), QAngle(0, 0, 0));
+	for (int i = 0; i < FIRECOUNT - 1; i++) {
+		//Create("npc_headcrab", GenerateRandomCircle(GetAbsOrigin()), QAngle(0, 0, 0));
+
+		Vector tempFirePos = GenerateRandomCircle(GetAbsOrigin());
+
+		trace_t tr;
+		UTIL_TraceLine(GetAbsOrigin(), tempFirePos, MASK_SHOT, this, COLLISION_GROUP_NONE, &tr);
+		if (!tr.DidHit()) {
+			FireSystem_StartFire(tempFirePos, 2, FIREATTACK, RandomFloat(25, 30), 0, NULL, FIRE_FLARE);
+		}
+	}
+	CPASFilter filter(GetAbsOrigin());
+	DispatchParticleEffect("weapon_flare_explosion", GetAbsOrigin(), QAngle(0, 0, 0));
+	te->Explosion(filter, 0.0,
+		&GetAbsOrigin(),
+		g_sModelIndexFireball,
+		2.0,
+		15,
+		TE_EXPLFLAG_NOFIREBALL | TE_EXPLFLAG_NOPARTICLES,
+		m_DmgRadius, 15);
+
+	Vector vecForward = GetAbsVelocity();
+	VectorNormalize(vecForward);
+	trace_t		tr;
+	UTIL_TraceLine(GetAbsOrigin(), GetAbsOrigin() + 60 * vecForward, MASK_SOLID_BRUSHONLY,
+		this, COLLISION_GROUP_NONE, &tr);
+
+
+	if ((tr.m_pEnt != GetWorldEntity()) || (tr.hitbox != 0))
+	{
+		// non-world needs smaller decals
+		if (tr.m_pEnt && !tr.m_pEnt->IsNPC())
+		{
+			UTIL_DecalTrace(&tr, "SmallScorch");
+		}
+	}
+	else
+	{
+		UTIL_DecalTrace(&tr, "Scorch");
+	}
+	
+	UTIL_TraceLine(GetAbsOrigin(), GetAbsOrigin() + 60 * vecForward, MASK_ALL,
+		this, COLLISION_GROUP_NPC, &tr);
+
+	IgniteOtherIfAllowed(tr.m_pEnt);
+
+	UTIL_ScreenShake(GetAbsOrigin(), 25.0, 150.0, 1.0, 750, SHAKE_START);
+
+	RadiusDamage(CTakeDamageInfo(this, GetThrower(), m_flDamage, DMG_BLAST | DMG_BURN), GetAbsOrigin(), m_DmgRadius, CLASS_NONE, NULL);
+
+	UTIL_Remove(this);
+}
+
+Vector CGrenadeAR2::GenerateRandomCircle(Vector originalpos) {
+	double a = RandomFloat() * 2 * 3.1415;
+	double r = FIRERADIUS * sqrt(RandomFloat());
+
+	double x = r * cos(a);
+	double y = r * sin(a);
+	return Vector(originalpos.x + x, originalpos.y + y, originalpos.z);
+}
+
 void CGrenadeAR2::Precache( void )
 {
+	PrecacheParticleSystem("weapon_flare_explosion");
 	PrecacheModel("models/Weapons/ar2_grenade.mdl"); 
+	PrecacheParticleSystem("weapon_flare_impact");
 }
 
 
 CGrenadeAR2::CGrenadeAR2(void)
 {
 	m_hSmokeTrail  = NULL;
+}
+
+void CGrenadeAR2::IgniteOtherIfAllowed(CBaseEntity * pOther)
+{
+	if (pOther == NULL) {
+		return;
+	}
+	// Don't burn the player
+	if (pOther->IsPlayer())
+		return;
+
+	CAI_BaseNPC *pNPC;
+	pNPC = dynamic_cast<CAI_BaseNPC*>(pOther);
+	if (pNPC) {
+		// Don't burn friendly NPCs
+		if (pNPC->IsPlayerAlly())
+			return;
+
+		// Don't burn boss enemies
+		if (FStrEq(STRING(pNPC->m_iClassname), "npc_combinegunship")
+			|| FStrEq(STRING(pNPC->m_iClassname), "npc_combinedropship")
+			|| FStrEq(STRING(pNPC->m_iClassname), "npc_strider")
+			|| FStrEq(STRING(pNPC->m_iClassname), "npc_helicopter")
+			|| FStrEq(STRING(pNPC->m_iClassname), "npc_cremator")
+			)
+			return;
+
+		// Burn this NPC
+		pNPC->IgniteLifetime(5);
+	}
+
 }

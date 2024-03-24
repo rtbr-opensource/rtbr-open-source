@@ -981,12 +981,29 @@ float CGameMovement::ComputeConstraintSpeedFactor( void )
 	float flSpeedFactor = Lerp( flFrac, 1.0f, mv->m_flConstraintSpeedFactor ); 
 	return flSpeedFactor;
 }
-
+//ConVar lightspeed("lightspeed", "10");
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
 void CGameMovement::CheckParameters( void )
 {
+
+	/*CBasePlayer* pPlayer = player;
+	ConVar* host_timescale = cvar->FindVar("host_timescale");
+
+	// Using m/s from here onward
+	float c = lightspeed.GetFloat();
+	float speedMS = pPlayer->GetLocalVelocity().Length() * 0.01905;
+	if (speedMS >= c) {
+		speedMS = c - 0.000001;
+	}
+	float timeFactor = 1 / sqrt(1 - (pow(speedMS, 2) / pow(c, 2)));
+	float distanceFactor = sqrt(1 - (pow(speedMS, 2) / pow(c, 2)));
+
+
+	host_timescale->SetValue(timeFactor);
+	pPlayer->SetFOV(pPlayer, 90 * distanceFactor, gpGlobals->frametime);*/
+
 	QAngle	v_angle;
 
 	if ( player->GetMoveType() != MOVETYPE_ISOMETRIC &&
@@ -2512,6 +2529,7 @@ bool CGameMovement::CheckJumpButton( void )
 	if ( gpGlobals->maxClients == 1 )
 	{
 		player->m_Local.m_flJumpTime = GAMEMOVEMENT_JUMP_TIME;
+		player->EmitSound("Player.Jump");
 		player->m_Local.m_bInDuckJump = true;
 	}
 
@@ -3907,13 +3925,11 @@ void CGameMovement::CheckFalling( void )
 		return;
 
 #ifdef MAPBASE
-#ifdef GAME_DLL // Let's hope we could work without transmitting to the client...
 	if ( player->m_bInTriggerFall )
 	{
-		// This lets the fall damage functions do their magic without having to change them.
+		// This value lets the existing fall damage functions ensure a fatal fall.
 		player->m_Local.m_flFallVelocity += (PLAYER_FATAL_FALL_SPEED + PLAYER_LAND_ON_FLOATING_OBJECT);
 	}
-#endif
 #endif
 
 	if ( !IsDead() && player->m_Local.m_flFallVelocity >= PLAYER_FALL_PUNCH_THRESHOLD )
@@ -3921,7 +3937,11 @@ void CGameMovement::CheckFalling( void )
 		bool bAlive = true;
 		float fvol = 0.5;
 
+#ifdef MAPBASE
+		if ( player->GetWaterLevel() > 0 && !player->m_bInTriggerFall )
+#else
 		if ( player->GetWaterLevel() > 0 )
+#endif
 		{
 			// They landed in water.
 		}
@@ -4211,6 +4231,7 @@ void CGameMovement::FinishDuck( void )
 	player->AddFlag( FL_DUCKING );
 	player->m_Local.m_bDucked = true;
 	player->m_Local.m_bDucking = false;
+	// IRIDIUM
 
 	player->SetViewOffset( GetPlayerViewOffset( true ) );
 
@@ -4378,7 +4399,7 @@ void CGameMovement::Duck( void )
 	if ( ( mv->m_nButtons & IN_DUCK ) || player->m_Local.m_bDucking  || bInDuck || bDuckJump )
 	{
 		// DUCK
-		if ( ( mv->m_nButtons & IN_DUCK ) || bDuckJump )
+		if (((mv->m_nButtons & IN_DUCK) || bDuckJump))
 		{
 // XBOX SERVER ONLY
 #if !defined(CLIENT_DLL)
@@ -4397,6 +4418,7 @@ void CGameMovement::Duck( void )
 			{
 				player->m_Local.m_flDucktime = GAMEMOVEMENT_DUCK_TIME;
 				player->m_Local.m_bDucking = true;
+				player->EmitSound("Player.Crouch");
 			}
 			
 			// The player is in duck transition and not duck-jumping.
@@ -4502,6 +4524,7 @@ void CGameMovement::Duck( void )
 					{
 						float flDuckMilliseconds = MAX( 0.0f, GAMEMOVEMENT_DUCK_TIME - (float)player->m_Local.m_flDucktime );
 						float flDuckSeconds = flDuckMilliseconds * 0.001f;
+						player->EmitSound("Player.Uncrouch");
 						
 						// Finish ducking immediately if duck time is over or not on ground
 						if ( flDuckSeconds > TIME_TO_UNDUCK || ( bInAir && !bDuckJump ) )

@@ -7,6 +7,7 @@
 
 #include "cbase.h"
 #include "hud.h"
+#include "GameUI/IGameUI.h"
 #include "hud_macros.h"
 #include "hudelement.h"
 #include "iclientmode.h"
@@ -93,6 +94,7 @@ void CAchievementNotificationPanel::PerformLayout( void )
 //-----------------------------------------------------------------------------
 void CAchievementNotificationPanel::FireGameEvent( IGameEvent * event )
 {
+		//AddNotification("HL2_KILL_ODESSAGUNSHIP", L"Achievement Progress",  L"Test Notification Message A (1/10)");
 	const char *name = event->GetName();
 	if ( 0 == Q_strcmp( name, "achievement_event" ) )
 	{
@@ -101,7 +103,7 @@ void CAchievementNotificationPanel::FireGameEvent( IGameEvent * event )
 		int iMax = event->GetInt( "max_val" );
 		wchar_t szLocalizedName[256]=L"";
 
-		if ( IsPC() )
+		if ( false )
 		{
 			// shouldn't ever get achievement progress if steam not running and user logged in, but check just in case
 			if ( !steamapicontext->SteamUserStats() )
@@ -137,9 +139,53 @@ void CAchievementNotificationPanel::FireGameEvent( IGameEvent * event )
 				return;
 			Q_wcsncpy( szFmt, pchFmt, sizeof( szFmt ) );
 
-			g_pVGuiLocalize->ConstructString( szText, sizeof( szText ), szFmt, 3, szLocalizedName, szNumFound, szNumTotal );
-			AddNotification( pchName, g_pVGuiLocalize->Find( "#GameUI_Achievement_Progress" ), szText );
+			g_pVGuiLocalize->ConstructString( szText, sizeof( szText ), szFmt, 3, szLocalizedName, szNumFound, szNumTotal);
+			if (iCur < iMax) {
+				AddNotification(pchName, g_pVGuiLocalize->Find("#GameUI_Achievement_Progress"), szText);
+			}
+			else {
+				AddNotification(pchName, g_pVGuiLocalize->Find("#GameUI_Achievement_Awarded"), szLocalizedName);
+			}
 		}
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CAchievementNotificationPanel::FireAchievementEvent(const char* name, const char* curval, const char* maxval)
+{
+	const char* pchName = name;
+	int iCur = atoi(curval);
+	int iMax = atoi(maxval);
+	wchar_t szLocalizedName[256] = L"";
+
+
+	const wchar_t* pchLocalizedName = ACHIEVEMENT_LOCALIZED_NAME_FROM_STR(pchName);
+	Assert(pchLocalizedName);
+	if (!pchLocalizedName || !pchLocalizedName[0]) {
+		return;
+	}
+	Q_wcsncpy(szLocalizedName, pchLocalizedName, sizeof(szLocalizedName));
+
+	// this is achievement progress, compose the message of form: "<name> (<#>/<max>)"
+	wchar_t szFmt[128] = L"";
+	wchar_t szText[512] = L"";
+	wchar_t szNumFound[16] = L"";
+	wchar_t szNumTotal[16] = L"";
+	_snwprintf(szNumFound, ARRAYSIZE(szNumFound), L"%i", iCur);
+	_snwprintf(szNumTotal, ARRAYSIZE(szNumTotal), L"%i", iMax);
+
+	const wchar_t* pchFmt = g_pVGuiLocalize->Find("#GameUI_Achievement_Progress_Fmt");
+	if (!pchFmt || !pchFmt[0])
+		return;
+	Q_wcsncpy(szFmt, pchFmt, sizeof(szFmt));
+	g_pVGuiLocalize->ConstructString(szText, sizeof(szText), szFmt, 3, szLocalizedName, szNumFound, szNumTotal);
+	if (iCur < iMax) {
+		AddNotification(pchName, g_pVGuiLocalize->Find("#GameUI_Achievement_Progress"), szText);
+	}
+	else {
+		AddNotification(pchName, g_pVGuiLocalize->Find("#GameUI_Achievement_Awarded"), szLocalizedName);
 	}
 }
 
@@ -168,6 +214,7 @@ bool CAchievementNotificationPanel::ShouldDraw( void )
 //-----------------------------------------------------------------------------
 void CAchievementNotificationPanel::AddNotification( const char *szIconBaseName, const wchar_t *pHeading, const wchar_t *pTitle )
 {
+
 	// put this notification in our queue
 	int iQueueItem = m_queueNotification.AddToTail();
 	Notification_t &notification = m_queueNotification[iQueueItem];
@@ -245,7 +292,7 @@ void CAchievementNotificationPanel::SetXAndWide( Panel *pPanel, int x, int wide 
 	pPanel->SetWide( wide );
 }
 
-CON_COMMAND_F( achievement_notification_test, "Test the hud notification UI", FCVAR_CHEAT | FCVAR_DEVELOPMENTONLY )
+CON_COMMAND_F( achievement_notification_test, "Test the hud notification UI", FCVAR_CHEAT )
 {
 	static int iCount=0;
 
@@ -269,4 +316,13 @@ CON_COMMAND_F( achievement_notification_test, "Test the hud notification UI", FC
 #endif
 
 	iCount++;
+}
+
+CON_COMMAND_F(achievement_notification, "Achievement Notification", FCVAR_CHEAT | FCVAR_HIDDEN)
+{
+	CAchievementNotificationPanel* pPanel = GET_HUDELEMENT(CAchievementNotificationPanel);
+	if (pPanel)
+	{
+		pPanel->FireAchievementEvent(args[1], args[2], args[3]);
+	}
 }

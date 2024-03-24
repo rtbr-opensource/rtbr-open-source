@@ -152,6 +152,7 @@ public:
 	int		m_nFlags;
 	int		m_nFlameModelIndex;
 	int		m_nFlameFromAboveModelIndex;
+	bool	m_bIsFlareFire;
 
 //Client-side only
 public:

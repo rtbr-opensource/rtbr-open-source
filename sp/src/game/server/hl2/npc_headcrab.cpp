@@ -191,6 +191,8 @@ int ACT_HEADCRAB_CEILING_LAND;
 //-----------------------------------------------------------------------------
 ConVar	sk_headcrab_health( "sk_headcrab_health","0");
 ConVar	sk_headcrab_fast_health( "sk_headcrab_fast_health","0");
+ConVar	sk_babycrab_health("sk_babycrab_health", "1");
+ConVar	sk_babycrab_dmg("sk_babycrab_damage", "1");
 ConVar	sk_headcrab_poison_health( "sk_headcrab_poison_health","0");
 ConVar	sk_headcrab_melee_dmg( "sk_headcrab_melee_dmg","0");
 ConVar	sk_headcrab_poison_npc_damage( "sk_headcrab_poison_npc_damage", "0" );
@@ -1002,7 +1004,8 @@ void CBaseHeadcrab::LeapTouch( CBaseEntity *pOther )
 //-----------------------------------------------------------------------------
 int CBaseHeadcrab::CalcDamageInfo( CTakeDamageInfo *pInfo )
 {
-	pInfo->Set( this, this, sk_headcrab_melee_dmg.GetFloat(), DMG_SLASH );
+	float dmg = IsBabycrab() ? sk_babycrab_dmg.GetFloat() : sk_headcrab_melee_dmg.GetFloat();
+	pInfo->Set( this, this, dmg, DMG_SLASH );
 	CalculateMeleeDamageForce( pInfo, GetAbsVelocity(), GetAbsOrigin() );
 	return pInfo->GetDamage();
 }
@@ -1084,6 +1087,15 @@ void CBaseHeadcrab::GatherConditions( void )
 void CBaseHeadcrab::PrescheduleThink( void )
 {
 	BaseClass::PrescheduleThink();
+
+	CBaseEntity* pHurt = CheckTraceHullAttack(70, -Vector(1, 1, -2), Vector(1, 1, 1), 0, DMG_CLUB);
+	if (pHurt != NULL) {
+		if (pHurt->IsPlayer() && IsBabycrab()) {
+			if (pHurt->GetAbsOrigin().z - GetAbsOrigin().z >= 24.03 && pHurt->GetAbsOrigin().z - GetAbsOrigin().z <= 24.04) {
+				Event_Killed(CTakeDamageInfo());
+			}
+		}
+	}
 	
 	// Are we fading in after being hidden?
 	if ( !m_bHidden && (m_nRenderMode != kRenderNormal) )
@@ -2048,7 +2060,7 @@ void CBaseHeadcrab::TraceAttack( const CTakeDamageInfo &info, const Vector &vecD
 	{
 		Vector	puntDir = ( info.GetDamageForce() * 1000.0f );
 
-		newInfo.SetDamage( m_iMaxHealth / 3.0f );
+		newInfo.SetDamage( IsBabycrab() ? m_iMaxHealth : m_iMaxHealth / 3.0f ); // 1-hit-kill babycrabs
 
 		if( info.GetDamage() >= GetHealth() )
 		{
@@ -2433,7 +2445,7 @@ void CBaseHeadcrab::CreateDust( bool placeDecal )
 //-----------------------------------------------------------------------------
 void CHeadcrab::Precache( void )
 {
-	PrecacheModel( "models/headcrabclassic.mdl" );
+	PrecacheModel( DefaultOrCustomModel( "models/headcrabclassic.mdl" ) );
 
 	PrecacheScriptSound( "NPC_HeadCrab.Gib" );
 	PrecacheScriptSound( "NPC_HeadCrab.Idle" );
@@ -2455,7 +2467,7 @@ void CHeadcrab::Precache( void )
 void CHeadcrab::Spawn( void )
 {
 	Precache();
-	SetModel( "models/headcrabclassic.mdl" );
+	SetModel( DefaultOrCustomModel( "models/headcrabclassic.mdl" ) );
 
 	BaseClass::Spawn();
 
@@ -2570,7 +2582,7 @@ END_DATADESC()
 //-----------------------------------------------------------------------------
 void CFastHeadcrab::Precache( void )
 {
-	PrecacheModel( "models/headcrab.mdl" );
+	PrecacheModel( DefaultOrCustomModel( "models/headcrab.mdl" ) );
 
 	PrecacheScriptSound( "NPC_FastHeadcrab.Idle" );
 	PrecacheScriptSound( "NPC_FastHeadcrab.Alert" );
@@ -2589,7 +2601,7 @@ void CFastHeadcrab::Precache( void )
 void CFastHeadcrab::Spawn( void )
 {
 	Precache();
-	SetModel( "models/headcrab.mdl" );
+	SetModel( DefaultOrCustomModel( "models/headcrab.mdl" ) );
 
 	BaseClass::Spawn();
 
@@ -3089,7 +3101,7 @@ void CBlackHeadcrab::TelegraphSound( void )
 void CBlackHeadcrab::Spawn( void )
 {
 	Precache();
-	SetModel( "models/headcrabblack.mdl" );
+	SetModel( DefaultOrCustomModel( "models/headcrabblack.mdl" ) );
 
 	BaseClass::Spawn();
 
@@ -3106,7 +3118,7 @@ void CBlackHeadcrab::Spawn( void )
 //-----------------------------------------------------------------------------
 void CBlackHeadcrab::Precache( void )
 {
-	PrecacheModel( "models/headcrabblack.mdl" );
+	PrecacheModel( DefaultOrCustomModel( "models/headcrabblack.mdl" ) );
 
 	PrecacheScriptSound( "NPC_BlackHeadcrab.Telegraph" );
 	PrecacheScriptSound( "NPC_BlackHeadcrab.Attack" );
@@ -3592,6 +3604,41 @@ void CBlackHeadcrab::ImpactSound( void )
 	}
 }
 
+LINK_ENTITY_TO_CLASS(npc_babycrab, CBabycrab);
+
+void CBabycrab::Precache(void)
+{
+	PrecacheModel("models/babycrab.mdl");
+
+	PrecacheScriptSound("NPC_FastHeadcrab.Idle");
+	PrecacheScriptSound("NPC_FastHeadcrab.Alert");
+	PrecacheScriptSound("NPC_FastHeadcrab.Pain");
+	PrecacheScriptSound("NPC_FastHeadcrab.Die");
+	PrecacheScriptSound("NPC_FastHeadcrab.Bite");
+	PrecacheScriptSound("NPC_FastHeadcrab.Attack");
+
+	BaseClass::Precache();
+}
+
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CBabycrab::Spawn(void)
+{
+	Precache();
+	SetModel("models/babycrab.mdl");
+
+	BaseClass::Spawn();
+
+	m_iHealth = sk_babycrab_health.GetFloat();
+
+	m_iRunMode = HEADCRAB_RUNMODE_IDLE;
+	m_flPauseTime = 999999;
+
+	NPCInit();
+	HeadcrabInit();
+}
 
 //-----------------------------------------------------------------------------
 //

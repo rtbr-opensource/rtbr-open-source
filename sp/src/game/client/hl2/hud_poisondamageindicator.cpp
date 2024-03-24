@@ -31,47 +31,47 @@ using namespace vgui;
 //-----------------------------------------------------------------------------
 class CHudPoisonDamageIndicator : public CHudElement, public vgui::Panel
 {
-	DECLARE_CLASS_SIMPLE( CHudPoisonDamageIndicator, vgui::Panel );
+	DECLARE_CLASS_SIMPLE(CHudPoisonDamageIndicator, vgui::Panel);
 
 public:
-	CHudPoisonDamageIndicator( const char *pElementName );
-	void Reset( void );
-	virtual bool ShouldDraw( void );
+	CHudPoisonDamageIndicator(const char* pElementName);
+	void Reset(void);
+	virtual bool ShouldDraw(void);
 
 private:
 	virtual void OnThink();
 	virtual void Paint();
-	virtual void ApplySchemeSettings(vgui::IScheme *pScheme);
+	virtual void ApplySchemeSettings(vgui::IScheme* pScheme);
 
 private:
-	CPanelAnimationVar( vgui::HFont, m_hTextFont, "TextFont", "Default" );
-	CPanelAnimationVar( Color, m_TextColor, "TextColor", "FgColor" );
-	CPanelAnimationVarAliasType( float, text_xpos, "text_xpos", "8", "proportional_float" );
-	CPanelAnimationVarAliasType( float, text_ypos, "text_ypos", "8", "proportional_float" );
-	CPanelAnimationVarAliasType( float, text_ygap, "text_ygap", "14", "proportional_float" );
+	CPanelAnimationVar(vgui::HFont, m_hTextFont, "TextFont", "Default");
+	CPanelAnimationVar(Color, m_TextColor, "TextColor", "FgColor");
+	CPanelAnimationVarAliasType(float, text_xpos, "text_xpos", "8", "proportional_float");
+	CPanelAnimationVarAliasType(float, text_ypos, "text_ypos", "8", "proportional_float");
+	CPanelAnimationVarAliasType(float, text_ygap, "text_ygap", "14", "proportional_float");
 
 	bool m_bDamageIndicatorVisible;
 };
 
-DECLARE_HUDELEMENT( CHudPoisonDamageIndicator );
+DECLARE_HUDELEMENT(CHudPoisonDamageIndicator);
 
 //-----------------------------------------------------------------------------
 // Purpose: Constructor
 //-----------------------------------------------------------------------------
-CHudPoisonDamageIndicator::CHudPoisonDamageIndicator( const char *pElementName ) : CHudElement( pElementName ), BaseClass(NULL, "HudPoisonDamageIndicator")
+CHudPoisonDamageIndicator::CHudPoisonDamageIndicator(const char* pElementName) : CHudElement(pElementName), BaseClass(NULL, "HudPoisonDamageIndicator")
 {
-	vgui::Panel *pParent = g_pClientMode->GetViewport();
-	SetParent( pParent );
-	
-	SetHiddenBits( HIDEHUD_HEALTH | HIDEHUD_PLAYERDEAD | HIDEHUD_NEEDSUIT );
+	vgui::Panel* pParent = g_pClientMode->GetViewport();
+	SetParent(pParent);
+
+	SetHiddenBits(HIDEHUD_HEALTH | HIDEHUD_PLAYERDEAD | HIDEHUD_NEEDSUIT);
 }
 
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
-void CHudPoisonDamageIndicator::Reset( void )
+void CHudPoisonDamageIndicator::Reset(void)
 {
-	SetAlpha( 0 );
+	SetAlpha(0);
 	m_bDamageIndicatorVisible = false;
 }
 
@@ -80,15 +80,15 @@ void CHudPoisonDamageIndicator::Reset( void )
 // costly traversal.  Called per frame, return true if thinking and 
 // painting need to occur.
 //-----------------------------------------------------------------------------
-bool CHudPoisonDamageIndicator::ShouldDraw( void )
+bool CHudPoisonDamageIndicator::ShouldDraw(void)
 {
-	C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
-	if ( !pPlayer )
+	C_BasePlayer* pPlayer = C_BasePlayer::GetLocalPlayer();
+	if (!pPlayer)
 		return false;
 
-	bool bNeedsDraw = ( ( pPlayer->IsPoisoned() != m_bDamageIndicatorVisible ) || ( GetAlpha() > 0 ) );
+	bool bNeedsDraw = ((pPlayer->IsPoisoned() != m_bDamageIndicatorVisible) || (GetAlpha() > 0));
 
-	return ( bNeedsDraw && CHudElement::ShouldDraw() );
+	return (bNeedsDraw && CHudElement::ShouldDraw());
 }
 
 //-----------------------------------------------------------------------------
@@ -96,12 +96,12 @@ bool CHudPoisonDamageIndicator::ShouldDraw( void )
 //-----------------------------------------------------------------------------
 void CHudPoisonDamageIndicator::OnThink()
 {
-	C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
-	if ( !pPlayer )
+	C_BasePlayer* pPlayer = C_BasePlayer::GetLocalPlayer();
+	if (!pPlayer)
 		return;
 
 	// update poison damage indicator
-	bool bShouldIndicatorBeVisible = pPlayer->IsPoisoned();
+	bool bShouldIndicatorBeVisible = false;
 	if (bShouldIndicatorBeVisible == m_bDamageIndicatorVisible)
 		return;
 
@@ -111,11 +111,11 @@ void CHudPoisonDamageIndicator::OnThink()
 	if (m_bDamageIndicatorVisible)
 	{
 		SetVisible(true);
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "PoisonDamageTaken" );
+		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("PoisonDamageTaken");
 	}
 	else
 	{
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "PoisonDamageCured" );
+		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("PoisonDamageCured");
 	}
 }
 
@@ -124,15 +124,15 @@ void CHudPoisonDamageIndicator::OnThink()
 //-----------------------------------------------------------------------------
 void CHudPoisonDamageIndicator::Paint()
 {
-	// draw the text
-	surface()->DrawSetTextFont( m_hTextFont );
-	surface()->DrawSetTextColor( m_TextColor );
+	/*// draw the text
+	surface()->DrawSetTextFont(m_hTextFont);
+	surface()->DrawSetTextColor(m_TextColor);
 	surface()->DrawSetTextPos(text_xpos, text_ypos);
 	int ypos = text_ypos;
 
-	const wchar_t *labelText = g_pVGuiLocalize->Find("Valve_HudPoisonDamage");
-	Assert( labelText );
-	for (const wchar_t *wch = labelText; wch && *wch != 0; wch++)
+	const wchar_t* labelText = g_pVGuiLocalize->Find("Valve_HudPoisonDamage");
+	Assert(labelText);
+	for (const wchar_t* wch = labelText; wch && *wch != 0; wch++)
 	{
 		if (*wch == '\n')
 		{
@@ -143,13 +143,13 @@ void CHudPoisonDamageIndicator::Paint()
 		{
 			surface()->DrawUnicodeChar(*wch);
 		}
-	}
+	}*/
 }
 
 //-----------------------------------------------------------------------------
 // Purpose: hud scheme settings
 //-----------------------------------------------------------------------------
-void CHudPoisonDamageIndicator::ApplySchemeSettings(vgui::IScheme *pScheme)
+void CHudPoisonDamageIndicator::ApplySchemeSettings(vgui::IScheme* pScheme)
 {
 	BaseClass::ApplySchemeSettings(pScheme);
 }

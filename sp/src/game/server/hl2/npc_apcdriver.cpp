@@ -250,7 +250,7 @@ int CNPC_APCDriver::RangeAttack2Conditions( float flDot, float flDist )
 		return COND_NONE;
 
 	// Vehicle not ready to fire again yet?
-	if ( m_pVehicleInterface->Weapon_SecondaryCanFireAt() > gpGlobals->curtime + 0.1f )
+	if ( m_pVehicleInterface->Weapon_SecondaryCanFireAt() > gpGlobals->curtime)
 		return COND_NONE;
 
 	float flMinDist, flMaxDist;

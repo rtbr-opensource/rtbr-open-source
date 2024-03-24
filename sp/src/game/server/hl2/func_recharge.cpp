@@ -614,6 +614,8 @@ void CNewRecharge::Spawn()
 	m_iReactivate = 0;
 
 	SetCycle( 1.0f - ( m_flJuice / MaxJuice() ) );
+
+	m_bSecondaryUse = true;
 }
 
 bool CNewRecharge::CreateVPhysics()
@@ -729,7 +731,6 @@ void CNewRecharge::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE 
 	// if it's not a player, ignore
 	if ( !pActivator || !pActivator->IsPlayer() )
 		return;
-
 	CBasePlayer *pPlayer = static_cast<CBasePlayer *>(pActivator);
 
 	// Reset to a state of continuous use.
@@ -828,7 +829,6 @@ void CNewRecharge::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE 
 			return;
 		}
 	}
-
 	// This is bumped out if used within the time period
 	SetNextThink( gpGlobals->curtime + CHARGE_RATE );
 	SetThink( &CNewRecharge::Off );
@@ -836,7 +836,6 @@ void CNewRecharge::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE 
 	// Time to recharge yet?
 	if ( m_flNextCharge >= gpGlobals->curtime )
 		return;
-	
 	// Play the on sound or the looping charging sound
 	if ( !m_iOn )
 	{
@@ -854,14 +853,12 @@ void CNewRecharge::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE 
 		filter.MakeReliable();
 		EmitSound( filter, entindex(), "SuitCharger.Loop" );
 	}
-
 	// Give armor if we need it
-	if ( pPlayer->ArmorValue() < nMaxArmor )
+	if ( pPlayer->ArmorValue() < nMaxArmor)
 	{
 		UpdateJuice( m_iJuice - nIncrementArmor );
 		pPlayer->IncrementArmorValue( nIncrementArmor, nMaxArmor );
 	}
-
 	// Send the output.
 	float flRemaining = m_iJuice / MaxJuice();
 	m_OutRemainingCharge.Set(flRemaining, pActivator, this);

@@ -463,7 +463,7 @@ public:
 						}
 						else
 						{
-							DevMsg( "Don't know how to save model for physics object (class \"%s\")\n", pOwner->GetClassname() );
+							DevMsg( "Don't know how to save model for physics object (class \"%s\", modelname \"%s\")\n", pOwner->GetClassname(), pOwner->GetModelName() );
 						}
 					}
 				}

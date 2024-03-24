@@ -52,7 +52,8 @@ enum CitizenType_t
 	CT_REFUGEE,
 	CT_REBEL,
 	CT_UNIQUE,
-	CT_INDUSTRIAL
+	CT_INDUSTRIAL,
+	CT_METROCOP
 };
 
 //-----------------------------------------------------------------------------
@@ -201,6 +202,7 @@ public:
 	void			OnMoveToCommandGoalFailed();
 	void			AddToPlayerSquad();
 	void			RemoveFromPlayerSquad();
+	void			RandomizeCitizen();
 	void 			TogglePlayerSquadState();
 	void			UpdatePlayerSquad();
 	static int __cdecl PlayerSquadCandidateSortFunc( const SquadCandidate_t *, const SquadCandidate_t * );
@@ -254,6 +256,7 @@ public:
 	// Inputs
 	//---------------------------------
 	void			InputRemoveFromPlayerSquad( inputdata_t &inputdata ) { RemoveFromPlayerSquad(); }
+	void			InputRandomizeCitizen(inputdata_t &inputdata) { RandomizeCitizen(); }
 	void 			InputStartPatrolling( inputdata_t &inputdata );
 	void 			InputStopPatrolling( inputdata_t &inputdata );
 	void			InputSetCommandable( inputdata_t &inputdata );
@@ -277,6 +280,11 @@ public:
 	bool			UseSemaphore( void );
 
 	virtual void	OnChangeRunningBehavior( CAI_BehaviorBase *pOldBehavior,  CAI_BehaviorBase *pNewBehavior );
+
+#ifdef MAPBASE
+	int				GetCitizenType() { return (int)m_Type; }
+	void			SetCitizenType( int iType ) { m_Type = (CitizenType_t)iType; }
+#endif
 
 private:
 	//-----------------------------------------------------
@@ -366,7 +374,6 @@ private:
 #endif
 
 	//-----------------------------------------------------
-	CAI_FuncTankBehavior	m_FuncTankBehavior;
 #ifdef MAPBASE
 	CAI_RappelBehavior		m_RappelBehavior;
 	CAI_PolicingBehavior	m_PolicingBehavior;
@@ -374,6 +381,8 @@ private:
 	// Rappel
 	virtual bool IsWaitingToRappel( void ) { return m_RappelBehavior.IsWaitingToRappel(); }
 	void BeginRappel() { m_RappelBehavior.BeginRappel(); }
+#else // Moved to CNPC_PlayerCompanion
+	CAI_FuncTankBehavior	m_FuncTankBehavior;
 #endif
 
 	CHandle<CAI_FollowGoal>	m_hSavedFollowGoalEnt;
@@ -383,6 +392,10 @@ private:
 	
 	//-----------------------------------------------------
 	
+#ifdef MAPBASE_VSCRIPT
+	static ScriptHook_t		g_Hook_SelectModel;
+	DECLARE_ENT_SCRIPTDESC();
+#endif
 	DECLARE_DATADESC();
 #ifdef _XBOX
 protected:

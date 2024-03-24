@@ -314,6 +314,11 @@ void CFPSPanel::Paint()
 											  255, 255, 255, 255, 
 											  "vel:  %.2f", 
 											  vel.Length() );
+		i++;
+		g_pMatSystemSurface->DrawColoredText(m_hFont, x, 2 + i * (vgui::surface()->GetFontTall(m_hFont) + 2),
+											  255, 255, 255, 255,
+											  "vel (m/s):  %.2f",
+											  (vel.Length() * 0.01905));
 	}
 	
 	if ( cl_showbattery.GetInt() > 0 )

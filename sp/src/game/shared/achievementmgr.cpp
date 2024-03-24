@@ -350,7 +350,7 @@ void CAchievementMgr::PostInit()
 	}
 
 	// get current game dir
-	const char *pGameDir = COM_GetModDirectory();
+	//const char *pGameDir = COM_GetModDirectory();
 
 	CBaseAchievementHelper *pAchievementHelper = CBaseAchievementHelper::s_pFirst;
 	while ( pAchievementHelper )
@@ -364,8 +364,8 @@ void CAchievementMgr::PostInit()
 		// only add an achievement if it does not have a game filter (only compiled into the game it
 		// applies to, or truly cross-game) or, if it does have a game filter, the filter matches current game.
 		// (e.g. EP 1/2/... achievements are in shared binary but are game specific, they have a game filter for runtime check.)
-		const char *pGameDirFilter = pAchievement->m_pGameDirFilter;
-		if ( !pGameDirFilter || ( 0 == Q_strcmp( pGameDir, pGameDirFilter ) ) )
+		//const char *pGameDirFilter = pAchievement->m_pGameDirFilter;
+		if ( true /*!pGameDirFilter || (0 == Q_strcmp(pGameDir, pGameDirFilter))*/)
 		{
 			m_mapAchievement.Insert( pAchievement->GetAchievementID(), pAchievement );
 			if ( pAchievement->IsMetaAchievement() )
@@ -894,6 +894,7 @@ void CAchievementMgr::SaveGlobalStateIfDirty( bool bAsync )
 //-----------------------------------------------------------------------------
 void CAchievementMgr::AwardAchievement( int iAchievementID )
 {
+	Msg("A \n");
 	CBaseAchievement *pAchievement = GetAchievementByID( iAchievementID );
 	Assert( pAchievement );
 	if ( !pAchievement )
@@ -951,7 +952,7 @@ void CAchievementMgr::AwardAchievement( int iAchievementID )
 
 	if ( IsPC() )
 	{		
-#ifndef NO_STEAM
+#if 0
 		if ( steamapicontext->SteamUserStats() )
 		{
 			VPROF_BUDGET( "AwardAchievement", VPROF_BUDGETGROUP_STEAM );
@@ -964,6 +965,9 @@ void CAchievementMgr::AwardAchievement( int iAchievementID )
 			}
 		}
 #endif
+
+		m_AchievementsAwarded.AddToTail(iAchievementID);
+		
     }
 	else if ( IsX360() )
 	{
@@ -1033,6 +1037,15 @@ extern bool IsInCommentaryMode( void );
 //-----------------------------------------------------------------------------
 bool CAchievementMgr::CheckAchievementsEnabled()
 {
+#if defined(RTBR_DLL)
+	if (WereCheatsEverOn()) {
+		Msg("Achievements disabled: cheats turned on in this app session.\n");
+	}
+	else {
+		return true;
+	}
+#endif
+
 	// if PC, Steam must be running and user logged in
 	if ( IsPC() && !LoggedIntoSteam() )
 	{

@@ -17,6 +17,7 @@
 //-----------------------------------------------------------------------------
 #define SF_RAGDOLL_BOOGIE_ELECTRICAL	0x10000
 #define SF_RAGDOLL_BOOGIE_ELECTRICAL_NARROW_BEAM	0x20000
+#define SF_RAGDOLL_BOOGIE_ELECTRICAL_LOW			0x40000 // low-voltage boogie; decreases particle magnitude and movement force
 
 
 //-----------------------------------------------------------------------------

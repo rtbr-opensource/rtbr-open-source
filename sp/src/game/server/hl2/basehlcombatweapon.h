@@ -27,12 +27,16 @@ public:
 
 	void	PrimaryAttack( void );
 
+	void	PrimaryAttack(WeaponSound_t weaponSound);
+
 	// Default calls through to m_hOwner, but plasma weapons can override and shoot projectiles here.
 	virtual void	ItemPostFrame( void );
 	virtual void	FireBullets( const FireBulletsInfo_t &info );
 	virtual float	GetFireRate( void ) = 0;
 	virtual int		WeaponRangeAttack1Condition( float flDot, float flDist );
 	virtual bool	Deploy( void );
+
+	virtual Activity		GetPrimaryAttackActivity();
 
 	virtual const Vector &GetBulletSpread( void );
 
@@ -83,8 +87,10 @@ public:
 	virtual int		GetBurstSize( void ) { return 3; };
 
 	void			BurstThink( void );
+	void			BurstSingleSoundThink(void);
 
-	virtual void	PrimaryAttack( void );
+	virtual void	PrimaryAttack(void);
+	virtual void	PrimaryAttack(WeaponSound_t weaponSound);
 	virtual void	SecondaryAttack( void );
 
 	virtual int		WeaponRangeAttack1Condition( float flDot, float flDist );

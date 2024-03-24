@@ -184,6 +184,7 @@ protected:
 };
 
 LINK_ENTITY_TO_CLASS( npc_zombine, CNPC_Zombine );
+LINK_ENTITY_TO_CLASS(npc_metrozop, CNPC_Zombine);
 
 BEGIN_DATADESC( CNPC_Zombine )
 	DEFINE_FIELD( m_flSprintTime, FIELD_TIME ),
@@ -243,6 +244,9 @@ void CNPC_Zombine::Spawn( void )
 #ifndef MAPBASE
 	m_iGrenadeCount = ZOMBINE_MAX_GRENADES;
 #endif
+	if (FClassnameIs(this, "npc_metrozop")) {
+		m_iGrenadeCount = 0;
+	}
 }
 
 void CNPC_Zombine::Precache( void )
@@ -250,6 +254,7 @@ void CNPC_Zombine::Precache( void )
 	BaseClass::Precache();
 
 	PrecacheModel( "models/zombie/zombie_soldier.mdl" );
+	PrecacheModel("models/zombie/zombie_police.mdl");
 
 	PrecacheScriptSound( "Zombie.FootstepRight" );
 	PrecacheScriptSound( "Zombie.FootstepLeft" );
@@ -270,7 +275,16 @@ void CNPC_Zombine::Precache( void )
 
 void CNPC_Zombine::SetZombieModel( void )
 {
-	SetModel( "models/zombie/zombie_soldier.mdl" );
+	if (FClassnameIs(this, "npc_zombine")) {
+		SetModel("models/zombie/zombie_soldier.mdl");
+	}
+	else if (FClassnameIs(this, "npc_metrozop")) {
+		SetModel("models/zombie/zombie_police.mdl");
+	}
+	else {
+		SetModel("models/zombie/zombie_soldier.mdl");
+	}
+	
 	SetHullType( HULL_HUMAN );
 
 	SetBodygroup( ZOMBIE_BODYGROUP_HEADCRAB, !m_fIsHeadless );

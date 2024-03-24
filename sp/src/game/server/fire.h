@@ -33,6 +33,7 @@ enum fireType_e
 {
 	FIRE_NATURAL = 0,
 	FIRE_PLASMA,
+	FIRE_FLARE,
 };
 
 //==================================================

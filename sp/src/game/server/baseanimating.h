@@ -84,6 +84,7 @@ public:
 	virtual void	StudioFrameAdvance(); // advance animation frame to some time in the future
 	void StudioFrameAdvanceManual( float flInterval );
 	bool	IsValidSequence( int iSequence );
+	virtual void	ReachedEndOfSequence() { return; }
 
 	inline float					GetPlaybackRate();
 	inline void						SetPlaybackRate( float rate );
@@ -144,6 +145,9 @@ public:
 	bool HasAnimEvent( int nSequence, int nEvent );
 	virtual	void DispatchAnimEvents ( CBaseAnimating *eventHandler ); // Handle events that have happend since last time called up until X seconds into the future
 	virtual void HandleAnimEvent( animevent_t *pEvent );
+#ifdef MAPBASE_VSCRIPT
+	bool ScriptHookHandleAnimEvent( animevent_t *pEvent );
+#endif
 
 	int		LookupPoseParameter( CStudioHdr *pStudioHdr, const char *szName );
 	inline int	LookupPoseParameter( const char *szName ) { return LookupPoseParameter(GetModelPtr(), szName); }
@@ -209,6 +213,9 @@ public:
 	// For VScript
 	int		GetSkin() { return m_nSkin; }
 	void	SetSkin( int iSkin ) { m_nSkin = iSkin; }
+
+	static ScriptHook_t	g_Hook_OnServerRagdoll;
+	static ScriptHook_t	g_Hook_HandleAnimEvent;
 #endif
 
 	// These return the attachment in the space of the entity
@@ -315,11 +322,16 @@ public:
 	virtual void IgniteLifetimeGreen(float flFlameLifetime);
 	virtual void IgniteNumHitboxFires( int iNumHitBoxFires );
 	virtual void IgniteHitboxFireScale( float flHitboxFireScale );
-	virtual void Extinguish() { RemoveFlag( FL_ONFIRE ); }
+	virtual void Extinguish() { 
+		RemoveFlag( FL_ONFIRE );
+		m_OnExtinguish.FireOutput(this, this);
+	}
 	bool IsOnFire() { return ( (GetFlags() & FL_ONFIRE) != 0 ); }
 	bool IsOnGreenFire() { return ((GetFlags() & FL_ONFIREGREEN) != 0); }
 	void Scorch( int rate, int floor );
 	void InputIgnite( inputdata_t &inputdata );
+	void InputIgniteCrem(inputdata_t& inputdata);
+	void InputExtinguish(inputdata_t& inputdata);
 	void InputIgniteLifetime( inputdata_t &inputdata );
 	void InputIgniteNumHitboxFires( inputdata_t &inputdata );
 	void InputIgniteHitboxFireScale( inputdata_t &inputdata );
@@ -384,6 +396,8 @@ private:
 
 	void InputSetCycle( inputdata_t &inputdata );
 	void InputSetPlaybackRate( inputdata_t &inputdata );
+
+public: // From Alien Swarm SDK
 #endif
 
 	bool CanSkipAnimation( void );
@@ -461,6 +475,7 @@ protected:
 
 public:
 	COutputEvent m_OnIgnite;
+	COutputEvent m_OnExtinguish;
 #ifdef MAPBASE
 	COutputEHANDLE m_OnServerRagdoll;
 #endif

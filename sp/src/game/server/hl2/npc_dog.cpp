@@ -88,6 +88,8 @@ protected:
 		NEXT_CONDITION,
 	};
 
+private:
+	static string_t    gm_iszSkitch;
 protected:
 	float m_flNextSwat;
 	float m_flTimeToCatch;
@@ -138,6 +140,7 @@ protected:
 };
 
 LINK_ENTITY_TO_CLASS( npc_dog, CNPC_Dog );
+LINK_ENTITY_TO_CLASS(npc_skitch, CNPC_Dog);
 
 BEGIN_DATADESC( CNPC_Dog )
 	DEFINE_EMBEDDED( m_BoneFollowerManager ),
@@ -192,6 +195,7 @@ static const char *pFollowerBoneNames[] =
 	"Dog_Model.Eye",
 	"Dog_Model.Pelvis",
 };
+string_t CNPC_Dog::gm_iszSkitch;
 
 enum
 {
@@ -454,9 +458,13 @@ void CNPC_Dog::Spawn( void )
 	Precache();
 
 	BaseClass::Spawn();
-
-	SetModel( "models/dog.mdl" );
-
+	if (FClassnameIs(this, "npc_skitch")) {
+		SetModel("models/skitch/skitch.mdl");
+	}
+	else {
+		SetModel("models/dog.mdl");
+	}
+	 
 	SetHullType( HULL_WIDE_HUMAN );
 	SetHullSizeNormal();
 
@@ -638,7 +646,9 @@ void CNPC_Dog::PullObject( bool bMantain )
 //-----------------------------------------------------------------------------
 void CNPC_Dog::Precache( void )
 {
+
 	PrecacheModel( "models/dog.mdl" );
+	PrecacheModel("models/skitch/skitch.mdl");
 	
 	PrecacheScriptSound( "Weapon_PhysCannon.Launch" );
 

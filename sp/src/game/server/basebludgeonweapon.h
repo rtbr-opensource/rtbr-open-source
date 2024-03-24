@@ -30,6 +30,9 @@ public:
 	//Attack functions
 	virtual	void	PrimaryAttack( void );
 	virtual	void	SecondaryAttack( void );
+
+	virtual	void	PrimaryAttack(int iDamage, int iDamageType);
+	virtual	void	SecondaryAttack(int iDamage, int iDamageType);
 	
 	virtual void	ItemPostFrame( void );
 
@@ -50,7 +53,9 @@ protected:
 private:
 	bool			ImpactWater( const Vector &start, const Vector &end );
 	void			Swing( int bIsSecondary );
+	void			Swing(int bIsSecondary, int iDamage, int iDamageType);
 	void			Hit( trace_t &traceHit, Activity nHitActivity, bool bIsSecondary );
+	void			Hit(trace_t &traceHit, Activity nHitActivity, bool bIsSecondary, int iDamage, int iDamageType);
 	Activity		ChooseIntersectionPointAndActivity( trace_t &hitTrace, const Vector &mins, const Vector &maxs, CBasePlayer *pOwner );
 };
 

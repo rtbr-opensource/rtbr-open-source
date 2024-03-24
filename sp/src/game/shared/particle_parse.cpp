@@ -22,7 +22,6 @@
 #include "tier0/memdbgon.h"
 
 #define PARTICLES_MANIFEST_FILE				"particles/particles_manifest.txt"
-
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
@@ -287,6 +286,7 @@ void DispatchParticleEffect( const char *pszParticleName, ParticleAttachment_t i
 	CEffectData	data;
 
 	data.m_nHitBox = GetParticleSystemIndex( pszParticleName );
+
 	if ( pEntity )
 	{
 #ifdef CLIENT_DLL
@@ -340,6 +340,7 @@ void DispatchParticleEffect( const char *pszParticleName, ParticleAttachment_t i
 	CEffectData	data;
 
 	data.m_nHitBox = GetParticleSystemIndex( pszParticleName );
+
 	if ( pEntity )
 	{
 #ifdef CLIENT_DLL
@@ -388,6 +389,7 @@ void DispatchParticleEffect( int iEffectIndex, Vector vecOrigin, Vector vecStart
 	CEffectData	data;
 
 	data.m_nHitBox = iEffectIndex;
+
 	data.m_vOrigin = vecOrigin;
 	data.m_vStart = vecStart;
 	data.m_vAngles = vecAngles;
@@ -423,7 +425,6 @@ void DispatchParticleEffect( const char *pszParticleName, Vector vecOrigin, QAng
 	int iEffectIndex = GetParticleSystemIndex( pszParticleName );
 
 	CEffectData	data;
-
 	data.m_nHitBox = iEffectIndex;
 	data.m_vOrigin = vecOrigin;
 	data.m_vAngles = vecAngles;

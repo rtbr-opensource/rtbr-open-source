@@ -63,11 +63,14 @@ ConVar  sk_antlion_worker_burst_radius("sk_antlion_worker_burst_radius", "160", 
 
 #endif
 
-ConVar  g_test_new_antlion_jump("g_test_new_antlion_jump", "1", FCVAR_ARCHIVE);
-ConVar	antlion_easycrush("antlion_easycrush", "1");
-ConVar g_antlion_cascade_push("g_antlion_cascade_push", "1", FCVAR_ARCHIVE);
-
-ConVar g_debug_antlion_worker("g_debug_antlion_worker", "0");
+ConVar  g_test_new_antlion_jump( "g_test_new_antlion_jump", "1", FCVAR_ARCHIVE );
+ConVar	antlion_easycrush( "antlion_easycrush", "1" );
+#ifdef MAPBASE
+ConVar	antlion_no_ignite_die( "antlion_no_ignite_die", "0" );
+#endif
+ConVar g_antlion_cascade_push( "g_antlion_cascade_push", "1", FCVAR_ARCHIVE );
+ 
+ConVar g_debug_antlion_worker( "g_debug_antlion_worker", "0" );
 
 extern ConVar bugbait_radius;
 
@@ -277,18 +280,18 @@ void CNPC_Antlion::Spawn(void)
 #ifdef HL2_EPISODIC
 	if (IsWorker())
 	{
-		SetModel(ANTLION_WORKER_MODEL);
-		AddSpawnFlags(SF_NPC_LONG_RANGE);
-		SetBloodColor(BLOOD_COLOR_ANTLION_WORKER);
+		SetModel( DefaultOrCustomModel(ANTLION_WORKER_MODEL) );
+		AddSpawnFlags( SF_NPC_LONG_RANGE );
+		SetBloodColor( BLOOD_COLOR_ANTLION_WORKER );
 	}
 	else
 	{
-		SetModel(ANTLION_MODEL);
-		SetBloodColor(BLOOD_COLOR_ANTLION);
+		SetModel( DefaultOrCustomModel(ANTLION_MODEL) );
+		SetBloodColor( BLOOD_COLOR_ANTLION );
 	}
 #else
-	SetModel(ANTLION_MODEL);
-	SetBloodColor(BLOOD_COLOR_YELLOW);
+	SetModel( DefaultOrCustomModel(ANTLION_MODEL) );
+	SetBloodColor( BLOOD_COLOR_YELLOW );
 #endif // HL2_EPISODIC
 
 	SetHullType(HULL_MEDIUM);
@@ -2620,6 +2623,15 @@ int CNPC_Antlion::SelectSchedule(void)
 void CNPC_Antlion::Ignite(float flFlameLifetime, bool bNPCOnly, float flSize, bool bCalledByLevelDesigner)
 {
 #ifdef HL2_EPISODIC
+
+#ifdef MAPBASE
+	if (antlion_no_ignite_die.GetBool())
+	{
+		BaseClass::Ignite(flFlameLifetime, bNPCOnly, flSize, bCalledByLevelDesigner);
+		return;
+	}
+#endif
+
 	float flDamage = m_iHealth + 1;
 
 	CTakeDamageInfo	dmgInfo(this, this, flDamage, DMG_GENERIC);

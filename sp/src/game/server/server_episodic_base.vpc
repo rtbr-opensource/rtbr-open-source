@@ -48,9 +48,9 @@ $Project
 
 		$Folder	"HL2 DLL"
 		{
-			$File	"$SRCDIR\game\shared\episodic\achievements_ep1.cpp"
-			$File	"$SRCDIR\game\shared\episodic\achievements_ep2.cpp"
-			$File	"$SRCDIR\game\shared\episodic\achievements_epx.cpp"
+			//$File	"$SRCDIR\game\shared\episodic\achievements_ep1.cpp"
+			//$File	"$SRCDIR\game\shared\episodic\achievements_ep2.cpp"
+			//$File	"$SRCDIR\game\shared\episodic\achievements_epx.cpp"
 			$File	"hl2\ai_allymanager.cpp"
 			$File	"hl2\ai_behavior_actbusy.cpp"
 			$File	"hl2\ai_behavior_actbusy.h"
@@ -59,7 +59,6 @@ $Project
 			$File	"hl2\ai_behavior_functank.cpp"
 			$File	"hl2\ai_behavior_functank.h"
 			$File	"hl2\ai_behavior_holster.cpp"
-			$File	"hl2\weapon_cguard.cpp"
 			$File	"hl2\ai_behavior_holster.h"
 			$File	"hl2\ai_behavior_operator.cpp"
 			$File	"hl2\ai_behavior_operator.h"
@@ -160,7 +159,7 @@ $Project
 			$File	"hl2\npc_attackchopper.h"
 			$File	"hl2\npc_barnacle.cpp"
 			$File	"hl2\npc_barnacle.h"
-			$File	"hl2\npc_barney.cpp"
+			//$File	"hl2\npc_barney.cpp"
 			$File	"hl2\npc_basescanner.cpp"
 			$File	"hl2\npc_basescanner.h"
 			$File	"hl2\npc_BaseZombie.cpp"
@@ -295,6 +294,7 @@ $Project
 				$File	"hl2\grenade_pathfollower.h"
 				$File	"hl2\npc_missiledefense.cpp"
 				$File	"hl2\vehicle_apc.cpp"
+				$File	"hl2\weapon_cguard.cpp"
 				$File	"hl2\weapon_flaregun.cpp"
 				$File	"hl2\weapon_flaregun.h"
 			}

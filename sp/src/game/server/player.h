@@ -88,6 +88,10 @@ class CNavArea;
 class CHintSystem;
 class CAI_Expresser;
 
+#ifdef MAPBASE // From Alien Swarm SDK
+class CTonemapTrigger;
+#endif
+
 #if defined USES_ECON_ITEMS
 class CEconWearable;
 #endif // USES_ECON_ITEMS
@@ -160,6 +164,9 @@ enum PlayerPhysFlag_e
 #define DOT_25DEGREE  0.9063077870367
 #define DOT_30DEGREE  0.866025403784
 #define DOT_45DEGREE  0.707106781187
+
+#define IDLE_FIDGET_TIME 15 // amount of time to be idle for before fidget
+#define IDLE_FIDGET_TICK 0.25f // time per idle check
 enum
 {
 	VPHYS_WALK = 0,
@@ -266,8 +273,12 @@ public:
 	void					HideViewModels( void );
 	void					DestroyViewModels( void );
 
-	void Fidget(void);
+	void Fidget();
 	void ResetFidget(void);
+	bool LookingAtFriendly( void );
+	int m_iIdleTicks = 0;
+	Vector m_vLastPosition;
+	QAngle m_vViewAngles;
 
 #ifdef MAPBASE
 	virtual void			CreateHandModel( int viewmodelindex = 1, int iOtherVm = 0 );
@@ -412,6 +423,8 @@ public:
 	const Vector&			ScriptGetEyeForward() { static Vector vecForward; EyeVectors( &vecForward, NULL, NULL ); return vecForward; }
 	const Vector&			ScriptGetEyeRight() { static Vector vecRight; EyeVectors( NULL, &vecRight, NULL ); return vecRight; }
 	const Vector&			ScriptGetEyeUp() { static Vector vecUp; EyeVectors( NULL, NULL, &vecUp ); return vecUp; }
+
+	HSCRIPT					ScriptGetViewModel( int viewmodelindex );
 #endif
 
 	// View model prediction setup
@@ -589,6 +602,8 @@ public:
 	virtual void			CheckSuitUpdate();
 	void					SetSuitUpdate(const char *name, int fgroup, int iNoRepeat);
 	virtual void			UpdateGeigerCounter( void );
+	void					SetIgniteBegin(void);
+	void					TakeIgniteDamage(void);
 	void					CheckTimeBasedDamage( void );
 
 	void					ResetAutoaim( void );
@@ -662,6 +677,8 @@ public:
 
 #ifdef MAPBASE
 	bool					ShouldUseVisibilityCache( CBaseEntity *pEntity );
+
+	void					UpdateFXVolume( void );		// From Alien Swarm SDK
 #endif
 
 public:
@@ -888,9 +905,19 @@ public:
 	void InitFogController( void );
 	void InputSetFogController( inputdata_t &inputdata );
 
+#ifdef MAPBASE // From Alien Swarm SDK
+	void OnTonemapTriggerStartTouch( CTonemapTrigger *pTonemapTrigger );
+	void OnTonemapTriggerEndTouch( CTonemapTrigger *pTonemapTrigger );
+	CUtlVector< CHandle< CTonemapTrigger > > m_hTriggerTonemapList;
+
 	CNetworkHandle( CPostProcessController, m_hPostProcessCtrl );	// active postprocessing controller
+	CNetworkHandle( CColorCorrection, m_hColorCorrectionCtrl );		// active FXVolume color correction
 	void InitPostProcessController( void );
-	void InputSetPostProcessController( inputdata_t& inputdata );
+	void InputSetPostProcessController( inputdata_t &inputdata );
+	void InitColorCorrectionController( void );
+	void InputSetColorCorrectionController( inputdata_t &inputdata );
+#endif
+
 
 	// Used by env_soundscape_triggerable to manage when the player is touching multiple
 	// soundscape triggers simultaneously.
@@ -947,7 +974,7 @@ public:
 #endif
 
 #ifdef MAPBASE
-	bool					m_bInTriggerFall;
+	CNetworkVar( bool, m_bInTriggerFall );
 #endif
 
 private:
@@ -1035,6 +1062,13 @@ protected:
 	float					m_fReplayEnd;		// time to stop replay mode
 	int						m_iReplayEntity;	// follow this entity in replay
 
+#ifdef MAPBASE // From Alien Swarm SDK
+	// For now, Mapbase uses Tony Sergi's Source 2007 tonemap fixes.
+	// Alien Swarm SDK tonemap controller code copies the parameters instead.
+	virtual void UpdateTonemapController( void );
+	//CNetworkHandle( CBaseEntity, m_hTonemapController );
+#endif
+
 private:
 	void HandleFuncTrain();
 
@@ -1080,7 +1114,9 @@ private:
 
 	int						m_iUpdateTime;		// stores the number of frame ticks before sending HUD update messages
 	int						m_iClientBattery;	// the Battery currently known by the client.  If this changes, send a new
-
+	
+	float					m_flIgniteBegin = 0.0f;
+	float					m_flLastIgniteTick = 0.0f;
 	// Autoaim data
 	QAngle					m_vecAutoAim;
 	int						m_lastx, m_lasty;	// These are the previous update's crosshair angles, DON"T SAVE/RESTORE
@@ -1151,7 +1187,8 @@ public:
 	int						m_nNumCrateHudHints;
 
 #ifdef MAPBASE
-	CNetworkVar( bool, m_bDrawPlayerModelExternally );
+	bool					GetDrawPlayerModelExternally( void ) { return m_bDrawPlayerModelExternally; }
+	void					SetDrawPlayerModelExternally( bool bToggle ) { m_bDrawPlayerModelExternally.Set( bToggle ); }
 #endif
 
 private:
@@ -1191,6 +1228,10 @@ private:
 
 	// Player name
 	char					m_szNetname[MAX_PLAYER_NAME_LENGTH];
+
+#ifdef MAPBASE
+	CNetworkVar( bool, m_bDrawPlayerModelExternally );
+#endif
 
 protected:
 	// HACK FOR TF2 Prediction

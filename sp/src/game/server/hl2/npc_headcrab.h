@@ -75,6 +75,7 @@ public:
 	void	CrawlFromCanister();
 
 	virtual	bool		AllowedToIgnite( void ) { return true; }
+	virtual bool		IsBabycrab( void ) { return false; }
 
 	virtual bool CanBeAnEnemyOf( CBaseEntity *pEnemy );
 
@@ -296,5 +297,20 @@ private:
 	float m_flNextHopTime;		// Keeps us from hopping too often due to damage.
 };
 
+//=========================================================
+//=========================================================
+// The tiny crabs birthed by the Gonarch.
+//=========================================================
+//=========================================================
+class CBabycrab : public CFastHeadcrab
+{
+public:
+	DECLARE_CLASS(CBabycrab, CFastHeadcrab);
+
+	void	Precache(void);
+	void	Spawn(void);
+
+	virtual bool		IsBabycrab( void ) { return true; }
+};
 
 #endif // NPC_HEADCRAB_H

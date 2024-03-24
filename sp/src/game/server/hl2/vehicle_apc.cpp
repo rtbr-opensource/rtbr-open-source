@@ -21,6 +21,7 @@
 #include "explode.h"
 #include "effect_dispatch_data.h"
 #include "te_effect_dispatch.h"
+#include "prop_vehiclegib.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -42,7 +43,6 @@
 #define MACHINE_GUN_BURST_PAUSE_TIME	2.0f
 
 #define ROCKET_SALVO_SIZE				5
-#define ROCKET_DELAY_TIME				1.5
 #define ROCKET_MIN_BURST_PAUSE_TIME		3
 #define ROCKET_MAX_BURST_PAUSE_TIME		4
 #define ROCKET_SPEED					800
@@ -54,26 +54,11 @@ extern short g_sModelIndexFireball; // Echh...
 
 
 ConVar sk_apc_health( "sk_apc_health", "750" );
+ConVar sk_apc_rocket_delay("sk_apc_rocket_delay", "2.5");
 
 
 #define APC_MAX_CHUNKS	3
-static const char *s_pChunkModelName[APC_MAX_CHUNKS] = 
-{
-	"models/gibs/helicopter_brokenpiece_01.mdl",
-	"models/gibs/helicopter_brokenpiece_02.mdl",
-	"models/gibs/helicopter_brokenpiece_03.mdl",
-};
-
-#define APC_MAX_GIBS	6
-static const char *s_pGibModelName[APC_MAX_GIBS] = 
-{
-	"models/combine_apc_destroyed_gib01.mdl",
-	"models/combine_apc_destroyed_gib02.mdl",
-	"models/combine_apc_destroyed_gib03.mdl",
-	"models/combine_apc_destroyed_gib04.mdl",
-	"models/combine_apc_destroyed_gib05.mdl",
-	"models/combine_apc_destroyed_gib06.mdl",
-};
+#define APC_MAX_GIBS 4
 
 
 LINK_ENTITY_TO_CLASS( prop_vehicle_apc, CPropAPC );
@@ -118,20 +103,11 @@ void CPropAPC::Precache( void )
 {
 	BaseClass::Precache();
 
-	int i;
-	for ( i = 0; i < APC_MAX_CHUNKS; ++i )
-	{
-		PrecacheModel( s_pChunkModelName[i] );
-	}
-
-	for ( i = 0; i < APC_MAX_GIBS; ++i )
-	{
-		PrecacheModel( s_pGibModelName[i] );
-	}
-
 	PrecacheScriptSound( "Weapon_AR2.Single" );
 	PrecacheScriptSound( "PropAPC.FireRocket" );
 	PrecacheScriptSound( "combine.door_lock" );
+
+	PrecacheParticleSystem("weapon_muzzle_flash_pulse_heavy");
 }
 
 
@@ -354,27 +330,13 @@ void CPropAPC::ExplodeAndThrowChunk( const Vector &vecExplosionPos )
 		SF_ENVEXPLOSION_NOSMOKE  | SF_ENVEXPLOSION_NOFIREBALLSMOKE, 0 );
 	UTIL_ScreenShake( vecExplosionPos, 25.0, 150.0, 1.0, 750.0f, SHAKE_START );
 
-	// Drop a flaming, smoking chunk.
-	CGib *pChunk = CREATE_ENTITY( CGib, "gib" );
-	pChunk->Spawn( "models/gibs/hgibs.mdl" );
-	pChunk->SetBloodColor( DONT_BLEED );
+	CPropVehicleGib* pGib = (CPropVehicleGib*)CreateEntityByName("prop_vehiclegib");
 
-	QAngle vecSpawnAngles;
-	vecSpawnAngles.Random( -90, 90 );
-	pChunk->SetAbsOrigin( vecExplosionPos );
-	pChunk->SetAbsAngles( vecSpawnAngles );
+	pGib->SetAbsOrigin(vecExplosionPos);
 
-	int nGib = random->RandomInt( 0, APC_MAX_CHUNKS - 1 );
-	pChunk->Spawn( s_pChunkModelName[nGib] );
-	pChunk->SetOwnerEntity( this );
-	pChunk->m_lifeTime = random->RandomFloat( 6.0f, 8.0f );
-	pChunk->SetCollisionGroup( COLLISION_GROUP_DEBRIS );
-	IPhysicsObject *pPhysicsObject = pChunk->VPhysicsInitNormal( SOLID_VPHYSICS, pChunk->GetSolidFlags(), false );
-	
 	// Set the velocity
-	if ( pPhysicsObject )
+	if ( pGib )
 	{
-		pPhysicsObject->EnableMotion( true );
 		Vector vecVelocity;
 
 		QAngle angles;
@@ -389,14 +351,16 @@ void CPropAPC::ExplodeAndThrowChunk( const Vector &vecExplosionPos )
 		AngularImpulse angImpulse;
 		angImpulse = RandomAngularImpulse( -180, 180 );
 
-		pChunk->SetAbsVelocity( vecVelocity );
-		pPhysicsObject->SetVelocity(&vecVelocity, &angImpulse );
+		pGib->SetAbsVelocity( vecVelocity );
+		pGib->ApplyLocalAngularVelocityImpulse(angImpulse);
 	}
 
-	CEntityFlame *pFlame = CEntityFlame::Create( pChunk, false );
+	pGib->Spawn();
+
+	CEntityFlame *pFlame = CEntityFlame::Create( pGib, false );
 	if ( pFlame != NULL )
 	{
-		pFlame->SetLifetime( pChunk->m_lifeTime );
+		pFlame->SetLifetime(-1);
 	}
 }
 
@@ -437,54 +401,60 @@ void CPropAPC::Event_Killed( const CTakeDamageInfo &info )
 			( i < 2 ) ? TE_EXPLFLAG_NODLIGHTS : TE_EXPLFLAG_NOPARTICLES | TE_EXPLFLAG_NOFIREBALLSMOKE | TE_EXPLFLAG_NODLIGHTS,
 			100, 0 );
 	}
+	SetModel("models/immolator_bolt.mdl");
 
 	// TODO: make the gibs spawn in sync with the delayed explosions
-	int nGibs = random->RandomInt( 1, 4 );
-	for ( int i = 0; i < nGibs; i++)
+	//int nGibs = random->RandomInt( 1, 4 );
+	for ( int i = 0; i < 4; i++)
 	{
-		// Throw a flaming, smoking chunk.
-		CGib *pChunk = CREATE_ENTITY( CGib, "gib" );
-		pChunk->Spawn( "models/gibs/hgibs.mdl" );
-		pChunk->SetBloodColor( DONT_BLEED );
-
-		QAngle vecSpawnAngles;
-		vecSpawnAngles.Random( -90, 90 );
-		pChunk->SetAbsOrigin( vecAbsPoint );
-		pChunk->SetAbsAngles( vecSpawnAngles );
-
-		int nGib = random->RandomInt( 0, APC_MAX_CHUNKS - 1 );
-		pChunk->Spawn( s_pChunkModelName[nGib] );
-		pChunk->SetOwnerEntity( this );
-		pChunk->m_lifeTime = random->RandomFloat( 6.0f, 8.0f );
-		pChunk->SetCollisionGroup( COLLISION_GROUP_DEBRIS );
-		IPhysicsObject *pPhysicsObject = pChunk->VPhysicsInitNormal( SOLID_VPHYSICS, pChunk->GetSolidFlags(), false );
+		CPropVehicleGib* pGib = (CPropVehicleGib*)CreateEntityByName("prop_vehiclegib");
+		if (Q_strcmp(STRING(GetModelName()), "models/apc_turret02_npc.mdl") == 0){
+			pGib->SetGibType(VG_TYPE_APC2_GIB);
+		}
+		else if (Q_strcmp(STRING(GetModelName()), "models/apc_turret01_npc.mdl") == 0){
+			pGib->SetGibType(VG_TYPE_APC1_GIB);
+		}
+		else {
+			pGib->SetGibType(VG_TYPE_APC1_GIB);
+		}
 		
+		pGib->SetGibModel(i);
+		DevMsg("%i, %i \n", pGib->GetGibType(), pGib->GetGibModel());
+
 		// Set the velocity
-		if ( pPhysicsObject )
+		if (pGib)
 		{
-			pPhysicsObject->EnableMotion( true );
+			if (i != 0) {
 			Vector vecVelocity;
 
 			QAngle angles;
-			angles.x = random->RandomFloat( -20, 20 );
-			angles.y = random->RandomFloat( 0, 360 );
+			angles.x = random->RandomFloat(-40, 0);
+			angles.y = random->RandomFloat(0, 360);
 			angles.z = 0.0f;
-			AngleVectors( angles, &vecVelocity );
-			
-			vecVelocity *= random->RandomFloat( 300, 900 );
+			AngleVectors(angles, &vecVelocity);
+
+			vecVelocity *= random->RandomFloat(300, 900);
 			vecVelocity += GetAbsVelocity();
 
 			AngularImpulse angImpulse;
-			angImpulse = RandomAngularImpulse( -180, 180 );
+			angImpulse = RandomAngularImpulse(-180, 180);
 
-			pChunk->SetAbsVelocity( vecVelocity );
-			pPhysicsObject->SetVelocity(&vecVelocity, &angImpulse );
+			pGib->SetAbsVelocity(vecVelocity);
+			pGib->ApplyLocalAngularVelocityImpulse(angImpulse);
+			}
+			else {
+				pGib->SetAbsAngles(QAngle(GetAbsAngles().x, GetAbsAngles().y - 90, GetAbsAngles().z));
+			
+			}
+			pGib->SetAbsOrigin(GetAbsOrigin());
 		}
 
-		CEntityFlame *pFlame = CEntityFlame::Create( pChunk, false );
+		pGib->Spawn();
+
+		CEntityFlame *pFlame = CEntityFlame::Create( pGib, false );
 		if ( pFlame != NULL )
 		{
-			pFlame->SetLifetime( pChunk->m_lifeTime );
+			pFlame->SetLifetime( -1 );
 		}
 	}
 
@@ -561,9 +531,15 @@ int CPropAPC::OnTakeDamage( const CTakeDamageInfo &info )
 		m_iHealth -= dmgInfo.GetDamage();
 		if ( m_iHealth <= 0 )
 		{
-			m_iHealth = 0;
-			Event_Killed( dmgInfo );
-			return 0;
+#ifdef MAPBASE_VSCRIPT
+			// False = Cheat death
+			if (ScriptDeathHook( const_cast<CTakeDamageInfo*>(&info) ) != false)
+#endif
+			{
+				m_iHealth = 0;
+				Event_Killed( dmgInfo );
+				return 0;
+			}
 		}
 
 		// Chain
@@ -806,11 +782,13 @@ void CPropAPC::DoImpactEffect( trace_t &tr, int nDamageType )
 //-----------------------------------------------------------------------------
 void CPropAPC::DoMuzzleFlash( void )
 {
-	CEffectData data;
+	/*CEffectData data;
 	data.m_nEntIndex = entindex();
 	data.m_nAttachmentIndex = m_nMachineGunMuzzleAttachment;
 	data.m_flScale = 1.0f;
-	DispatchEffect( "ChopperMuzzleFlash", data );
+	DispatchEffect( "ChopperMuzzleFlash", data );*/
+
+	DispatchParticleEffect("weapon_muzzle_flash_pulse_heavy", PATTACH_POINT_FOLLOW, this, "muzzle", true);
 
 	BaseClass::DoMuzzleFlash();
 }
@@ -868,13 +846,11 @@ void CPropAPC::CreateCorpse( )
 
 	for ( int i = 0; i < APC_MAX_GIBS; ++i )
 	{
-		CPhysicsProp *pGib = assert_cast<CPhysicsProp*>(CreateEntityByName( "prop_physics" ));
-		pGib->SetAbsOrigin( GetAbsOrigin() );
-		pGib->SetAbsAngles( GetAbsAngles() );
-		pGib->SetAbsVelocity( GetAbsVelocity() );
-		pGib->SetModel( s_pGibModelName[i] );
+		CPropVehicleGib* pGib = (CPropVehicleGib*)CreateEntityByName("prop_vehiclegib");
+
+		pGib->SetAbsOrigin(GetAbsOrigin());
+
 		pGib->Spawn();
-		pGib->SetMoveType( MOVETYPE_VPHYSICS );
 
 		float flMass = pGib->GetMass();
 		if ( flMass < 200 )
@@ -908,6 +884,7 @@ void CPropAPC::CreateCorpse( )
 			pGib->Ignite( 60, false );
 		}
 	}
+
 
 	AddSolidFlags( FSOLID_NOT_SOLID );
 	AddEffects( EF_NODRAW );
@@ -973,7 +950,7 @@ void CPropAPC::FireRocket( void )
 	m_iRocketSalvoLeft--;
 	if ( m_iRocketSalvoLeft > 0 )
 	{
-		m_flRocketTime = gpGlobals->curtime + ROCKET_DELAY_TIME;
+		m_flRocketTime = gpGlobals->curtime + sk_apc_rocket_delay.GetFloat();
 	}
 	else
 	{

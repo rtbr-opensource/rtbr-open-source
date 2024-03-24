@@ -8,6 +8,8 @@
 #include "cbase.h"
 #include "decals.h"
 #include "explode.h"
+#include "particle_parse.h"
+#include "te_particlesystem.h"
 #include "ai_basenpc.h"
 #include "IEffects.h"
 #include "vstdlib/random.h"
@@ -133,6 +135,8 @@ public:
 	// passed along to the RadiusDamage call
 	int m_iClassIgnore;
 	EHANDLE m_hEntityIgnore;
+private:
+	const char	*m_ccParticleName;
 
 };
 
@@ -140,6 +144,7 @@ LINK_ENTITY_TO_CLASS( env_explosion, CEnvExplosion );
 
 BEGIN_DATADESC( CEnvExplosion )
 
+DEFINE_KEYFIELD(m_ccParticleName, FIELD_STRING, "particlename"),
 	DEFINE_KEYFIELD( m_iMagnitude, FIELD_INTEGER, "iMagnitude" ),
 	DEFINE_KEYFIELD( m_iRadiusOverride, FIELD_INTEGER, "iRadiusOverride" ),
 	DEFINE_FIELD( m_spriteScale, FIELD_INTEGER ),
@@ -180,6 +185,11 @@ bool CEnvExplosion::KeyValue( const char *szKeyName, const char *szValue )
 
 void CEnvExplosion::Precache( void )
 {
+	if (m_ccParticleName == NULL) {
+		m_ccParticleName = "explosion_barrel";
+	}
+	PrecacheParticleSystem(m_ccParticleName);
+	
 	if ( m_iszFireballSprite != NULL_STRING )
 	{
 		m_sFireballSprite = PrecacheModel( STRING( m_iszFireballSprite ) );
@@ -277,7 +287,7 @@ void CEnvExplosion::InputExplode( inputdata_t &inputdata )
 	// flags to pass to the temp ent.
 	int nFlags = TE_EXPLFLAG_NONE;
 
-	if( m_spawnflags & SF_ENVEXPLOSION_NOFIREBALL )
+	if (m_spawnflags & SF_ENVEXPLOSION_NOFIREBALL || m_spawnflags & SF_ENVEXPLOSION_PARTICLE_EXPLOSION)
 	{
 		nFlags |= TE_EXPLFLAG_NOFIREBALL;
 	}
@@ -301,7 +311,7 @@ void CEnvExplosion::InputExplode( inputdata_t &inputdata )
 		nFlags |= TE_EXPLFLAG_NOADDITIVE;
 	}
 
-	if( m_spawnflags & SF_ENVEXPLOSION_NOPARTICLES )
+	if (m_spawnflags & SF_ENVEXPLOSION_NOPARTICLES || m_spawnflags & SF_ENVEXPLOSION_PARTICLE_EXPLOSION)
 	{
 		nFlags |= TE_EXPLFLAG_NOPARTICLES;
 	}
@@ -320,6 +330,10 @@ void CEnvExplosion::InputExplode( inputdata_t &inputdata )
 	int	iRadius = ( m_iRadiusOverride > 0 ) ? m_iRadiusOverride : ( m_iMagnitude * 2.5f );
 
 	CPASFilter filter( vecExplodeOrigin );
+	if (HasSpawnFlags(SF_ENVEXPLOSION_PARTICLE_EXPLOSION)) {
+		//DevMsg("Particle Dispatched. \n");
+		DispatchParticleEffect(m_ccParticleName, GetAbsOrigin(), GetAbsAngles());
+	}
 	te->Explosion( filter, 0.0,
 		&vecExplodeOrigin, 
 		( m_sFireballSprite < 1 ) ? g_sModelIndexFireball : m_sFireballSprite,
@@ -412,7 +426,7 @@ void ExplosionCreate( const Vector &center, const QAngle &angles,
 
 	CEnvExplosion *pExplosion = (CEnvExplosion*)CBaseEntity::Create( "env_explosion", center, angles, pOwner );
 	Q_snprintf( buf,sizeof(buf), "%3d", magnitude );
-	char *szKeyName = "iMagnitude";
+	const char *szKeyName = "iMagnitude";
 	char *szValue = buf;
 	pExplosion->KeyValue( szKeyName, szValue );
 

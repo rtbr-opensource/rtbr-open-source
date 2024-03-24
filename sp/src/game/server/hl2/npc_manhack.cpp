@@ -648,7 +648,8 @@ void CNPC_Manhack::CreateSmokeTrail()
 	if ( m_hSmokeTrail != NULL )
 		return;
 
-	SmokeTrail *pSmokeTrail =  SmokeTrail::CreateSmokeTrail();
+	DispatchParticleEffect("npc_manhack_damaged", PATTACH_POINT_FOLLOW, this, "Light", true);
+/*	SmokeTrail *pSmokeTrail =  SmokeTrail::CreateSmokeTrail();
 	if( !pSmokeTrail )
 		return;
 
@@ -666,7 +667,7 @@ void CNPC_Manhack::CreateSmokeTrail()
 	pSmokeTrail->SetLifetime(-1);
 	pSmokeTrail->FollowEntity(this);
 
-	m_hSmokeTrail = pSmokeTrail;
+	m_hSmokeTrail = pSmokeTrail;*/
 }
 
 void CNPC_Manhack::DestroySmokeTrail()
@@ -2194,9 +2195,9 @@ void CNPC_Manhack::Precache(void)
 	//
 	// Model.
 	//
-	PrecacheModel("models/manhack.mdl");
+	PrecacheModel( DefaultOrCustomModel( "models/manhack.mdl" ) );
 	PrecacheModel( MANHACK_GLOW_SPRITE );
-	PropBreakablePrecacheAll( MAKE_STRING("models/manhack.mdl") );
+	PropBreakablePrecacheAll( MAKE_STRING( DefaultOrCustomModel( "models/manhack.mdl" ) ) );
 
 	PrecacheParticleSystem("npc_manhack_explosion");
 	
@@ -2392,7 +2393,7 @@ void CNPC_Manhack::Spawn(void)
 	AddSpawnFlags( SF_NPC_FADE_CORPSE );
 #endif // _XBOX
 
-	SetModel( "models/manhack.mdl" );
+	SetModel( DefaultOrCustomModel( "models/manhack.mdl" ) );
 	SetHullType(HULL_TINY_CENTERED); 
 	SetHullSizeNormal();
 

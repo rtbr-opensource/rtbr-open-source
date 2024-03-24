@@ -65,6 +65,9 @@ extern void FX_WaterRipple( const Vector &origin, float scale, Vector *pColor, f
 extern void FX_GunshotSplash( const Vector &origin, const Vector &normal, float scale );
 extern void FX_GunshotSlimeSplash( const Vector &origin, const Vector &normal, float scale );
 
+extern void FX_PhysSplash(const Vector &origin, const Vector &normal, float scale);
+extern void FX_PhysSlimeSplash(const Vector &origin, const Vector &normal, float scale);
+
 //-----------------------------------------------------------------------------
 // Purpose: Retrieve and alter lighting for splashes
 // Input  : position - point to check

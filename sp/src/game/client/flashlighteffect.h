@@ -47,6 +47,8 @@ protected:
 
 	// Texture for flashlight
 	CTextureReference m_FlashlightTexture;
+	// texture for airboat headlight
+	
 };
 
 class CHeadlightEffect : public CFlashlightEffect
@@ -57,6 +59,8 @@ public:
 	~CHeadlightEffect();
 
 	virtual void UpdateLight(const Vector &vecPos, const Vector &vecDir, const Vector &vecRight, const Vector &vecUp, int nDistance);
+
+	CTextureReference m_HeadlightTexture;
 };
 
 

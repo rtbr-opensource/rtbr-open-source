@@ -10,7 +10,7 @@
 #include "baseachievement.h"
 
 #ifdef GAME_DLL
-
+CAchievementMgr g_AchievementMgrEpisodic;
 
 class CAchievementEp1KillAntlionsWithCar : public CBaseAchievement
 {

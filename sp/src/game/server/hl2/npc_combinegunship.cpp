@@ -702,6 +702,8 @@ void CNPC_CombineGunship::Precache( void )
 	PrecacheScriptSound( "NPC_CombineGunship.ExhaustSound" );
 	PrecacheScriptSound( "NPC_CombineGunship.RotorBlastSound" );
 
+	PrecacheParticleSystem("weapon_muzzle_flash_pulse_heavy");
+
 	if ( hl2_episodic.GetBool() == true )
 	{
 		UTIL_PrecacheOther( "env_citadel_energy_core" );
@@ -1775,11 +1777,13 @@ void CNPC_CombineGunship::DoMuzzleFlash( void )
 {
 	BaseClass::DoMuzzleFlash();
 	
-	CEffectData data;
+	//CEffectData data;
 
-	data.m_nAttachmentIndex = LookupAttachment( "muzzle" );
-	data.m_nEntIndex = entindex();
-	DispatchEffect( "GunshipMuzzleFlash", data );
+	DispatchParticleEffect("weapon_muzzle_flash_pulse_heavy", PATTACH_POINT_FOLLOW, this, "muzzle", true);
+
+	//data.m_nAttachmentIndex = LookupAttachment( "muzzle" );
+	//data.m_nEntIndex = entindex();
+	//DispatchEffect( "GunshipMuzzleFlash", data );
 }
 
 //-----------------------------------------------------------------------------

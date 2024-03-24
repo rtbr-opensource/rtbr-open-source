@@ -20,12 +20,6 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-#define FRAG_GRENADE_BLIP_FREQUENCY			1.0f
-#define FRAG_GRENADE_BLIP_FAST_FREQUENCY	0.3f
-
-#define FRAG_GRENADE_GRACE_TIME_AFTER_PICKUP 1.5f
-#define FRAG_GRENADE_WARN_TIME 1.5f
-
 const float GRENADE_COEFFICIENT_OF_RESTITUTION = 0.2f;
 
 ConVar sk_plr_dmg_fraggrenade	( "sk_plr_dmg_fraggrenade","0");
@@ -54,11 +48,12 @@ public:
 	void	SetVelocity( const Vector &velocity, const AngularImpulse &angVelocity );
 	int		OnTakeDamage( const CTakeDamageInfo &inputInfo );
 	void	BlipSound() { EmitSound( "Grenade.Blip" ); }
+	void	SetBlipTime( float nextTime ) { m_flNextBlipTime = nextTime; }
 	void	DelayThink();
 	void	VPhysicsUpdate( IPhysicsObject *pPhysics );
 	void	OnPhysGunPickup( CBasePlayer *pPhysGunUser, PhysGunPickup_t reason );
-	void	SetCombineSpawned( bool combineSpawned ) { m_combineSpawned = combineSpawned; }
-	bool	IsCombineSpawned( void ) const { return m_combineSpawned; }
+	void	SetCombineSpawned( bool combineSpawned ) { m_bCombineSpawned = combineSpawned; }
+	bool	IsCombineSpawned( void ) const { return m_bCombineSpawned; }
 	void	SetPunted( bool punt ) { m_punted = punt; }
 	bool	WasPunted( void ) const { return m_punted; }
 
@@ -73,9 +68,9 @@ protected:
 	CHandle<CSprite>		m_pMainGlow;
 	CHandle<CSpriteTrail>	m_pGlowTrail;
 
-	float	m_flNextBlipTime;
+	float	m_flNextBlipTime = -1;
 	bool	m_inSolid;
-	bool	m_combineSpawned;
+	bool	m_bCombineSpawned;
 	bool	m_punted;
 };
 
@@ -88,7 +83,7 @@ BEGIN_DATADESC( CGrenadeFrag )
 	DEFINE_FIELD( m_pGlowTrail, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_flNextBlipTime, FIELD_TIME ),
 	DEFINE_FIELD( m_inSolid, FIELD_BOOLEAN ),
-	DEFINE_FIELD( m_combineSpawned, FIELD_BOOLEAN ),
+	DEFINE_FIELD( m_bCombineSpawned, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_punted, FIELD_BOOLEAN ),
 	
 	// Function Pointers
@@ -147,7 +142,7 @@ void CGrenadeFrag::Spawn( void )
 	}
 
 	// Do the blip if m_flNextBlipTime wasn't changed
-	if (m_flNextBlipTime <= gpGlobals->curtime)
+	if (m_flNextBlipTime <= gpGlobals->curtime && m_flNextBlipTime != -1)
 	{
 		BlipSound();
 		m_flNextBlipTime = gpGlobals->curtime + FRAG_GRENADE_BLIP_FREQUENCY;
@@ -159,7 +154,7 @@ void CGrenadeFrag::Spawn( void )
 
 	AddSolidFlags( FSOLID_NOT_STANDABLE );
 
-	m_combineSpawned	= false;
+	m_bCombineSpawned	= false;
 	m_punted			= false;
 
 	BaseClass::Spawn();
@@ -371,7 +366,9 @@ void CGrenadeFrag::DelayThink()
 	
 	if( gpGlobals->curtime > m_flNextBlipTime )
 	{
-		BlipSound();
+		if ( gpGlobals->curtime <= m_flDetonateTime - (FRAG_GRENADE_BLIP_FAST_FREQUENCY - 0.1f)){
+			BlipSound(); // for normal frags (3.0 second timer), this stops an occasional 4th fast blip where there should only be three (and idk why that happens)
+		}
 		
 		if( m_bHasWarnedAI )
 		{
@@ -447,12 +444,36 @@ void CGrenadeFrag::InputSetTimer( inputdata_t &inputdata )
 	SetTimer( inputdata.value.Float(), inputdata.value.Float() - FRAG_GRENADE_WARN_TIME );
 }
 
-CBaseGrenade *Fraggrenade_Create( const Vector &position, const QAngle &angles, const Vector &velocity, const AngularImpulse &angVelocity, CBaseEntity *pOwner, float timer, bool combineSpawned )
+CBaseGrenade *Fraggrenade_Create( const Vector &position, const QAngle &angles, const Vector &velocity, const AngularImpulse &angVelocity, CBaseEntity *pOwner, float timer, bool combineSpawned, float startTime )
 {
 	// Don't set the owner here, or the player can't interact with grenades he's thrown
 	CGrenadeFrag *pGrenade = (CGrenadeFrag *)CBaseEntity::Create( "npc_grenade_frag", position, angles, pOwner );
-	
-	pGrenade->SetTimer( timer, timer - FRAG_GRENADE_WARN_TIME );
+
+	if ( startTime != -1 ){
+		// cooked grenade
+		float elapsedTime = gpGlobals->curtime - startTime;
+		bool isWarned = elapsedTime > FRAG_GRENADE_WARN_TIME;
+		if ( !isWarned ){
+			pGrenade->SetTimer( timer, timer - FRAG_GRENADE_WARN_TIME );
+		}
+		else {
+			pGrenade->SetTimer( timer, 0 ); // warn enemy AI immediately
+		}
+
+		// find the most optimal next blip time to keep blipping consistent with cooking
+		if ( elapsedTime < ceil( FRAG_GRENADE_WARN_TIME ) ){
+			pGrenade->SetBlipTime( startTime + ceil( elapsedTime ) ); // slow blips
+		}
+		else {
+			float blipTime = ceil( FRAG_GRENADE_WARN_TIME );
+			while ( startTime + blipTime <= gpGlobals->curtime ) { blipTime += FRAG_GRENADE_BLIP_FAST_FREQUENCY; }	// fast blips; no upper limit on timer since the grenade will detonate anyway
+			pGrenade->SetBlipTime( startTime + blipTime );
+		}
+	}
+	else {
+		// uncooked grenade
+		pGrenade->SetTimer( timer, timer - FRAG_GRENADE_WARN_TIME );
+	}
 	pGrenade->SetVelocity( velocity, angVelocity );
 	pGrenade->SetThrower( ToBaseCombatCharacter( pOwner ) );
 	pGrenade->m_takedamage = DAMAGE_EVENTS_ONLY;

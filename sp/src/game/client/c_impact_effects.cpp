@@ -178,6 +178,7 @@ static void CreateFleckParticles( const Vector& origin, const Vector &color, tra
 		break;
 
 	case CHAR_TEX_CONCRETE:
+	case CHAR_TEX_XEN:
 	case CHAR_TEX_TILE:
 	default:
 		hMaterial = g_Mat_Fleck_Cement;

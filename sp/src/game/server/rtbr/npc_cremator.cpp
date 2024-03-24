@@ -16,6 +16,7 @@
 #include "te_particlesystem.h"
 #include "particle_parse.h"
 #include "engine/IEngineSound.h"
+#include "npc_cremator_shared.h"
 #include "props.h"
 #include "decals.h"
 #include "npc_cremator.h"
@@ -35,6 +36,10 @@ ConVar	sk_cremator_immolator_color_g("sk_cremator_immolator_color_g", "255");
 ConVar	sk_cremator_immolator_color_b("sk_cremator_immolator_color_b", "0");
 //ConVar	sk_cremator_immolator_beamsprite("sk_cremator_immolator_beamsprite", "sprites/physbeam.vmt");
 
+IMPLEMENT_SERVERCLASS_ST(CNPC_Cremator, DT_NPC_Cremator)
+
+END_SEND_TABLE()
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 //
@@ -44,18 +49,19 @@ void CNPC_Cremator::Precache()
 {
 	BaseClass::Precache();
 
-	PrecacheModel("models/cremator_npc_green.mdl");
-	PrecacheModel("models/cremator_npc_purple.mdl");
+	PrecacheModel("models/cremator.mdl");
 	PrecacheModel("sprites/lgtning.vmt");
 
 	PrecacheParticleSystem("immo_beam_muzzle02");
+	PrecacheParticleSystem("npc_cremator_tankjet");
+	PrecacheParticleSystem("npc_cremator_implosion");
 
 	PrecacheScriptSound("NPC_Cremator.Breathing");
 	PrecacheScriptSound("NPC_Cremator.Pain");
 	PrecacheScriptSound("NPC_Cremator.Die");
+	PrecacheScriptSound("NPC_Cremator.Alert");
 	PrecacheScriptSound("Weapon_Immolator.Flame_Start");
 	PrecacheScriptSound("Weapon_Immolator.Flame_Stop");
-
 	
 }
 
@@ -66,6 +72,9 @@ void CNPC_Cremator::Precache()
 	ADD_CUSTOM_SCHEDULE(CNPC_Cremator, SCHED_CREM_WANDER);
 }*/
 
+//=========================================================
+// RangeAttack1Conditions
+//=========================================================
 int CNPC_Cremator::RangeAttack1Conditions(float flDot, float flDist)
 {
 	if (GetNextAttack() > gpGlobals->curtime)
@@ -104,9 +113,16 @@ int CNPC_Cremator::MeleeAttack1Conditions(float flDot, float flDist)
 	return COND_CAN_MELEE_ATTACK1;
 }
 
+//=========================================================
+// Pre-Schedule Think
+//=========================================================
 void CNPC_Cremator::PrescheduleThink(void)
 {
 	BaseClass::PrescheduleThink();
+
+	if (GetHealth() < 50 && IsAlive()) {
+			Write_Message(CREMATOR_MSG_START_TANK);
+	}
 
 	if (m_NPCState == NPC_STATE_IDLE || m_NPCState == NPC_STATE_ALERT || m_NPCState == NPC_STATE_COMBAT) {
 		IdleSound();
@@ -121,10 +137,24 @@ void CNPC_Cremator::PrescheduleThink(void)
 	}
 }
 
+
+//=========================================================
+// Idle Sounds
+//=========================================================
 void CNPC_Cremator::IdleSound(void)
 {
 	CPASAttenuationFilter filter4(this);
 	EmitSound(filter4, entindex(), "NPC_Cremator.Breathing");
+}
+
+//-----------------------------------------------------------------------------
+// tell client a message
+//-----------------------------------------------------------------------------
+void CNPC_Cremator::Write_Message(int message)
+{
+	EntityMessageBegin(this, true);
+	WRITE_BYTE(message);
+	MessageEnd();
 }
 
 //-----------------------------------------------------------------------------
@@ -141,6 +171,10 @@ void CNPC_Cremator::BuildScheduleTestBits(void)
 		ClearCustomInterruptCondition(COND_CAN_RANGE_ATTACK2);
 	}
 }
+
+//=========================================================
+// Translate Schedule
+//=========================================================
 int CNPC_Cremator::TranslateSchedule(int scheduleType)
 {
 	switch (scheduleType)
@@ -166,14 +200,32 @@ int CNPC_Cremator::TranslateSchedule(int scheduleType)
 //
 //
 //-----------------------------------------------------------------------------
+
+int CNPC_Cremator::OnTakeDamage_Alive(const CTakeDamageInfo& info) {
+	if (GetHealth() - info.GetDamage() <= 0) {
+		if (m_iEventType == CREMATOR_EVENT_EXP_NOTANK) {
+			Explode();
+		}
+	}
+
+	return BaseClass::OnTakeDamage_Alive(info);
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//
+//
+//-----------------------------------------------------------------------------
 void CNPC_Cremator::Spawn()
 {
 	Precache();
+
+	SetModel("models/cremator.mdl");
 	if (random->RandomInt(0, 1) == 1) {
-		SetModel("models/cremator_npc_green.mdl");
+		m_nSkin = 0;
 	}
 	else {
-		SetModel("models/cremator_npc_purple.mdl");
+		m_nSkin = 1;
 	}
 	//m_nSkin = random->RandomInt(0, CREM_SKIN_COUNT - 1);
 	//m_nSkin = 1;
@@ -186,10 +238,10 @@ void CNPC_Cremator::Spawn()
 	SetSolid(SOLID_BBOX);
 	AddSolidFlags(FSOLID_NOT_STANDABLE);
 	SetMoveType(MOVETYPE_STEP);
-	m_bloodColor = BLOOD_COLOR_BLUE; //NOTE TO DL'ers: You really, really, really want to change this
+	m_bloodColor = BLOOD_COLOR_GREEN; //NOTE TO DL'ers: You really, really, really want to change this
 	ClearEffects();
 	m_iHealth = sk_cremator_health.GetFloat();
-	m_flFieldOfView = 0.65;
+	m_flFieldOfView = DOT_45DEGREE; 
 	m_NPCState = NPC_STATE_NONE;
 
 
@@ -202,12 +254,24 @@ void CNPC_Cremator::Spawn()
 
 	NPCInit();
 
+	float type = random->RandomFloat(0, 20);
+	if (type < 10) {
+		m_iEventType = CREMATOR_EVENT_EXP_NOTANK;
+	}
+	else {
+		m_iEventType = CREMATOR_EVENT_EXP_TANK;
+	}
+	m_iEventType = CREMATOR_EVENT_EXP_NOTANK;
 	BaseClass::Spawn();
 }
 
+
+//=========================================================
+// OuroiseL Runs on Death
+//=========================================================
 void CNPC_Cremator::Event_Killed(const CTakeDamageInfo &info)
 {
-	StopParticleEffects(this);
+	//StopParticleEffects(this);
 	if (m_nBody < CREM_BODY_GUNGONE)
 	{
 		// drop the gun!
@@ -215,6 +279,7 @@ void CNPC_Cremator::Event_Killed(const CTakeDamageInfo &info)
 		QAngle angGunAngles;
 
 		SetBodygroup(1, CREM_BODY_GUNGONE);
+		SetBodygroup(3, 1);
 		StopSound("NPC_Cremator.Breathing");
 		CPASAttenuationFilter filter4(this);
 		EmitSound(filter4, entindex(), "NPC_Cremator.Die");
@@ -222,10 +287,17 @@ void CNPC_Cremator::Event_Killed(const CTakeDamageInfo &info)
 
 		angGunAngles.y += 180;
 		DropItem("weapon_immolator", vecGunPos, angGunAngles);
+
 	}
+
+	Write_Message(CREMATOR_MSG_KILLED);
 
 	BaseClass::Event_Killed(info);
 }
+
+//=========================================================
+// Select Schedule
+//=========================================================
 int CNPC_Cremator::SelectSchedule() {
 	if (HasSpawnFlags(SF_CREM_WANDER)) {
 		switch (m_NPCState)
@@ -273,8 +345,9 @@ void CNPC_Cremator::ImmoBeam(int side)
 	QAngle laserAngle;
 	Vector forward, right, up;
 	GetAttachment(LookupAttachment("1"), laserStart, laserAngle);
-	DispatchParticleEffect("immo_beam_muzzle02", PATTACH_POINT_FOLLOW,
-		this, "1", true);
+	//DispatchParticleEffect("immo_beam_muzzle02", PATTACH_POINT_FOLLOW,
+	//	this, "1", true);
+	Write_Message(CREMATOR_MSG_START_IMMO);
 	Vector muzzlePosition = laserStart;
 	// + Vector(10.0f, 0.0f, 36.0f)
 	Vector vecAim = GetShootEnemyDir(muzzlePosition);
@@ -288,6 +361,39 @@ void CNPC_Cremator::ImmoBeam(int side)
 	pPlasmaBall->SetBaseVelocity((vecAim * 512) + BaseClass::GetLocalVelocity());
 	pPlasmaBall->SetContextThink(&CCrematorPlasmaBall::SUB_Remove, gpGlobals->curtime + sk_cremator_max_range.GetInt() / 100, "KillBoltThink");
 	//pPlasmaBall->SetCollisionGroup(COLLISION_GROUP_NONE);
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Input handler for making the explosion explode.
+//-----------------------------------------------------------------------------
+void CNPC_Cremator::Explode()
+{
+	Vector tankPos;
+	QAngle tankAngle;
+	CBaseEntity* pAttacker = this;
+
+	GetAttachment( "tank", tankPos, tankAngle );
+
+	CPASFilter filter( tankPos );
+	DispatchParticleEffect( "npc_cremator_implosion", tankPos, tankAngle );
+	te->Explosion( filter, 0, &tankPos, 0, 128, 60, TE_EXPLFLAG_NOFIREBALL | TE_EXPLFLAG_NOPARTICLES | TE_EXPLFLAG_NOFIREBALLSMOKE, 128, 3 );
+	UTIL_ScreenShake( GetAbsOrigin(), 1, 150.0, 1.0, 512, SHAKE_START );
+
+
+	int iDamageType = DMG_BLAST;
+
+	if (pAttacker == NULL || this == NULL) {
+		return;
+	}
+
+
+	CTakeDamageInfo info( pAttacker, pAttacker, 3, iDamageType );
+
+	// Not the right direction, but it'll be fixed up by RadiusDamage.
+	info.SetDamagePosition( GetAbsOrigin() );
+	info.SetDamageForce( Vector( 10, 0, 0 ) );
+
+	RadiusDamage( info, pAttacker->GetAbsOrigin(), 128, 0, this );
 }
 
 //=========================================================
@@ -351,7 +457,7 @@ void CNPC_Cremator::HandleAnimEvent(animevent_t *pEvent)
 
 		case CREM_AE_IMMO_DONE:
 		{
-		StopParticleEffects(this);
+			Write_Message(CREMATOR_MSG_STOP_IMMO);
 		StopSound("Weapon_Immolator.Flame_Start");
 		StopSound("Weapon_Immolator.Flame_stop");
 		}
@@ -423,7 +529,9 @@ SCHED_CREM_RANGE_ATTACK1,
 "		TASK_STOP_MOVING		0"
 "		TASK_FACE_ENEMY			0"
 "		TASK_ANNOUNCE_ATTACK	1"	// 1 = primary attack
+"		TASK_PLAY_SEQUENCE		ACTIVITY:ACT_ARM"
 "		TASK_RANGE_ATTACK1		0"
+"		TASK_PLAY_SEQUENCE		ACTIVITY:ACT_DISARM"
 ""
 "	Interrupts"
 "		COND_NEW_ENEMY"
@@ -434,6 +542,7 @@ SCHED_CREM_RANGE_ATTACK1,
 "		COND_HEAR_DANGER"
 "		COND_WEAPON_BLOCKED_BY_FRIEND"
 "		COND_WEAPON_SIGHT_OCCLUDED"
+"		COND_LOST_ENEMY"
 );
 
 AI_END_CUSTOM_NPC()
@@ -517,17 +626,17 @@ void CCrematorPlasmaBall::BoltTouch(CBaseEntity *pOther)
 		UTIL_DecalTrace(&tr, "FadingScorch");
 	}
 
-	StopParticleEffects(this);
-	SUB_Remove();
+	//StopParticleEffects(this);
+	//SUB_Remove();
 }
 
 void CCrematorPlasmaBall::IgniteOtherIfAllowed(CBaseEntity * pOther)
 {
 	CBasePlayer *pPlayer = UTIL_GetLocalPlayer();
 	// Don't burn the player
-	if (pOther->IsPlayer())
-		pPlayer->IgniteLifetimeGreen(3);
-
+	if (pOther->IsPlayer()) {
+		pPlayer->SetIgniteBegin();
+	}
 	CAI_BaseNPC *pNPC;
 	pNPC = dynamic_cast<CAI_BaseNPC*>(pOther);
 	if (pNPC) {
@@ -557,6 +666,6 @@ void CCrematorPlasmaBall::IgniteOtherIfAllowed(CBaseEntity * pOther)
 	}
 
 	// Do damage
-	pOther->TakeDamage(CTakeDamageInfo(this, this, sk_cremator_dmg_immo.GetInt(), (DMG_BULLET | DMG_BURN)));
+	pOther->TakeDamage(CTakeDamageInfo(this, this, sk_cremator_dmg_immo.GetInt(), (DMG_BURN)));
 
 }

@@ -43,9 +43,9 @@ END_DATADESC()
 //-----------------------------------------------------------------------------
 CBaseAchievement::CBaseAchievement()
 {
-	m_iFlags = 0;
+	m_iFlags = ACH_SAVE_WITH_GAME;
 	m_iGoal = 0;
-	m_iProgressMsgIncrement = 0;
+	m_iProgressMsgIncrement = 1;
 	m_iProgressMsgMinimum = 0;
 	m_iAchievementID = 0;
 	m_iPointValue = 0;
@@ -250,7 +250,7 @@ void CBaseAchievement::IncrementCount( int iOptIncrement )
 		// if we've hit goal, award the achievement
 		if ( m_iGoal > 0 )
 		{
-			if ( m_iCount >= m_iGoal )
+			if (m_iCount >= m_iGoal)
 			{
 				AwardAchievement();
 			}
@@ -382,8 +382,8 @@ void CBaseAchievement::AwardAchievement()
 	Assert( !IsAchieved() );
 	if ( IsAchieved() )
 		return;
-
 	m_pAchievementMgr->AwardAchievement( m_iAchievementID );
+	ShowProgressNotification();
 }
 
 //-----------------------------------------------------------------------------
@@ -465,6 +465,7 @@ void CBaseAchievement::ShowProgressNotification()
 {
 	if ( !ShouldShowProgressNotification() )
 		return;
+
 
 	IGameEvent *event = gameeventmanager->CreateEvent( "achievement_event" );
 	if ( event )

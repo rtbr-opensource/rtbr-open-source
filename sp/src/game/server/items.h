@@ -34,6 +34,7 @@
 #define SIZE_AMMO_357_LARGE			20
 #define SIZE_AMMO_CROSSBOW			6
 #define	SIZE_AMMO_AR2_ALTFIRE		1
+#define SIZE_AMMO_ANNABELLE			12
 
 #define SF_ITEM_START_CONSTRAINED	0x00000001
 #ifdef MAPBASE
@@ -89,9 +90,12 @@ public:
 #endif
 
 #ifdef MAPBASE
-	// This is in CBaseEntity, but I can't find a use for it anywhere.
-	// Must not have been fully implemented. Please remove this if it turns out to be something important.
-	virtual bool IsCombatItem() { return true; }
+	// This appeared to have no prior use in Source SDK 2013.
+	// It may have been originally intended for TF2 or some other game-specific item class.
+	virtual bool IsCombatItem() const { return true; }
+
+	// Used to access item_healthkit values, etc. from outside of the class
+	virtual float GetItemAmount() { return 1.0f; }
 
 	void	InputEnablePlayerPickup( inputdata_t &inputdata );
 	void	InputDisablePlayerPickup( inputdata_t &inputdata );

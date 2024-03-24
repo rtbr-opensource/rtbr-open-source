@@ -657,6 +657,8 @@ void CPropAirboat::EnterVehicle( CBaseCombatCharacter *pPlayer )
 {
 	BaseClass::EnterVehicle( pPlayer );
 
+
+
 	//EnablePlayerBlocker( false );
 
 	// NPCs like manhacks should try to hit us
@@ -666,6 +668,7 @@ void CPropAirboat::EnterVehicle( CBaseCombatCharacter *pPlayer )
 	float flDuration;
 	EmitSound( "Airboat_engine_start", 0.0, &flDuration );
 	m_VehiclePhysics.TurnOn();
+
 
 	// Start playing the engine's idle sound as the startup sound finishes.
 	m_flEngineIdleTime = gpGlobals->curtime + flDuration - 0.1;
@@ -755,6 +758,13 @@ void CPropAirboat::ExitVehicle( int nRole )
 void CPropAirboat::HeadlightTurnOn( void )
 {
 	EmitSound( "Airboat_headlight_on" );
+	ConVar *r_flashlightbrightness = cvar->FindVar("r_flashlightbrightness");
+	ConVar *r_flashlightfov = cvar->FindVar("r_flashlightfov");
+	ConVar *r_flashlightfar = cvar->FindVar("r_flashlightfar");
+
+	r_flashlightbrightness->SetValue(5);
+	r_flashlightfov->SetValue(70);
+	r_flashlightfar->SetValue(2048);
 	m_bHeadlightIsOn = true;
 }
 
@@ -765,6 +775,13 @@ void CPropAirboat::HeadlightTurnOn( void )
 void CPropAirboat::HeadlightTurnOff( void )
 {
 	EmitSound( "Airboat_headlight_off" );
+	ConVar *r_flashlightbrightness = cvar->FindVar("r_flashlightbrightness");
+	ConVar *r_flashlightfov = cvar->FindVar("r_flashlightfov");
+	ConVar *r_flashlightfar = cvar->FindVar("r_flashlightfar");
+
+	r_flashlightbrightness->Revert();
+	r_flashlightfov->Revert();
+	r_flashlightfar->Revert();
 	m_bHeadlightIsOn = false;
 }
 

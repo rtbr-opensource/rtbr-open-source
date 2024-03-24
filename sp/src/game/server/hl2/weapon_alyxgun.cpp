@@ -25,34 +25,54 @@ END_DATADESC()
 
 acttable_t	CWeaponAlyxGun::m_acttable[] =
 {
-	{ ACT_IDLE, ACT_IDLE_PISTOL, true },
-	{ ACT_IDLE_ANGRY, ACT_IDLE_ANGRY_PISTOL, true },
-	{ ACT_RANGE_ATTACK1, ACT_RANGE_ATTACK_PISTOL, true },
-	{ ACT_RELOAD, ACT_RELOAD_PISTOL, true },
-	{ ACT_WALK_AIM, ACT_WALK_AIM_PISTOL, true },
-	{ ACT_RUN_AIM, ACT_RUN_AIM_PISTOL, true },
-	{ ACT_COVER_LOW, ACT_COVER_PISTOL_LOW, true },
-	{ ACT_RANGE_AIM_LOW, ACT_RANGE_AIM_PISTOL_LOW, true },
-	{ ACT_GESTURE_RANGE_ATTACK1, ACT_GESTURE_RANGE_ATTACK_PISTOL, true },
-	{ ACT_RELOAD_LOW, ACT_RELOAD_PISTOL_LOW, true },
-	{ ACT_RANGE_ATTACK1_LOW, ACT_RANGE_ATTACK_PISTOL_LOW, true },
-	{ ACT_GESTURE_RELOAD, ACT_GESTURE_RELOAD_PISTOL, true },
+	{ ACT_IDLE,						ACT_IDLE_PISTOL,				true },
+	{ ACT_IDLE_ANGRY,				ACT_IDLE_ANGRY_PISTOL,			true },
+	{ ACT_RANGE_ATTACK1,			ACT_RANGE_ATTACK_PISTOL,		true },
+	{ ACT_RELOAD,					ACT_RELOAD_PISTOL,				true },
+	{ ACT_WALK_AIM,					ACT_WALK_AIM_PISTOL,			true },
+	{ ACT_RUN_AIM,					ACT_RUN_AIM_PISTOL,				true },
+	{ ACT_COVER_LOW,				ACT_COVER_PISTOL_LOW,			true },
+	{ ACT_RANGE_AIM_LOW,			ACT_RANGE_AIM_PISTOL_LOW,		true },
+	{ ACT_GESTURE_RANGE_ATTACK1,	ACT_GESTURE_RANGE_ATTACK_PISTOL,true },
+	{ ACT_RELOAD_LOW,				ACT_RELOAD_PISTOL_LOW,			true },
+	{ ACT_RANGE_ATTACK1_LOW,		ACT_RANGE_ATTACK_PISTOL_LOW,	true },
+	{ ACT_GESTURE_RELOAD,			ACT_GESTURE_RELOAD_PISTOL,		true },
+#ifdef MAPBASE
+	// For non-Alyx NPCs
+	{ ACT_WALK,						ACT_WALK_PISTOL,				false },
+	{ ACT_RUN,						ACT_RUN_PISTOL,					false },
+#endif
 
 	// Readiness activities (not aiming)
-	{ ACT_IDLE_RELAXED, ACT_IDLE_PISTOL, false },//never aims
-	{ ACT_IDLE_STIMULATED, ACT_IDLE_STIMULATED, false },
-	{ ACT_IDLE_AGITATED, ACT_IDLE_ANGRY_PISTOL, false },//always aims
-	{ ACT_IDLE_STEALTH, ACT_IDLE_STEALTH_PISTOL, false },
+#if EXPANDED_HL2_WEAPON_ACTIVITIES
+	{ ACT_IDLE_RELAXED,				ACT_IDLE_PISTOL_RELAXED,		false },//never aims
+	{ ACT_IDLE_STIMULATED,			ACT_IDLE_PISTOL_STIMULATED,		false },
+#else
+	{ ACT_IDLE_RELAXED,				ACT_IDLE_PISTOL,				false },//never aims
+	{ ACT_IDLE_STIMULATED,			ACT_IDLE_STIMULATED,			false },
+#endif
+	{ ACT_IDLE_AGITATED,			ACT_IDLE_ANGRY_PISTOL,			false },//always aims
+	{ ACT_IDLE_STEALTH,				ACT_IDLE_STEALTH_PISTOL,		false },
 
-	{ ACT_WALK_RELAXED, ACT_WALK, false },//never aims
-	{ ACT_WALK_STIMULATED, ACT_WALK_STIMULATED, false },
-	{ ACT_WALK_AGITATED, ACT_WALK_AIM_PISTOL, false },//always aims
-	{ ACT_WALK_STEALTH, ACT_WALK_STEALTH_PISTOL, false },
-
-	{ ACT_RUN_RELAXED, ACT_RUN, false },//never aims
-	{ ACT_RUN_STIMULATED, ACT_RUN_STIMULATED, false },
-	{ ACT_RUN_AGITATED, ACT_RUN_AIM_PISTOL, false },//always aims
-	{ ACT_RUN_STEALTH, ACT_RUN_STEALTH_PISTOL, false },
+#if EXPANDED_HL2_WEAPON_ACTIVITIES
+	{ ACT_WALK_RELAXED,				ACT_WALK_PISTOL_RELAXED,		false },//never aims
+	{ ACT_WALK_STIMULATED,			ACT_WALK_PISTOL_STIMULATED,		false },
+#else
+	{ ACT_WALK_RELAXED,				ACT_WALK,						false },//never aims
+	{ ACT_WALK_STIMULATED,			ACT_WALK_STIMULATED,			false },
+#endif
+	{ ACT_WALK_AGITATED,			ACT_WALK_AIM_PISTOL,			false },//always aims
+	{ ACT_WALK_STEALTH,				ACT_WALK_STEALTH_PISTOL,		false },
+	
+#if EXPANDED_HL2_WEAPON_ACTIVITIES
+	{ ACT_RUN_RELAXED,				ACT_RUN_PISTOL_RELAXED,			false },//never aims
+	{ ACT_RUN_STIMULATED,			ACT_RUN_PISTOL_STIMULATED,		false },
+#else
+	{ ACT_RUN_RELAXED,				ACT_RUN,						false },//never aims
+	{ ACT_RUN_STIMULATED,			ACT_RUN_STIMULATED,				false },
+#endif
+	{ ACT_RUN_AGITATED,				ACT_RUN_AIM_PISTOL,				false },//always aims
+	{ ACT_RUN_STEALTH,				ACT_RUN_STEALTH_PISTOL,			false },
 
 	// Readiness activities (aiming)
 	{ ACT_IDLE_AIM_RELAXED, ACT_IDLE_PISTOL, false },//never aims	
@@ -83,8 +103,23 @@ acttable_t	CWeaponAlyxGun::m_acttable[] =
 	{ ACT_READINESS_STIMULATED_TO_RELAXED, ACT_READINESS_PISTOL_STIMULATED_TO_RELAXED, false },
 
 
-	//	{ ACT_ARM,				ACT_ARM_PISTOL,					true },
-	//	{ ACT_DISARM,			ACT_DISARM_PISTOL,				true },
+//	{ ACT_ARM,				ACT_ARM_PISTOL,					true },
+//	{ ACT_DISARM,			ACT_DISARM_PISTOL,				true },
+
+#ifdef MAPBASE
+	// HL2:DM activities (for third-person animations in SP)
+	{ ACT_HL2MP_IDLE,                    ACT_HL2MP_IDLE_PISTOL,                    false },
+	{ ACT_HL2MP_RUN,                    ACT_HL2MP_RUN_PISTOL,                    false },
+	{ ACT_HL2MP_IDLE_CROUCH,            ACT_HL2MP_IDLE_CROUCH_PISTOL,            false },
+	{ ACT_HL2MP_WALK_CROUCH,            ACT_HL2MP_WALK_CROUCH_PISTOL,            false },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK,    ACT_HL2MP_GESTURE_RANGE_ATTACK_PISTOL,    false },
+	{ ACT_HL2MP_GESTURE_RELOAD,            ACT_HL2MP_GESTURE_RELOAD_PISTOL,        false },
+	{ ACT_HL2MP_JUMP,                    ACT_HL2MP_JUMP_PISTOL,                    false },
+#if EXPANDED_HL2DM_ACTIVITIES
+	{ ACT_HL2MP_WALK,					ACT_HL2MP_WALK_PISTOL,						false },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK2,	ACT_HL2MP_GESTURE_RANGE_ATTACK2_PISTOL,    false },
+#endif
+#endif
 };
 
 IMPLEMENT_ACTTABLE(CWeaponAlyxGun);
@@ -97,6 +132,7 @@ IMPLEMENT_ACTTABLE(CWeaponAlyxGun);
 void CWeaponAlyxGun::Precache(void)
 {
 	BaseClass::Precache();
+	PrecacheModel("models/weapons/alyxgun/m_alyxgun.mdl");
 }
 void CWeaponAlyxGun::ItemPostFrame(void)
 {

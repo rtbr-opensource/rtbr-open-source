@@ -24,6 +24,7 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+ConVar	  sk_bullsquid_dmg_spit						  ( "sk_bullsquid_dmg_spit", "20" );
 ConVar    sk_antlion_worker_spit_grenade_dmg		  ( "sk_antlion_worker_spit_grenade_dmg", "20", FCVAR_NONE, "Total damage done by an individual antlion worker loogie.");
 ConVar	  sk_antlion_worker_spit_grenade_radius		  ( "sk_antlion_worker_spit_grenade_radius","40", FCVAR_NONE, "Radius of effect for an antlion worker spit grenade.");
 ConVar	  sk_antlion_worker_spit_grenade_poison_ratio ( "sk_antlion_worker_spit_grenade_poison_ratio","0.3", FCVAR_NONE, "Percentage of an antlion worker's spit damage done as poison (which regenerates)"); 
@@ -59,8 +60,7 @@ void CGrenadeSpit::Spawn( void )
 	SetUse( &CBaseGrenade::DetonateUse );
 	SetTouch( &CGrenadeSpit::GrenadeSpitTouch );
 	SetNextThink( gpGlobals->curtime + 0.1f );
-
-	m_flDamage		= sk_antlion_worker_spit_grenade_dmg.GetFloat();
+	m_flDamage		= m_bIsBullsquidSpit ? sk_bullsquid_dmg_spit.GetFloat() : sk_antlion_worker_spit_grenade_dmg.GetFloat();
 	m_DmgRadius		= sk_antlion_worker_spit_grenade_radius.GetFloat();
 	m_takedamage	= DAMAGE_NO;
 	m_iHealth		= 1;
@@ -76,18 +76,19 @@ void CGrenadeSpit::Spawn( void )
 	AddEffects( EF_NOSHADOW|EF_NORECEIVESHADOW );
 
 	// Create the dust effect in place
-	m_hSpitEffect = (CParticleSystem *) CreateEntityByName( "info_particle_system" );
+	DispatchParticleEffect("npc_bullsquid_spit_trail", PATTACH_ABSORIGIN_FOLLOW, this);
+	/*m_hSpitEffect = (CParticleSystem *) CreateEntityByName( "info_particle_system" );
 	if ( m_hSpitEffect != NULL )
 	{
 		// Setup our basic parameters
 		m_hSpitEffect->KeyValue( "start_active", "1" );
-		m_hSpitEffect->KeyValue( "effect_name", "antlion_spit_trail" );
+		m_hSpitEffect->KeyValue( "effect_name", "npc_bullsquid_spit_trail" );
 		m_hSpitEffect->SetParent( this );
 		m_hSpitEffect->SetLocalOrigin( vec3_origin );
 		DispatchSpawn( m_hSpitEffect );
 		if ( gpGlobals->curtime > 0.5f )
 			m_hSpitEffect->Activate();
-	}
+	}*/
 }
 
 
@@ -186,7 +187,7 @@ void CGrenadeSpit::GrenadeSpitTouch( CBaseEntity *pOther )
 	// NOTE: assume that pTrace is invalidated from this line forward!
 	if ( pTraceEnt )
 	{
-		pTraceEnt->TakeDamage( CTakeDamageInfo( this, GetThrower(), m_flDamage * (1.0f-poisonratio), DMG_ACID ) );
+		pTraceEnt->TakeDamage( CTakeDamageInfo( this, GetThrower(), m_flDamage * (1.0f-poisonratio), m_bIsBullsquidSpit ? DMG_GENERIC : DMG_ACID ) );
 		pTraceEnt->TakeDamage( CTakeDamageInfo( this, GetThrower(), m_flDamage * poisonratio, DMG_POISON ) );
 	}
 
@@ -198,11 +199,11 @@ void CGrenadeSpit::GrenadeSpitTouch( CBaseEntity *pOther )
 	if ( pOther->IsPlayer() || bHitWater )
 	{
 		// Do a lighter-weight effect if we just hit a player
-		DispatchParticleEffect( "antlion_spit_player", GetAbsOrigin(), vecAngles );
+		DispatchParticleEffect( "npc_bullsquid_spit_player", GetAbsOrigin(), vecAngles );
 	}
 	else
 	{
-		DispatchParticleEffect( "antlion_spit", GetAbsOrigin(), vecAngles );
+		DispatchParticleEffect( "npc_bullsquid_spit", GetAbsOrigin(), vecAngles );
 	}
 
 	Detonate();
@@ -291,6 +292,7 @@ void CGrenadeSpit::Precache( void )
 
 	PrecacheScriptSound( "GrenadeSpit.Hit" );
 
-	PrecacheParticleSystem( "antlion_spit_player" );
-	PrecacheParticleSystem( "antlion_spit" );
+	PrecacheParticleSystem( "npc_bullsquid_spit_player" );
+	PrecacheParticleSystem( "npc_bullsquid_spit" );
+	PrecacheParticleSystem("npc_bullsquid_spit_trail");
 }

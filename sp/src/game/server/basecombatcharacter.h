@@ -341,6 +341,7 @@ public:
 	virtual void			FixupBurningServerRagdoll( CBaseEntity *pRagdoll );
 
 	virtual bool			BecomeRagdollBoogie( CBaseEntity *pKiller, const Vector &forceVector, float duration, int flags );
+	virtual bool			CanBoogie() { return true; }
 
 #ifdef MAPBASE
 	// A version of BecomeRagdollBoogie() that allows the color to change and returns the entity itself instead.
@@ -412,20 +413,25 @@ public:
 	}
 	void				SetCurrentWeaponProficiency( WeaponProficiency_t iProficiency ) { m_CurrentWeaponProficiency = iProficiency; }
 	virtual WeaponProficiency_t CalcWeaponProficiency( CBaseCombatWeapon *pWeapon );
+#ifdef MAPBASE
+	inline bool			OverridingWeaponProficiency() { return (m_ProficiencyOverride > WEAPON_PROFICIENCY_INVALID); }
+#endif
 	virtual	Vector		GetAttackSpread( CBaseCombatWeapon *pWeapon, CBaseEntity *pTarget = NULL );
 	virtual	float		GetSpreadBias(  CBaseCombatWeapon *pWeapon, CBaseEntity *pTarget );
 	virtual void		DoMuzzleFlash();
 
 #ifdef MAPBASE_VSCRIPT
-	HSCRIPT				GetScriptActiveWeapon();
-	HSCRIPT				GetScriptWeaponIndex( int i );
-	HSCRIPT				GetScriptWeaponByType( const char *pszWeapon, int iSubType = 0 );
-	void				GetScriptAllWeapons( HSCRIPT hTable );
+	HSCRIPT				ScriptGetActiveWeapon();
+	HSCRIPT				ScriptGetWeapon( int i );
+	HSCRIPT				ScriptGetWeaponByType( const char *pszWeapon, int iSubType = 0 );
+	void				ScriptGetAllWeapons( HSCRIPT hTable );
 	int					ScriptGetCurrentWeaponProficiency() { return GetCurrentWeaponProficiency(); }
 
 	void				ScriptDropWeapon( HSCRIPT hWeapon );
 	void				ScriptEquipWeapon( HSCRIPT hWeapon );
-
+	
+	int					ScriptGiveAmmo( int iCount, int iAmmoIndex, bool bSuppressSound = false );
+	void				ScriptRemoveAmmo( int iCount, int iAmmoIndex );
 	int					ScriptGetAmmoCount( int iType ) const;
 	void				ScriptSetAmmoCount( int iType, int iCount );
 
@@ -436,7 +442,7 @@ public:
 	int					ScriptRelationPriority( HSCRIPT pTarget );
 	void				ScriptSetRelationship( HSCRIPT pTarget, int disposition, int priority );
 
-	HSCRIPT				GetScriptVehicleEntity();
+	HSCRIPT				ScriptGetVehicleEntity();
 
 	bool				ScriptInViewCone( const Vector &vecSpot ) { return FInViewCone( vecSpot ); }
 	bool				ScriptEntInViewCone( HSCRIPT pEntity ) { return FInViewCone( ToEnt( pEntity ) ); }
@@ -445,6 +451,9 @@ public:
 	bool				ScriptEntInAimCone( HSCRIPT pEntity ) { return FInAimCone( ToEnt( pEntity ) ); }
 
 	const Vector&		ScriptBodyAngles( void ) { static Vector vec; QAngle qa = BodyAngles(); vec.x = qa.x; vec.y = qa.y; vec.z = qa.z; return vec; }
+
+	static ScriptHook_t		g_Hook_RelationshipType;
+	static ScriptHook_t		g_Hook_RelationshipPriority;
 #endif
 
 	// Interactions

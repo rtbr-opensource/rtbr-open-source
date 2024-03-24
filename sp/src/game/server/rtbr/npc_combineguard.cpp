@@ -286,12 +286,14 @@ void CNPC_CombineGuard::Event_Killed( const CTakeDamageInfo &info )
 		// drop the gun!
 		Vector vecGunPos;
 		QAngle angGunAngles;
+		CBaseEntity *pGun = NULL;
 
 		SetBodygroup( 1, GUARD_BODY_GUNGONE);
 
 		GetAttachment( "0", vecGunPos, angGunAngles );
 		
 		angGunAngles.y += 180;
+		pGun = DropItem( "weapon_cguard", vecGunPos, angGunAngles );
 
 	}
 

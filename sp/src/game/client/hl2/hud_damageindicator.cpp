@@ -29,7 +29,7 @@ using namespace vgui;
 
 
 //-----------------------------------------------------------------------------
-// Purpose: HDU Damage indication
+// Purpose: HUD Damage indication
 //-----------------------------------------------------------------------------
 class CHudDamageIndicator : public CHudElement, public vgui::Panel
 {
@@ -65,6 +65,7 @@ private:
 
 	void DrawDamageIndicator(int side);
 	void DrawFullscreenDamageIndicator();
+	void DrawDamageIndicator(long bitsDamage);
 	void GetDamagePosition( const Vector &vecDelta, float *flRotation );
 
 	CMaterialReference m_WhiteAdditiveMaterial;

@@ -20,12 +20,14 @@
 #include "tier0/memdbgon.h"
 
 #define GRENADE_TIMER	3.0f //Seconds
+#define GRENADE_BLIP_TIMER 1.0f // seconds
 
 #define GRENADE_PAUSED_NO			0
 #define GRENADE_PAUSED_PRIMARY		1
 #define GRENADE_PAUSED_SECONDARY	2
 
 #define GRENADE_RADIUS	4.0f // inches
+
 
 
 //-----------------------------------------------------------------------------
@@ -46,6 +48,7 @@ public:
 	void	SecondaryAttack( void );
 	void	DecrementAmmo( CBaseCombatCharacter *pOwner );
 	void	ItemPostFrame( void );
+	float	GetElapsedCookTime( void ) { return gpGlobals->curtime - m_flDrawbackTime; }
 
 	bool Holster(CBaseCombatWeapon * pSwitchingTo);
 	
@@ -55,7 +58,8 @@ public:
 	bool	Deploy( void );
 
 	int		CapabilitiesGet( void ) { return bits_CAP_WEAPON_RANGE_ATTACK1; }
-	
+	float	SelectOptimalGrenadeTimer(void);
+
 	bool	Reload( void );
 
 	bool	ShouldDisplayHUDHint() { return true; }
@@ -71,6 +75,8 @@ private:
 	
 	int		m_AttackPaused;
 	bool	m_fDrawbackFinished;
+	float	m_flDrawbackTime;
+	float	m_fNextBlip;
 
 	DECLARE_ACTTABLE();
 
@@ -82,11 +88,28 @@ BEGIN_DATADESC( CWeaponFrag )
 	DEFINE_FIELD( m_bRedraw, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_AttackPaused, FIELD_INTEGER ),
 	DEFINE_FIELD( m_fDrawbackFinished, FIELD_BOOLEAN ),
+	DEFINE_FIELD( m_flDrawbackTime, FIELD_FLOAT),
+	DEFINE_FIELD(m_fNextBlip, FIELD_FLOAT),
 END_DATADESC()
 
 acttable_t	CWeaponFrag::m_acttable[] = 
 {
 	{ ACT_RANGE_ATTACK1, ACT_RANGE_ATTACK_SLAM, true },
+
+#ifdef MAPBASE
+	// HL2:DM activities (for third-person animations in SP)
+	{ ACT_HL2MP_IDLE,					ACT_HL2MP_IDLE_GRENADE,                    false },
+	{ ACT_HL2MP_RUN,					ACT_HL2MP_RUN_GRENADE,                    false },
+	{ ACT_HL2MP_IDLE_CROUCH,			ACT_HL2MP_IDLE_CROUCH_GRENADE,            false },
+	{ ACT_HL2MP_WALK_CROUCH,			ACT_HL2MP_WALK_CROUCH_GRENADE,            false },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK,	ACT_HL2MP_GESTURE_RANGE_ATTACK_GRENADE,    false },
+	{ ACT_HL2MP_GESTURE_RELOAD,			ACT_HL2MP_GESTURE_RELOAD_GRENADE,        false },
+	{ ACT_HL2MP_JUMP,					ACT_HL2MP_JUMP_GRENADE,			false },
+#if EXPANDED_HL2DM_ACTIVITIES
+	{ ACT_HL2MP_WALK,					ACT_HL2MP_WALK_GRENADE,					false },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK2,	ACT_HL2MP_GESTURE_RANGE_ATTACK2_GRENADE,    false },
+#endif
+#endif
 };
 
 IMPLEMENT_ACTTABLE(CWeaponFrag);
@@ -113,7 +136,7 @@ CWeaponFrag::CWeaponFrag() :
 void CWeaponFrag::OnPickedUp(CBaseCombatCharacter *pNewOwner)
 {
 	BaseClass::OnPickedUp(pNewOwner);
-	SendWeaponAnim(ACT_VM_FIRSTDRAW);
+	//SendWeaponAnim(ACT_VM_FIRSTDRAW);
 }
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -124,6 +147,7 @@ void CWeaponFrag::Precache( void )
 
 	UTIL_PrecacheOther( "npc_grenade_frag" );
 
+	PrecacheScriptSound("Grenade.Blip");
 	PrecacheScriptSound( "WeaponFrag.Throw" );
 	PrecacheScriptSound( "WeaponFrag.Roll" );
 }
@@ -146,6 +170,8 @@ bool CWeaponFrag::Holster( CBaseCombatWeapon *pSwitchingTo )
 {
 	m_bRedraw = false;
 	m_fDrawbackFinished = false;
+	CBasePlayer *pOwner = ToBasePlayer(GetOwner());
+	pOwner->m_Local.m_flGrenadeStart = -1;
 
 	return BaseClass::Holster( pSwitchingTo );
 }
@@ -164,24 +190,31 @@ void CWeaponFrag::Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatChar
 	{
 		case EVENT_WEAPON_SEQUENCE_FINISHED:
 			m_fDrawbackFinished = true;
+			pOwner->m_Local.m_flGrenadeStart = gpGlobals->curtime;
+			m_flDrawbackTime = gpGlobals->curtime;
+			EmitSound( "Grenade.Blip" );
+			m_fNextBlip = m_flDrawbackTime + GRENADE_BLIP_TIMER;
 			break;
 
 		case EVENT_WEAPON_THROW:
 			ThrowGrenade( pOwner );
 			DecrementAmmo( pOwner );
 			fThrewGrenade = true;
+			pOwner->m_Local.m_flGrenadeStart = -1;
 			break;
 
 		case EVENT_WEAPON_THROW2:
 			RollGrenade( pOwner );
 			DecrementAmmo( pOwner );
 			fThrewGrenade = true;
+			pOwner->m_Local.m_flGrenadeStart = -1;
 			break;
 
 		case EVENT_WEAPON_THROW3:
 			LobGrenade( pOwner );
 			DecrementAmmo( pOwner );
 			fThrewGrenade = true;
+			pOwner->m_Local.m_flGrenadeStart = -1;
 			break;
 
 		default:
@@ -246,6 +279,7 @@ bool CWeaponFrag::Reload( void )
 //-----------------------------------------------------------------------------
 void CWeaponFrag::SecondaryAttack( void )
 {
+	if (m_fDrawbackFinished) { return; } // no changing your mind!!!
 	if ( m_bRedraw )
 		return;
 
@@ -282,6 +316,7 @@ void CWeaponFrag::SecondaryAttack( void )
 //-----------------------------------------------------------------------------
 void CWeaponFrag::PrimaryAttack( void )
 {
+	if (m_fDrawbackFinished) { return; } // no changing your mind!!!
 	if ( m_bRedraw )
 		return;
 
@@ -329,6 +364,21 @@ void CWeaponFrag::ItemPostFrame( void )
 {
 	if( m_fDrawbackFinished )
 	{
+		// blip with same blip timer system as a thrown grenade, i.e. start slow, go fast
+		if (GetElapsedCookTime() <= GRENADE_TIMER)
+		{
+			if ( gpGlobals->curtime >= m_fNextBlip )
+			{
+				EmitSound("Grenade.Blip");
+				if ( GetElapsedCookTime() > FRAG_GRENADE_WARN_TIME ){
+					m_fNextBlip += FRAG_GRENADE_BLIP_FAST_FREQUENCY;
+				}
+				else{
+					m_fNextBlip += FRAG_GRENADE_BLIP_FREQUENCY;
+				}
+			}
+		}
+		
 		CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
 
 		if (pOwner)
@@ -340,6 +390,7 @@ void CWeaponFrag::ItemPostFrame( void )
 				{
 					SendWeaponAnim( ACT_VM_THROW );
 					m_fDrawbackFinished = false;
+					m_flNextSecondaryAttack = gpGlobals->curtime + RETHROW_DELAY;
 				}
 				break;
 
@@ -359,6 +410,7 @@ void CWeaponFrag::ItemPostFrame( void )
 					}
 
 					m_fDrawbackFinished = false;
+					m_flNextPrimaryAttack = gpGlobals->curtime + RETHROW_DELAY;
 				}
 				break;
 
@@ -411,11 +463,15 @@ void CWeaponFrag::ThrowGrenade( CBasePlayer *pPlayer )
 	Vector vecThrow;
 	pPlayer->GetVelocity( &vecThrow, NULL );
 	vecThrow += vForward * 1200;
-	Fraggrenade_Create( vecSrc, vec3_angle, vecThrow, AngularImpulse(600,random->RandomInt(-1200,1200),0), pPlayer, GRENADE_TIMER, false );
+	Fraggrenade_Create( vecSrc, vec3_angle, vecThrow, AngularImpulse( 600, random->RandomInt( -1200, 1200 ), 0 ), pPlayer, GRENADE_TIMER - GetElapsedCookTime(), false, m_flDrawbackTime );
 
 	m_bRedraw = true;
 
 	WeaponSound( SINGLE );
+
+#ifdef MAPBASE
+	pPlayer->SetAnimation( PLAYER_ATTACK1 );
+#endif
 
 	m_iPrimaryAttacks++;
 	gamestats->Event_WeaponFired( pPlayer, true, GetClassname() );
@@ -437,9 +493,13 @@ void CWeaponFrag::LobGrenade( CBasePlayer *pPlayer )
 	Vector vecThrow;
 	pPlayer->GetVelocity( &vecThrow, NULL );
 	vecThrow += vForward * 350 + Vector( 0, 0, 50 );
-	Fraggrenade_Create( vecSrc, vec3_angle, vecThrow, AngularImpulse(200,random->RandomInt(-600,600),0), pPlayer, GRENADE_TIMER, false );
+	Fraggrenade_Create( vecSrc, vec3_angle, vecThrow, AngularImpulse( 200, random->RandomInt( -600, 600 ), 0 ), pPlayer, GRENADE_TIMER - GetElapsedCookTime(), false, m_flDrawbackTime );
 
 	WeaponSound( WPN_DOUBLE );
+
+#ifdef MAPBASE
+	pPlayer->SetAnimation( PLAYER_ATTACK2 );
+#endif
 
 	m_bRedraw = true;
 
@@ -481,13 +541,31 @@ void CWeaponFrag::RollGrenade( CBasePlayer *pPlayer )
 	QAngle orientation(0,pPlayer->GetLocalAngles().y,-90);
 	// roll it
 	AngularImpulse rotSpeed(0,0,720);
-	Fraggrenade_Create( vecSrc, orientation, vecThrow, rotSpeed, pPlayer, GRENADE_TIMER, false );
+	Fraggrenade_Create( vecSrc, orientation, vecThrow, rotSpeed, pPlayer, GRENADE_TIMER - GetElapsedCookTime(), false, m_flDrawbackTime );
 
 	WeaponSound( SPECIAL1 );
+
+#ifdef MAPBASE
+	pPlayer->SetAnimation( PLAYER_ATTACK2 );
+#endif
 
 	m_bRedraw = true;
 
 	m_iPrimaryAttacks++;
 	gamestats->Event_WeaponFired( pPlayer, true, GetClassname() );
+}
+
+//
+// unused until i work out how best to integrate this with the sound system, if i ever do
+//
+float CWeaponFrag::SelectOptimalGrenadeTimer(void){
+	if (m_flDrawbackTime - gpGlobals->curtime >= -0.5f){
+		return GRENADE_TIMER; // 1/2 second grace period for maximum frag timer
+	}
+	else{
+		return MAX(MIN(m_flDrawbackTime + GRENADE_TIMER - gpGlobals->curtime + 0.125f, GRENADE_TIMER), 0.01f);	// otherwise just clamp the timer to [0.01, 3] sec.	
+																												// extra 0.125 seconds under the hood so the player doesn't take damage if they release
+																												// just before hitting the red zone
+	}
 }
 

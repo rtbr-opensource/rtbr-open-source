@@ -18,7 +18,7 @@ enum Hull_t
 	HULL_WIDE_HUMAN,		// Vortigaunt
 	HULL_TINY,				// Headcrab
 	HULL_WIDE_SHORT,		// Bullsquid
-	HULL_MEDIUM,			// Cremator
+	HULL_MEDIUM,			// Antlion
 	HULL_TINY_CENTERED,		// Manhack 
 	HULL_LARGE,				// Antlion Guard
 	HULL_LARGE_CENTERED,	// Mortar Synth

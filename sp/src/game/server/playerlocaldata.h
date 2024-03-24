@@ -15,7 +15,10 @@
 #include "playernet_vars.h"
 #include "networkvar.h"
 #include "fogcontroller.h"
+#ifdef MAPBASE // From Alien Swarm SDK
 #include "postprocesscontroller.h"
+#include "colorcorrection.h"
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: Player specific data ( sent only to local player, too )
@@ -55,6 +58,8 @@ public:
 	CNetworkVar( float, m_flDuckJumpTime );
 	// Jump time, time to auto unduck (since we auto crouch jump now).
 	CNetworkVar( float, m_flJumpTime );
+	// Whether player has been ignited by the Cremator.
+	CNetworkVar(bool, m_bOnFireImmolator);
 	// Step sound side flip/flip
 	int m_nStepside;;
 	// Velocity at time when we hit ground
@@ -88,6 +93,9 @@ public:
 	CNetworkVarEmbedded( tonemap_params_t, m_TonemapParams );
 
 	CNetworkVar( bool, m_bSlowMovement );
+#ifdef RTBR_DLL
+	CNetworkVar(float, m_flGrenadeStart);
+#endif
 };
 
 EXTERN_SEND_TABLE(DT_Local);

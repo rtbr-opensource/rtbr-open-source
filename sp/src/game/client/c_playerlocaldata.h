@@ -78,6 +78,10 @@ public:
 	//Tony; added so tonemap controller can work in multiplayer with inputs.
 	tonemap_params_t		m_TonemapParams;
 
+	bool					m_bOnFireImmolator;
+#ifdef RTBR_DLL
+	float m_flGrenadeStart;
+#endif
 };
 
 #endif // C_PLAYERLOCALDATA_H

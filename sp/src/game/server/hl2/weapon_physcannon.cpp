@@ -1,6 +1,6 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Physics cannon
+// Purpose: Physics cannon (the gravity gun is not named sans shut the fuck up)
 //
 //=============================================================================//
 
@@ -759,6 +759,7 @@ void CGrabController::AttachEntity( CBasePlayer *pPlayer, CBaseEntity *pEntity, 
 	pEntity->SetBlocksLOS( false );
 	m_controller = physenv->CreateMotionController( this );
 	m_controller->AttachObject( pPhys, true );
+
 	// Don't do this, it's causing trouble with constraint solvers.
 	//m_controller->SetPriority( IPhysicsMotionController::HIGH_PRIORITY );
 
@@ -1041,11 +1042,11 @@ void CPlayerPickupController::Init( CBasePlayer *pPlayer, CBaseEntity *pObject )
 		}
 	}
 
-	CHL2_Player *pOwner = (CHL2_Player *)ToBasePlayer( pPlayer );
-	if ( pOwner )
+	//CHL2_Player *pOwner = (CHL2_Player *)ToBasePlayer( pPlayer );
+	/*if ( pOwner )
 	{
-		pOwner->EnableSprint( false );
-	}
+		pOwner->EnableSprint( false ); // run when holding object
+	}*/
 
 	// If the target is debris, convert it to non-debris
 	if ( pObject->GetCollisionGroup() == COLLISION_GROUP_DEBRIS )
@@ -1101,11 +1102,11 @@ void CPlayerPickupController::Shutdown( bool bThrown )
 
 	if ( m_pPlayer )
 	{
-		CHL2_Player *pOwner = (CHL2_Player *)ToBasePlayer( m_pPlayer );
+		/*CHL2_Player *pOwner = (CHL2_Player *)ToBasePlayer( m_pPlayer );
 		if ( pOwner )
 		{
 			pOwner->EnableSprint( true );
-		}
+		}*/
 
 		m_pPlayer->SetUseEntity( NULL );
 		if ( m_pPlayer->GetActiveWeapon() )
@@ -1238,6 +1239,9 @@ public:
 
 	DECLARE_SERVERCLASS();
 	DECLARE_DATADESC();
+#ifdef MAPBASE
+	DECLARE_ACTTABLE();
+#endif
 
 	CWeaponPhysCannon( void );
 
@@ -1278,6 +1282,8 @@ public:
 	bool	IsAccountableForObject( CBaseEntity *pObject );
 	
 	bool	ShouldDisplayHUDHint() { return true; }
+
+	EHANDLE m_hCoreEffect;
 
 
 
@@ -1369,6 +1375,11 @@ protected:
 
 	CNetworkVar( bool, m_bIsCurrentlyUpgrading );
 	CNetworkVar( float, m_flTimeForceView );
+	CNetworkVar(bool, m_bEffectsOn);
+	CNetworkVar(bool, m_bIsHolding);
+	CNetworkVar(float, m_flScaleFactor);
+	CNetworkVar(bool, m_bWeaponActive);
+	CNetworkVar(Vector, m_vLaunchPos);
 
 	float	m_flElementDebounce;
 	float	m_flElementPosition;
@@ -1388,6 +1399,7 @@ protected:
 	int					m_EffectState;		// Current state of the effects on the gun
 
 	bool				m_bPhyscannonState;
+
 
 	// A list of the objects thrown or punted recently, and the time done so.
 	CUtlVector< thrown_objects_t >	m_ThrownEntities;
@@ -1411,7 +1423,12 @@ int CWeaponPhysCannon::m_poseActive = 0;
 
 IMPLEMENT_SERVERCLASS_ST(CWeaponPhysCannon, DT_WeaponPhysCannon)
 	SendPropBool( SENDINFO( m_bIsCurrentlyUpgrading ) ),
+	SendPropBool(SENDINFO(m_bEffectsOn)),
+	SendPropBool(SENDINFO(m_bIsHolding)),
+	SendPropBool(SENDINFO(m_bWeaponActive)),
+	SendPropFloat(SENDINFO(m_flScaleFactor)),
 	SendPropFloat( SENDINFO( m_flTimeForceView ) ),
+	SendPropVector(SENDINFO(m_vLaunchPos)),
 END_SEND_TABLE()
 
 LINK_ENTITY_TO_CLASS( weapon_physcannon, CWeaponPhysCannon );
@@ -1419,8 +1436,12 @@ PRECACHE_WEAPON_REGISTER( weapon_physcannon );
 
 BEGIN_DATADESC( CWeaponPhysCannon )
 
+	DEFINE_FIELD(m_bWeaponActive, FIELD_BOOLEAN),
+
 	DEFINE_FIELD( m_bOpen, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_bActive, FIELD_BOOLEAN ),
+
+	DEFINE_FIELD(m_bIsHolding, FIELD_BOOLEAN),
 
 	DEFINE_FIELD( m_nChangeState, FIELD_INTEGER ),
 	DEFINE_FIELD( m_flCheckSuppressTime, FIELD_TIME ),
@@ -1429,8 +1450,13 @@ BEGIN_DATADESC( CWeaponPhysCannon )
 	DEFINE_FIELD( m_flElementDestination, FIELD_FLOAT ),
 	DEFINE_FIELD( m_nAttack2Debounce, FIELD_INTEGER ),
 	DEFINE_FIELD( m_bIsCurrentlyUpgrading, FIELD_BOOLEAN ),
+	//DEFINE_FIELD(m_bEffectsOn, FIELD_BOOLEAN),
 	DEFINE_FIELD( m_flTimeForceView, FIELD_TIME ),
 	DEFINE_FIELD( m_EffectState, FIELD_INTEGER ),
+
+	DEFINE_FIELD( m_hCoreEffect, FIELD_EHANDLE),
+
+	DEFINE_FIELD(m_flScaleFactor, FIELD_FLOAT),
 
 	DEFINE_AUTO_ARRAY( m_hBeams, FIELD_EHANDLE ),
 	DEFINE_AUTO_ARRAY( m_hGlowSprites, FIELD_EHANDLE ),
@@ -1454,6 +1480,30 @@ BEGIN_DATADESC( CWeaponPhysCannon )
 	DEFINE_FIELD( m_flTimeNextObjectPurge, FIELD_TIME ),
 
 END_DATADESC()
+
+#ifdef MAPBASE
+acttable_t CWeaponPhysCannon::m_acttable[] =
+{
+	// HL2:DM activities (for third-person animations in SP)
+	{ ACT_HL2MP_IDLE,                    ACT_HL2MP_IDLE_PHYSGUN,                    false },
+	{ ACT_HL2MP_RUN,                    ACT_HL2MP_RUN_PHYSGUN,                    false },
+	{ ACT_HL2MP_IDLE_CROUCH,            ACT_HL2MP_IDLE_CROUCH_PHYSGUN,            false },
+	{ ACT_HL2MP_WALK_CROUCH,            ACT_HL2MP_WALK_CROUCH_PHYSGUN,            false },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK,    ACT_HL2MP_GESTURE_RANGE_ATTACK_PHYSGUN,    false },
+	{ ACT_HL2MP_GESTURE_RELOAD,            ACT_HL2MP_GESTURE_RELOAD_PHYSGUN,        false },
+	{ ACT_HL2MP_JUMP,                    ACT_HL2MP_JUMP_PHYSGUN,                    false },
+	{ ACT_RANGE_ATTACK1,                ACT_RANGE_ATTACK_SLAM,                false },
+#if EXPANDED_HL2DM_ACTIVITIES
+	{ ACT_HL2MP_WALK,					ACT_HL2MP_WALK_PHYSGUN,					false },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK2,	ACT_HL2MP_GESTURE_RANGE_ATTACK2_PHYSGUN,    false },
+#endif
+
+	{ ACT_ARM,						ACT_ARM_RIFLE,					false },
+	{ ACT_DISARM,					ACT_DISARM_RIFLE,				false },
+};
+
+IMPLEMENT_ACTTABLE( CWeaponPhysCannon );
+#endif
 
 
 enum
@@ -1499,6 +1549,8 @@ CWeaponPhysCannon::CWeaponPhysCannon( void )
 	m_flEndSpritesOverride[1] = 0.0f;
 
 	m_bPhyscannonState = false;
+
+	m_bWeaponActive = false;
 }
 
 //-----------------------------------------------------------------------------
@@ -1566,7 +1618,6 @@ void CWeaponPhysCannon::OnRestore()
 {
 	BaseClass::OnRestore();
 	m_grabController.OnRestore();
-
 	m_bPhyscannonState = IsMegaPhysCannon();
 
 	// Tracker 8106:  Physcannon effects disappear through level transition, so
@@ -1603,7 +1654,10 @@ inline float CWeaponPhysCannon::SpriteScaleFactor()
 bool CWeaponPhysCannon::Deploy( void )
 {
 	CloseElements();
-	DoEffect( EFFECT_READY );
+	StartEffects();
+	DispatchUpdateTransmitState();
+
+	m_bWeaponActive = true;
 
 	// Unbloat our bounds
 	if ( IsMegaPhysCannon() )
@@ -1678,6 +1732,8 @@ bool CWeaponPhysCannon::DropIfEntityHeld( CBaseEntity *pTarget )
 //-----------------------------------------------------------------------------
 void CWeaponPhysCannon::Drop( const Vector &vecVelocity )
 {
+	m_bWeaponActive = false;
+
 	ForceDrop();
 	BaseClass::Drop( vecVelocity );
 }
@@ -1723,6 +1779,8 @@ bool CWeaponPhysCannon::Holster( CBaseCombatWeapon *pSwitchingTo )
 
 	ForceDrop();
 
+	m_bWeaponActive = false;
+
 	return BaseClass::Holster( pSwitchingTo );
 }
 
@@ -1738,6 +1796,9 @@ void CWeaponPhysCannon::DryFire( void )
 	if ( pOwner )
 	{
 		pOwner->RumbleEffect( RUMBLE_PISTOL, 0, RUMBLE_FLAG_RESTART );
+#ifdef MAPBASE // TODO: Is this animation too dramatic?
+		pOwner->SetAnimation( PLAYER_ATTACK1 );
+#endif
 	}
 }
 
@@ -1794,6 +1855,11 @@ void CWeaponPhysCannon::PuntNonVPhysics( CBaseEntity *pEntity, const Vector &for
 
 	PrimaryFireEffect();
 	SendWeaponAnim( ACT_VM_SECONDARYATTACK );
+#ifdef MAPBASE
+	CBasePlayer *pPlayer = ToBasePlayer( GetOwner() );
+	if (pPlayer)
+		pPlayer->SetAnimation( PLAYER_ATTACK1 );
+#endif
 
 	m_nChangeState = ELEMENT_STATE_CLOSED;
 	m_flElementDebounce = gpGlobals->curtime + 0.5f;
@@ -1944,6 +2010,10 @@ void CWeaponPhysCannon::PuntVPhysics( CBaseEntity *pEntity, const Vector &vecFor
 	PrimaryFireEffect();
 	SendWeaponAnim( ACT_VM_SECONDARYATTACK );
 
+#ifdef MAPBASE
+	pOwner->SetAnimation( PLAYER_ATTACK1 );
+#endif
+
 	m_nChangeState = ELEMENT_STATE_CLOSED;
 	m_flElementDebounce = gpGlobals->curtime + 0.5f;
 	m_flCheckSuppressTime = gpGlobals->curtime + 0.25f;
@@ -2062,6 +2132,10 @@ void CWeaponPhysCannon::PuntRagdoll( CBaseEntity *pEntity, const Vector &vecForw
 	PrimaryFireEffect();
 	SendWeaponAnim( ACT_VM_SECONDARYATTACK );
 
+#ifdef MAPBASE
+	pOwner->SetAnimation( PLAYER_ATTACK1 );
+#endif
+
 	m_nChangeState = ELEMENT_STATE_CLOSED;
 	m_flElementDebounce = gpGlobals->curtime + 0.5f;
 	m_flCheckSuppressTime = gpGlobals->curtime + 0.25f;
@@ -2167,6 +2241,9 @@ void CWeaponPhysCannon::PrimaryAttack( void )
 
 		PrimaryFireEffect();
 		SendWeaponAnim( ACT_VM_SECONDARYATTACK );
+#ifdef MAPBASE
+		pOwner->SetAnimation( PLAYER_ATTACK1 );
+#endif
 		return;
 	}
 
@@ -2451,13 +2528,13 @@ bool CWeaponPhysCannon::AttachObject( CBaseEntity *pObject, const Vector &vPosit
 		// NVNT set the players constant force to simulate holding mass
 		HapticSetConstantForce(pOwner,clamp(m_grabController.GetLoadWeight()*0.05,1,5)*Vector(0,-1,0));
 #endif
-		pOwner->EnableSprint( false );
+		//pOwner->EnableSprint( false ); run when physcannoning object
 
-		float	loadWeight = ( 1.0f - GetLoadPercentage() );
-		float	maxSpeed = hl2_walkspeed.GetFloat() + ( ( hl2_normspeed.GetFloat() - hl2_walkspeed.GetFloat() ) * loadWeight );
+		//float	loadWeight = ( 1.0f - GetLoadPercentage() );
+		//float	maxSpeed = hl2_walkspeed.GetFloat() + ( ( hl2_normspeed.GetFloat() - hl2_walkspeed.GetFloat() ) * loadWeight );
 
 		//Msg( "Load perc: %f -- Movement speed: %f/%f\n", loadWeight, maxSpeed, hl2_normspeed.GetFloat() );
-		pOwner->SetMaxSpeed( maxSpeed );
+		//pOwner->SetMaxSpeed( maxSpeed ); no cheating, valve!!
 	}
 
 	// Don't drop again for a slight delay, in case they were pulling objects near them
@@ -2904,8 +2981,8 @@ void CWeaponPhysCannon::DetachObject( bool playSound, bool wasLaunched )
 	CHL2_Player *pOwner = (CHL2_Player *)ToBasePlayer( GetOwner() );
 	if( pOwner != NULL )
 	{
-		pOwner->EnableSprint( true );
-		pOwner->SetMaxSpeed( hl2_normspeed.GetFloat() );
+		//pOwner->EnableSprint( true );
+		//pOwner->SetMaxSpeed( hl2_normspeed.GetFloat() ); stop cheating, valve >:(
 		
 		if( wasLaunched )
 		{
@@ -2974,9 +3051,7 @@ void CWeaponPhysCannon::ItemPreFrame()
 
 	// Update the object if the weapon is switched on.
 	if( m_bActive )
-	{
 		UpdateObject();
-	}
 
 	if( gpGlobals->curtime >= m_flTimeNextObjectPurge )
 	{
@@ -3301,7 +3376,9 @@ void CWeaponPhysCannon::DoEffectIdle( void )
 void CWeaponPhysCannon::ItemBusyFrame( void )
 {
 	DoEffectIdle();
-
+	if ( m_bActive ){
+		ItemPreFrame();
+	}
 	BaseClass::ItemBusyFrame();
 }
 
@@ -3309,6 +3386,7 @@ void CWeaponPhysCannon::ItemBusyFrame( void )
 //-----------------------------------------------------------------------------
 void CWeaponPhysCannon::ItemPostFrame()
 {
+	//DevMsg("Server side: %i \n", m_bWeaponActive);
 	CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
 	if ( pOwner == NULL )
 	{
@@ -3316,6 +3394,8 @@ void CWeaponPhysCannon::ItemPostFrame()
 		m_nAttack2Debounce = 0;
 		return;
 	}
+
+	m_flScaleFactor = SpriteScaleFactor();
 
 #ifdef MAPBASE
 	if (pOwner->HasSpawnFlags( SF_PLAYER_SUPPRESS_FIRING ))
@@ -3654,7 +3734,9 @@ void CWeaponPhysCannon::StopLoopingSounds()
 //-----------------------------------------------------------------------------
 void CWeaponPhysCannon::DestroyEffects( void )
 {
-	//Turn off main glow
+	m_bEffectsOn = false;
+
+	/*//Turn off main glow
 	if ( m_hCenterSprite != NULL )
 	{
 		UTIL_Remove( m_hCenterSprite );
@@ -3676,7 +3758,7 @@ void CWeaponPhysCannon::DestroyEffects( void )
 			m_hBeams[i] = NULL;
 		}
 	}
-
+	
 	// Turn off sprites
 	for ( int i = 0; i < NUM_SPRITES; i++ )
 	{
@@ -3694,7 +3776,7 @@ void CWeaponPhysCannon::DestroyEffects( void )
 			UTIL_Remove( m_hEndSprites[i] );
 			m_hEndSprites[i] = NULL;
 		}
-	}
+	}*/
 }
 
 
@@ -3703,7 +3785,9 @@ void CWeaponPhysCannon::DestroyEffects( void )
 //-----------------------------------------------------------------------------
 void CWeaponPhysCannon::StopEffects( bool stopSound )
 {
-	// Turn off our effect state
+	m_bEffectsOn = false;
+
+	/*// Turn off our effect state
 	DoEffect( EFFECT_NONE );
 
 	//Turn off main glow
@@ -3725,7 +3809,7 @@ void CWeaponPhysCannon::StopEffects( bool stopSound )
 			m_hBeams[i]->SetBrightness( 0 );
 		}
 	}
-
+	
 	//Turn off sprites
 	for ( int i = 0; i < NUM_SPRITES; i++ )
 	{
@@ -3741,7 +3825,7 @@ void CWeaponPhysCannon::StopEffects( bool stopSound )
 		{
 			m_hEndSprites[i]->TurnOff();
 		}
-	}
+	}*/
 
 	//Shut off sounds
 	if ( stopSound && GetMotorSound() != NULL )
@@ -3749,21 +3833,22 @@ void CWeaponPhysCannon::StopEffects( bool stopSound )
 		(CSoundEnvelopeController::GetController()).SoundFadeOut( GetMotorSound(), 0.1f );
 	}
 }
-
-
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
 void CWeaponPhysCannon::StartEffects( void )
 {
-	CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
+
+	m_bEffectsOn = true;
+
+	/*CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
 	if ( pOwner == NULL )
 		return;
 
 	bool bIsMegaCannon = IsMegaPhysCannon();
 
 	int i;
-	float flScaleFactor = SpriteScaleFactor();
+	//float flScaleFactor = SpriteScaleFactor();
 	CBaseEntity *pBeamEnt = pOwner->GetViewModel();
 
 	// Create the beams
@@ -3890,7 +3975,7 @@ void CWeaponPhysCannon::StartEffects( void )
 		m_hBlastSprite->SetBrightness( 255, 0.2f );
 		m_hBlastSprite->SetScale( 0.1f, 0.2f );
 		m_hBlastSprite->TurnOff();
-	}
+	}*/
 }
 
 //-----------------------------------------------------------------------------
@@ -3898,9 +3983,9 @@ void CWeaponPhysCannon::StartEffects( void )
 //-----------------------------------------------------------------------------
 void CWeaponPhysCannon::DoEffectClosed( void )
 {
-	float flScaleFactor = SpriteScaleFactor();
+	//float flScaleFactor = SpriteScaleFactor();
 
-	// Turn off the center sprite
+	/*// Turn off the center sprite
 	if ( m_hCenterSprite != NULL )
 	{
 		m_hCenterSprite->SetBrightness( 0.0, 0.1f );
@@ -3943,7 +4028,7 @@ void CWeaponPhysCannon::DoEffectClosed( void )
 		m_hBlastSprite->TurnOn();
 		m_hBlastSprite->SetScale( 1.0f, 0.0f );
 		m_hBlastSprite->SetBrightness( 0, 0.0f );
-	}
+	}*/
 }
 
 //-----------------------------------------------------------------------------
@@ -4004,9 +4089,9 @@ void CWeaponPhysCannon::DoMegaEffectClosed( void )
 //-----------------------------------------------------------------------------
 void CWeaponPhysCannon::DoEffectReady( )
 {
-	float flScaleFactor = SpriteScaleFactor();
+	//float flScaleFactor = SpriteScaleFactor();
 
-	//Turn on the center sprite
+	/*//Turn on the center sprite
 	if ( m_hCenterSprite != NULL )
 	{
 		m_hCenterSprite->SetBrightness( 128, 0.2f );
@@ -4049,7 +4134,7 @@ void CWeaponPhysCannon::DoEffectReady( )
 		m_hBlastSprite->TurnOn();
 		m_hBlastSprite->SetScale( 0.1f, 0.2f );
 		m_hBlastSprite->SetBrightness( 255, 0.1f );
-	}
+	}*/
 }
 
 
@@ -4058,9 +4143,9 @@ void CWeaponPhysCannon::DoEffectReady( )
 //-----------------------------------------------------------------------------
 void CWeaponPhysCannon::DoEffectHolding( )
 {
-	float flScaleFactor = SpriteScaleFactor();
+	//float flScaleFactor = SpriteScaleFactor();
 
-	// Turn off the center sprite
+	/*// Turn off the center sprite
 	if ( m_hCenterSprite != NULL )
 	{
 		m_hCenterSprite->SetBrightness( 255, 0.1f );
@@ -4103,7 +4188,7 @@ void CWeaponPhysCannon::DoEffectHolding( )
 		m_hBlastSprite->TurnOff();
 		m_hBlastSprite->SetScale( 0.1f, 0.0f );
 		m_hBlastSprite->SetBrightness( 0, 0.0f );
-	}
+	}*/
 }
 
 
@@ -4121,9 +4206,9 @@ void CWeaponPhysCannon::DoEffectLaunch( Vector *pos )
 		return;
 
 	Vector	endpos = *pos;
-
+	m_vLaunchPos = endpos;
 	// Check to store off our view model index
-	CBeam *pBeam = CBeam::BeamCreate( IsMegaPhysCannon() ? MEGACANNON_BEAM_SPRITE : PHYSCANNON_BEAM_SPRITE, 8 );
+	/*CBeam *pBeam = CBeam::BeamCreate( IsMegaPhysCannon() ? MEGACANNON_BEAM_SPRITE : PHYSCANNON_BEAM_SPRITE, 8 );
 
 	if ( pBeam != NULL )
 	{
@@ -4136,7 +4221,7 @@ void CWeaponPhysCannon::DoEffectLaunch( Vector *pos )
 		pBeam->LiveForTime( 0.1f );
 		pBeam->RelinkBeam();
 		pBeam->SetNoise( 2 );
-	}
+	}*/
 
 	Vector	shotDir = ( endpos - pOwner->Weapon_ShootPosition() );
 	VectorNormalize( shotDir );
@@ -4332,18 +4417,22 @@ void CWeaponPhysCannon::DoMegaEffect( int effectType, Vector *pos )
 	switch( effectType )
 	{
 	case EFFECT_CLOSED:
+		m_flScaleFactor = 0.0f;
 		DoMegaEffectClosed();
 		break;
 
 	case EFFECT_READY:
+		m_flScaleFactor = 0.0f;
 		DoMegaEffectReady();
 		break;
 
 	case EFFECT_HOLDING:
+		m_flScaleFactor = 1.5f;
 		DoMegaEffectHolding();
 		break;
 
 	case EFFECT_LAUNCH:
+		m_flScaleFactor = 1.5f;
 		DoMegaEffectLaunch( pos );
 		break;
 
@@ -4361,7 +4450,6 @@ void CWeaponPhysCannon::DoEffect( int effectType, Vector *pos )
 {
 	// Make sure we're active
 	StartEffects();
-
 	m_EffectState = effectType;
 
 	// Do different effects when upgraded
@@ -4374,18 +4462,26 @@ void CWeaponPhysCannon::DoEffect( int effectType, Vector *pos )
 	switch( effectType )
 	{
 	case EFFECT_CLOSED:
+		m_flScaleFactor = 0.0f;
+		m_bIsHolding = false;
 		DoEffectClosed( );
 		break;
 
 	case EFFECT_READY:
+		m_bIsHolding = false;
+		m_flScaleFactor = 0.0f;
 		DoEffectReady( );
 		break;
 
 	case EFFECT_HOLDING:
+		m_bIsHolding = true;
+		m_flScaleFactor = 1.0f;
 		DoEffectHolding();
 		break;
 
 	case EFFECT_LAUNCH:
+		m_bIsHolding = true;
+		m_flScaleFactor = 1.0f;
 		DoEffectLaunch( pos );
 		break;
 

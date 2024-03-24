@@ -39,7 +39,7 @@ bool NPC_CheckBrushExclude( CBaseEntity *pEntity, CBaseEntity *pBrush );
 #include "tier0/memdbgon.h"
 
 ConVar r_visualizetraces( "r_visualizetraces", "0", FCVAR_CHEAT );
-ConVar developer("developer", "0", 0, "Set developer message level." ); // developer mode
+ConVar developer("developer", "0", 0, "Set developer message level" ); // developer mode
 
 float UTIL_VecToYaw( const Vector &vec )
 {
@@ -247,6 +247,10 @@ bool PassServerEntityFilter( const IHandleEntity *pTouch, const IHandleEntity *p
 //-----------------------------------------------------------------------------
 bool StandardFilterRules( IHandleEntity *pHandleEntity, int fContentsMask )
 {
+	if (pHandleEntity == NULL) {
+		return false;
+	}
+
 	CBaseEntity *pCollide = EntityFromEntityHandle( pHandleEntity );
 
 	// Static prop case...
@@ -1126,7 +1130,7 @@ float CountdownTimer::Now( void ) const
 #endif
 
 
-char* ReadAndAllocStringValue( KeyValues *pSub, const char *pName, const char *pFilename )
+const char* ReadAndAllocStringValue( KeyValues *pSub, const char *pName, const char *pFilename )
 {
 	const char *pValue = pSub->GetString( pName, NULL );
 	if ( !pValue )

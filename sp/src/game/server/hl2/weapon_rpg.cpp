@@ -104,7 +104,7 @@ CLaserDot *GetLaserDotList()
 BEGIN_DATADESC( CMissile )
 
 	DEFINE_FIELD( m_hOwner,					FIELD_EHANDLE ),
-	DEFINE_FIELD( m_hRocketTrail,			FIELD_EHANDLE ),
+	//DEFINE_FIELD( m_hRocketTrail,			FIELD_EHANDLE ),
 	DEFINE_FIELD( m_flAugerTime,			FIELD_TIME ),
 	DEFINE_FIELD( m_flMarkDeadTime,			FIELD_TIME ),
 	DEFINE_FIELD( m_flGracePeriodEndsAt,	FIELD_TIME ),
@@ -129,7 +129,7 @@ class CWeaponRPG;
 //-----------------------------------------------------------------------------
 CMissile::CMissile()
 {
-	m_hRocketTrail = NULL;
+	//m_hRocketTrail = NULL;
 	m_bCreateDangerSounds = false;
 }
 
@@ -148,6 +148,7 @@ void CMissile::Precache( void )
 	PrecacheModel( "models/weapons/w_missile.mdl" );
 	PrecacheModel( "models/weapons/w_missile_launch.mdl" );
 	PrecacheModel( "models/weapons/w_missile_closed.mdl" );
+	PrecacheParticleSystem("weapon_rpg_trail");
 }
 
 
@@ -240,9 +241,6 @@ void CMissile::DumbFire( void )
 	UTIL_SetSize( this, vec3_origin, vec3_origin );
 
 	EmitSound( "Missile.Ignite" );
-
-	// Smoke trail.
-	CreateSmokeTrail();
 }
 
 //-----------------------------------------------------------------------------
@@ -318,12 +316,12 @@ void CMissile::ShotDown( void )
 	CEffectData	data;
 	data.m_vOrigin = GetAbsOrigin();
 
-	DispatchEffect( "RPGShotDown", data );
+	//DispatchEffect( "RPGShotDown", data );
 
-	if ( m_hRocketTrail != NULL )
+	/*if ( m_hRocketTrail != NULL )
 	{
 		m_hRocketTrail->m_bDamaged = true;
-	}
+	}*/
 
 	SetThink( &CMissile::AugerThink );
 	SetNextThink( gpGlobals->curtime );
@@ -346,7 +344,8 @@ void CMissile::DoExplosion( void )
 {
 	// Explode
 	ExplosionCreate( GetAbsOrigin(), GetAbsAngles(), GetOwnerEntity(), GetDamage(), CMissile::EXPLOSION_RADIUS, 
-		SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NODLIGHTS | SF_ENVEXPLOSION_NOSMOKE, 0.0f, this);
+		SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NOPARTICLES | SF_ENVEXPLOSION_NOFIREBALL | SF_ENVEXPLOSION_NODLIGHTS | SF_ENVEXPLOSION_NOSMOKE, 0.0f, this);
+	DispatchParticleEffect("explosion_rpg", GetAbsOrigin(), GetAbsAngles());
 }
 
 
@@ -371,11 +370,11 @@ void CMissile::Explode( void )
 		DoExplosion();
 	}
 
-	if( m_hRocketTrail )
+	/*if( m_hRocketTrail )
 	{
 		m_hRocketTrail->SetLifetime(0.1f);
 		m_hRocketTrail = NULL;
-	}
+	}*/
 
 	if ( m_hOwner != NULL )
 	{
@@ -406,32 +405,32 @@ void CMissile::MissileTouch( CBaseEntity *pOther )
 	Explode();
 }
 
-//-----------------------------------------------------------------------------
-// Purpose: 
-//-----------------------------------------------------------------------------
-void CMissile::CreateSmokeTrail( void )
-{
-	if ( m_hRocketTrail )
-		return;
-
-	// Smoke trail.
-	if ( (m_hRocketTrail = RocketTrail::CreateRocketTrail()) != NULL )
-	{
-		m_hRocketTrail->m_Opacity = 0.2f;
-		m_hRocketTrail->m_SpawnRate = 100;
-		m_hRocketTrail->m_ParticleLifetime = 0.5f;
-		m_hRocketTrail->m_StartColor.Init( 0.65f, 0.65f , 0.65f );
-		m_hRocketTrail->m_EndColor.Init( 0.0, 0.0, 0.0 );
-		m_hRocketTrail->m_StartSize = 8;
-		m_hRocketTrail->m_EndSize = 32;
-		m_hRocketTrail->m_SpawnRadius = 4;
-		m_hRocketTrail->m_MinSpeed = 2;
-		m_hRocketTrail->m_MaxSpeed = 16;
-		
-		m_hRocketTrail->SetLifetime( 999 );
-		m_hRocketTrail->FollowEntity( this, "0" );
-	}
-}
+////-----------------------------------------------------------------------------
+//// Purpose: 
+////-----------------------------------------------------------------------------
+//void CMissile::CreateSmokeTrail( void )
+//{
+//	if ( m_hRocketTrail )
+//		return;
+//
+//	// Smoke trail.
+//	if ( (m_hRocketTrail = RocketTrail::CreateRocketTrail()) != NULL )
+//	{
+//		m_hRocketTrail->m_Opacity = 0.2f;
+//		m_hRocketTrail->m_SpawnRate = 100;
+//		m_hRocketTrail->m_ParticleLifetime = 0.5f;
+//		m_hRocketTrail->m_StartColor.Init( 0.65f, 0.65f , 0.65f );
+//		m_hRocketTrail->m_EndColor.Init( 0.0, 0.0, 0.0 );
+//		m_hRocketTrail->m_StartSize = 8;
+//		m_hRocketTrail->m_EndSize = 32;
+//		m_hRocketTrail->m_SpawnRadius = 4;
+//		m_hRocketTrail->m_MinSpeed = 2;
+//		m_hRocketTrail->m_MaxSpeed = 16;
+//		
+//		m_hRocketTrail->SetLifetime( 999 );
+//		m_hRocketTrail->FollowEntity( this, "0" );
+//	}
+//}
 
 
 //-----------------------------------------------------------------------------
@@ -449,6 +448,7 @@ void CMissile::IgniteThink( void )
 	Vector vecForward;
 
 	EmitSound( "Missile.Ignite" );
+	DispatchParticleEffect("weapon_rpg_trail", PATTACH_POINT_FOLLOW, this, "exhaust");
 
 	AngleVectors( GetLocalAngles(), &vecForward );
 	SetAbsVelocity( vecForward * RPG_SPEED );
@@ -468,8 +468,6 @@ void CMissile::IgniteThink( void )
 			pPlayer->RumbleEffect( RUMBLE_RPG_MISSILE, 0, RUMBLE_FLAG_RESTART );
 		}
 	}
-
-	CreateSmokeTrail();
 }
 
 
@@ -995,8 +993,8 @@ void CAPCMissile::Init()
 {
 	SetMoveType( MOVETYPE_FLY );
 	SetModel("models/weapons/w_missile.mdl");
+	DispatchParticleEffect("weapon_rpg_trail", PATTACH_POINT_FOLLOW, this, "exhaust");
 	UTIL_SetSize( this, vec3_origin, vec3_origin );
-	CreateSmokeTrail();
 	SetTouch( &CAPCMissile::APCMissileTouch );
 	m_flLastHomingSpeed = APC_HOMING_SPEED;
 	CreateDangerSounds( true );
@@ -1056,10 +1054,10 @@ void CAPCMissile::AugerDelay( float flDelay )
 
 void CAPCMissile::AugerStartThink()
 {
-	if ( m_hRocketTrail != NULL )
+	/*if ( m_hRocketTrail != NULL )
 	{
 		m_hRocketTrail->m_bDamaged = true;
-	}
+	}*/
 	m_flAugerTime = gpGlobals->curtime + random->RandomFloat( 1.0f, 2.0f );
 	SetThink( &CAPCMissile::AugerThink );
 	SetNextThink( gpGlobals->curtime );
@@ -1160,7 +1158,9 @@ void CAPCMissile::DoExplosion( void )
 	else
 	{
 #ifdef HL2_EPISODIC
-		ExplosionCreate( GetAbsOrigin(), GetAbsAngles(), this, APC_MISSILE_DAMAGE, 100, true, 20000 );
+		ExplosionCreate( GetAbsOrigin(), GetAbsAngles(), this, APC_MISSILE_DAMAGE, 100, 
+			SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NOPARTICLES | SF_ENVEXPLOSION_NOFIREBALL | SF_ENVEXPLOSION_NOSMOKE, 20000, NULL);
+		DispatchParticleEffect("explosion_rpg", GetAbsOrigin(), GetAbsAngles());
 #else
 		ExplosionCreate( GetAbsOrigin(), GetAbsAngles(), GetOwnerEntity(), APC_MISSILE_DAMAGE, 100, true, 20000 );
 #endif
@@ -1372,7 +1372,6 @@ void CAPCMissile::ComputeActualDotPosition( CLaserDot *pLaserDot, Vector *pActua
 
 #define	RPG_BEAM_SPRITE		"effects/laser1_noz.vmt"
 #define	RPG_LASER_SPRITE	"sprites/redglow1.vmt"
-
 //=============================================================================
 // RPG
 //=============================================================================
@@ -1399,10 +1398,22 @@ PRECACHE_WEAPON_REGISTER(weapon_rpg);
 acttable_t	CWeaponRPG::m_acttable[] = 
 {
 	{ ACT_RANGE_ATTACK1, ACT_RANGE_ATTACK_RPG, true },
+#if EXPANDED_HL2_WEAPON_ACTIVITIES
+	{ ACT_RANGE_AIM_LOW,			ACT_RANGE_AIM_RPG_LOW,			false },
+	{ ACT_RANGE_ATTACK1_LOW,		ACT_RANGE_ATTACK_RPG_LOW,		false },
+	{ ACT_GESTURE_RANGE_ATTACK1,	ACT_GESTURE_RANGE_ATTACK_RPG,	false },
+#endif
 
+#ifdef MAPBASE
+	// Readiness activities should not be required
+	{ ACT_IDLE_RELAXED,				ACT_IDLE_RPG_RELAXED,			false },
+	{ ACT_IDLE_STIMULATED,			ACT_IDLE_ANGRY_RPG,				false },
+	{ ACT_IDLE_AGITATED,			ACT_IDLE_ANGRY_RPG,				false },
+#else
 	{ ACT_IDLE_RELAXED,				ACT_IDLE_RPG_RELAXED,			true },
 	{ ACT_IDLE_STIMULATED,			ACT_IDLE_ANGRY_RPG,				true },
 	{ ACT_IDLE_AGITATED,			ACT_IDLE_ANGRY_RPG,				true },
+#endif
 
 	{ ACT_IDLE,						ACT_IDLE_RPG,					true },
 	{ ACT_IDLE_ANGRY,				ACT_IDLE_ANGRY_RPG,				true },
@@ -1411,6 +1422,31 @@ acttable_t	CWeaponRPG::m_acttable[] =
 	{ ACT_RUN,						ACT_RUN_RPG,					true },
 	{ ACT_RUN_CROUCH,				ACT_RUN_CROUCH_RPG,				true },
 	{ ACT_COVER_LOW,				ACT_COVER_LOW_RPG,				true },
+
+#if EXPANDED_HL2_WEAPON_ACTIVITIES
+	{ ACT_ARM,						ACT_ARM_RPG,					false },
+	{ ACT_DISARM,					ACT_DISARM_RPG,					false },
+#endif
+
+#if EXPANDED_HL2_COVER_ACTIVITIES
+	{ ACT_RANGE_AIM_MED,			ACT_RANGE_AIM_RPG_MED,			false },
+	{ ACT_RANGE_ATTACK1_MED,		ACT_RANGE_ATTACK_RPG_MED,		false },
+#endif
+
+#ifdef MAPBASE
+	// HL2:DM activities (for third-person animations in SP)
+	{ ACT_HL2MP_IDLE,                    ACT_HL2MP_IDLE_RPG,                    false },
+	{ ACT_HL2MP_RUN,                    ACT_HL2MP_RUN_RPG,                    false },
+	{ ACT_HL2MP_IDLE_CROUCH,            ACT_HL2MP_IDLE_CROUCH_RPG,            false },
+	{ ACT_HL2MP_WALK_CROUCH,            ACT_HL2MP_WALK_CROUCH_RPG,            false },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK,    ACT_HL2MP_GESTURE_RANGE_ATTACK_RPG,    false },
+	{ ACT_HL2MP_GESTURE_RELOAD,            ACT_HL2MP_GESTURE_RELOAD_RPG,        false },
+	{ ACT_HL2MP_JUMP,                    ACT_HL2MP_JUMP_RPG,                    false },
+#if EXPANDED_HL2DM_ACTIVITIES
+	{ ACT_HL2MP_WALK,					ACT_HL2MP_WALK_RPG,						false },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK2,	ACT_HL2MP_GESTURE_RANGE_ATTACK2_RPG,    false },
+#endif
+#endif
 };
 
 IMPLEMENT_ACTTABLE(CWeaponRPG);
@@ -1559,6 +1595,54 @@ void CWeaponRPG::Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatChara
 	}
 }
 
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CWeaponRPG::Operator_ForceNPCFire( CBaseCombatCharacter *pOperator, bool bSecondary )
+{
+	if ( m_hMissile != NULL )
+		return;
+
+	Vector muzzlePoint, vecShootDir;
+	QAngle	angShootDir;
+	GetAttachment( LookupAttachment( "muzzle" ), muzzlePoint, angShootDir );
+	AngleVectors( angShootDir, &vecShootDir );
+
+	// look for a better launch location
+	Vector altLaunchPoint;
+	if (GetAttachment( "missile", altLaunchPoint ))
+	{
+		// check to see if it's relativly free
+		trace_t tr;
+		AI_TraceHull( altLaunchPoint, altLaunchPoint + vecShootDir * (10.0f*12.0f), Vector( -24, -24, -24 ), Vector( 24, 24, 24 ), MASK_NPCSOLID, NULL, &tr );
+
+		if( tr.fraction == 1.0)
+		{
+			muzzlePoint = altLaunchPoint;
+		}
+	}
+
+	m_hMissile = CMissile::Create( muzzlePoint, angShootDir, pOperator->edict() );
+	m_hMissile->m_hOwner = this;
+
+	// NPCs always get a grace period
+	m_hMissile->SetGracePeriod( 0.5 );
+
+	pOperator->DoMuzzleFlash();
+
+	WeaponSound( SINGLE_NPC );
+
+	// Make sure our laserdot is off
+	m_bGuiding = false;
+
+	if ( m_hLaserDot )
+	{
+		m_hLaserDot->TurnOff();
+	}
+}
+#endif
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
@@ -1634,6 +1718,10 @@ void CWeaponRPG::PrimaryAttack( void )
 
 	SendWeaponAnim( ACT_VM_PRIMARYATTACK );
 	WeaponSound( SINGLE );
+	
+#ifdef MAPBASE
+	pOwner->SetAnimation( PLAYER_ATTACK1 );
+#endif
 
 	pOwner->RumbleEffect( RUMBLE_SHOTGUN_SINGLE, 0, RUMBLE_FLAG_RESTART );
 
@@ -1729,7 +1817,6 @@ void CWeaponRPG::ItemPostFrame( void )
 	BaseClass::ItemPostFrame();
 
 	CBasePlayer *pPlayer = ToBasePlayer( GetOwner() );
-	
 	if ( pPlayer == NULL )
 		return;
 
@@ -2259,7 +2346,6 @@ bool CWeaponRPG::SupportsBackupActivity(Activity activity)
 	return true;
 }
 #endif
-
 //=============================================================================
 // Laser Dot
 //=============================================================================

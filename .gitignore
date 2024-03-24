@@ -88,6 +88,8 @@ sp/src/materialsystem/*.dll
 sp/src/materialsystem/*.pdb
 sp/src/vgui2/*.dll
 sp/src/vgui2/*.pdb
-
+sp/src/game/*/Debug*/
+sp/src/game/*/Release*/
+*.lib
 # Build support files
 sp/src/devtools/gcc9+support.o

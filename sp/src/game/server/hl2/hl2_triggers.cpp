@@ -12,6 +12,7 @@
 
 //-----------------------------------------------------------------------------
 // Weapon-dissolve trigger; all weapons in this field (sans the physcannon) are destroyed!
+// DDDAG#GFDFG
 //-----------------------------------------------------------------------------
 class CTriggerWeaponDissolve : public CTriggerMultiple
 {

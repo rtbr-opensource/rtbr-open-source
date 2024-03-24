@@ -14,10 +14,17 @@
 #include "IEffects.h"
 #include "engine/IEngineSound.h"
 #include "weapon_flaregun.h"
+#include "soundent.h"
+#include "rumble_shared.h"
+#include "grenade_ar2.h"
+#include "particle_parse.h"
+#include "particles\particles.h"
+
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+extern ConVar    sk_plr_dmg_flare_round;
 
 #ifndef MAPBASE
 /********************************************************************
@@ -678,4 +685,92 @@ void CFlare::AddToActiveFlares( void )
 		CFlare::activeFlares = this;
 		m_bInActiveList = true;
 	}
+}
+
+IMPLEMENT_SERVERCLASS_ST(CFlaregun, DT_Flaregun)
+END_SEND_TABLE()
+
+LINK_ENTITY_TO_CLASS( weapon_flaregun, CFlaregun );
+PRECACHE_WEAPON_REGISTER( weapon_flaregun );
+
+//-----------------------------------------------------------------------------
+// Purpose: Precache
+//-----------------------------------------------------------------------------
+void CFlaregun::Precache( void )
+{
+	BaseClass::Precache();
+
+	m_bNoEmptyReload = true;
+
+	PrecacheScriptSound( "Flare.Touch" );
+
+	PrecacheScriptSound( "Weapon_FlareGun.Burn" );
+
+	UTIL_PrecacheOther( "env_flare" );
+
+	PrecacheParticleSystem("weapon_flare");
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Main attack
+//-----------------------------------------------------------------------------
+void CFlaregun::PrimaryAttack( void )
+{
+	//Only the player fires this way so we can cast
+	CBasePlayer *pPlayer = ToBasePlayer( GetOwner() );
+
+	if ( pPlayer == NULL )
+	return;
+
+	//Must have ammo
+	if ((m_iClip1 < 1) || (pPlayer->GetWaterLevel() == 3))
+	{
+	SendWeaponAnim( ACT_VM_DRYFIRE );
+	BaseClass::WeaponSound( EMPTY );
+	m_flNextPrimaryAttack = gpGlobals->curtime + 0.5f;
+	return;
+	}
+
+	if( m_bInReload )
+	m_bInReload = false;
+
+	//MUST call sound before removing a round from the clip of a CMachineGun
+	BaseClass::WeaponSound( WPN_DOUBLE );
+
+	pPlayer->RumbleEffect( RUMBLE_357, 0, RUMBLE_FLAGS_NONE );
+
+	Vector vecSrc = pPlayer->Weapon_ShootPosition();
+	Vector	vecThrow;
+	//Don't autoaim on grenade tosses
+	AngleVectors( pPlayer->EyeAngles() + pPlayer->GetPunchAngle(), &vecThrow );
+	VectorScale( vecThrow, 1000.0f, vecThrow );
+
+	//Create the grenade
+	QAngle angles;
+	VectorAngles( vecThrow, angles );
+	CGrenadeAR2 *pGrenade = (CGrenadeAR2*)Create( "grenade_ar2", vecSrc, angles, pPlayer );
+	pGrenade->SetAbsVelocity( vecThrow );
+	pGrenade->m_bIsFireGrenade = true;
+	//pGrenade->SetLocalAngularVelocity( RandomAngle( -400, 400 ) );
+	pGrenade->SetMoveType( MOVETYPE_FLYGRAVITY, MOVECOLLIDE_FLY_BOUNCE ); 
+	pGrenade->SetThrower( GetOwner() );
+	pGrenade->SetDamage( sk_plr_dmg_flare_round.GetFloat() );
+	DispatchParticleEffect("weapon_flare", PATTACH_POINT_FOLLOW, pGrenade, NULL, true);
+
+	SendWeaponAnim( ACT_VM_PRIMARYATTACK );
+
+	CSoundEnt::InsertSound( SOUND_COMBAT, GetAbsOrigin(), 1000, 0.2, GetOwner(), SOUNDENT_CHANNEL_WEAPON );
+
+	//player "shoot" animation
+	pPlayer->SetAnimation( PLAYER_ATTACK1 );
+
+	//Decrease ammo
+	m_iClip1 = m_iClip1 - 1;
+
+	//Can blow up after a short delay (so have time to release mouse button)
+	m_flNextPrimaryAttack = gpGlobals->curtime + 1.0f;
+
+	//Register a muzzleflash for the AI.
+	pPlayer->SetMuzzleFlashTime( gpGlobals->curtime + 0.5 );	
+
 }

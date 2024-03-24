@@ -521,7 +521,7 @@ void C_PropAirboat::UpdateHeadlight()
 
 		// The headlight is emitted from an attachment point so that it can move
 		// as we turn the handlebars.
-		int nHeadlightIndex = LookupAttachment( "vehicle_headlight" );
+		int nHeadlightIndex = LookupAttachment( "vehicle_top_headlight" );
 
 		Vector vecLightPos;
 		QAngle angLightDir;

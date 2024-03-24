@@ -335,6 +335,8 @@ public:
 LINK_ENTITY_TO_CLASS(item_ammo_357, CItem_Box357Rounds);
 
 
+
+
 // ========================================================================
 //	>> CItem_LargeBox357Rounds
 // ========================================================================
@@ -368,7 +370,6 @@ public:
 	}
 };
 LINK_ENTITY_TO_CLASS(item_ammo_357_large, CItem_LargeBox357Rounds);
-
 
 // ========================================================================
 //	>> CItem_BoxXBowRounds
@@ -647,6 +648,42 @@ public:
 };
 
 LINK_ENTITY_TO_CLASS( item_ammo_ar2_altfire, CItem_AR2AltFireRound );
+
+// ========================================================================
+//	>> CItem_AnnabelleRound
+// ========================================================================
+class CItem_AnnabelleRound : public CItem
+{
+public:
+	DECLARE_CLASS(CItem_AnnabelleRound, CItem);
+
+	void Precache(void)
+	{
+		PrecacheModel("models/items/annabelleammo.mdl");
+	}
+
+	void Spawn(void)
+	{
+		Precache();
+		SetModel("models/items/annabelleammo.mdl");
+		BaseClass::Spawn();
+	}
+
+	bool MyTouch(CBasePlayer *pPlayer)
+	{
+		if (ITEM_GiveAmmo(pPlayer, SIZE_AMMO_ANNABELLE, "Annabelle"))
+		{
+			if (g_pGameRules->ItemShouldRespawn(this) == GR_ITEM_RESPAWN_NO)
+			{
+				UTIL_Remove(this);
+			}
+			return true;
+		}
+		return false;
+	}
+};
+
+LINK_ENTITY_TO_CLASS(item_ammo_annabelle, CItem_AnnabelleRound);
 
 // ==================================================================
 // Ammo crate which will supply infinite ammo of the specified type
