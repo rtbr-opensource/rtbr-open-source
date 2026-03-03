@@ -162,6 +162,8 @@ propdata_interaction_s sPropdataInteractionSections[PROPINTER_NUM_INTERACTIONS] 
 	{ "physgun_interactions", "onlaunch", "spin_zaxis" },		// PROPINTER_PHYSGUN_LAUNCH_SPIN_Z,
 	{ "physgun_interactions", "onbreak", "explode_fire" },		// PROPINTER_PHYSGUN_BREAK_EXPLODE,
 	{ "physgun_interactions", "damage", "none" },				// PROPINTER_PHYSGUN_DAMAGE_NONE,
+	{ "physgun_interactions", "onbreak", "explode_antlion" },   // PROPINTER_PHYSGUN_BREAK_ANTLION,
+	{ "physgun_interactions", "onbreak", "explode_kingspit" },  // PROPINTER_PHYSGUN_BREAK_KINGSPIT,
 	
 	{ "fire_interactions", "flammable", "yes" },				// PROPINTER_FIRE_FLAMMABLE,
 	{ "fire_interactions", "explosive_resist", "yes" },			// PROPINTER_FIRE_EXPLOSIVE_RESIST,
@@ -1057,6 +1059,12 @@ void PropBreakableCreateAll( int modelindex, IPhysicsObject *pPhysics, const bre
 				}
 
 				VectorTransform( list[i].offset - placementOrigin, matrix, position );
+#if defined(RTBR_DLL) && defined(LINUX)
+				if (!position.IsValid() && FStrEq(pOwnerEntity->GetClassname(), "npc_antlion"))
+				{
+					position = pOwnerEntity->GetAbsOrigin(); // dumb stupid hack to work around a weird mapbase linux issue
+				}
+#endif
 			}
 			Vector objectVelocity = params.velocity;
 

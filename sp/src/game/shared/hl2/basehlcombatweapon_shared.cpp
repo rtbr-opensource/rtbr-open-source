@@ -6,6 +6,9 @@
 
 #include "cbase.h"
 #include "basehlcombatweapon_shared.h"
+#ifdef MAPBASE
+#include "mapbase/protagonist_system.h"
+#endif
 
 #include "hl2_player_shared.h"
 
@@ -47,6 +50,7 @@ END_DATADESC()
 BEGIN_PREDICTION_DATA( CBaseHLCombatWeapon )
 END_PREDICTION_DATA()
 
+ConVar sk_auto_reload_time( "sk_auto_reload_time", "3", FCVAR_REPLICATED | FCVAR_ARCHIVE );
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -62,6 +66,15 @@ void CBaseHLCombatWeapon::ItemHolsterFrame( void )
 	// We can't be active
 	if ( GetOwner()->GetActiveWeapon() == this )
 		return;
+
+	// If it's been longer than three seconds, reload
+	if ( ( sk_auto_reload_time.GetFloat() >= 0.0f ) && ( ( gpGlobals->curtime - m_flHolsterTime ) > sk_auto_reload_time.GetFloat() ) )
+	{
+		// Just load the clip with no animations
+		FinishReload();
+		FinishReloadSecondary();
+		m_flHolsterTime = gpGlobals->curtime;
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -427,4 +440,66 @@ const WeaponProficiencyInfo_t *CBaseHLCombatWeapon::GetDefaultProficiencyValues(
 	return g_BaseWeaponProficiencyTable;
 }
 
+#endif
+
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+const char *CBaseHLCombatWeapon::GetViewModel( int viewmodelindex ) const
+{
+	if (GetOwner() && GetOwner()->IsPlayer() && viewmodelindex == 0)
+	{
+		const char *pszProtagVM = g_ProtagonistSystem.GetProtagonist_ViewModel( static_cast<CBasePlayer *>(GetOwner()), this );
+		if (pszProtagVM)
+			return pszProtagVM;
+	}
+
+	return BaseClass::GetViewModel( viewmodelindex );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+float CBaseHLCombatWeapon::GetViewmodelFOVOverride() const
+{
+	if (GetOwner() && GetOwner()->IsPlayer())
+	{
+		float *flVMFOV = g_ProtagonistSystem.GetProtagonist_ViewModelFOV( static_cast<CBasePlayer *>(GetOwner()), this );
+		if (flVMFOV)
+			return *flVMFOV;
+	}
+
+	return BaseClass::GetViewmodelFOVOverride();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+bool CBaseHLCombatWeapon::UsesHands() const
+{
+	if (GetOwner() && GetOwner()->IsPlayer())
+	{
+		bool *bProtagUsesHands = g_ProtagonistSystem.GetProtagonist_UsesHands( static_cast<CBasePlayer *>(GetOwner()), this );
+		if (bProtagUsesHands)
+			return *bProtagUsesHands;
+	}
+
+	return BaseClass::UsesHands();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+int CBaseHLCombatWeapon::GetHandRig() const
+{
+	if (GetOwner() && GetOwner()->IsPlayer())
+	{
+		int *nProtagHandRig = g_ProtagonistSystem.GetProtagonist_HandRig( static_cast<CBasePlayer *>(GetOwner()), this );
+		if (nProtagHandRig)
+			return *nProtagHandRig;
+	}
+
+	return BaseClass::GetHandRig();
+}
 #endif

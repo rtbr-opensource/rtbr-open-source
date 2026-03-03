@@ -36,6 +36,7 @@
 #include "soundent.h"
 #include "ai_navigator.h"
 #include "tier1/functors.h"
+#include "Sprite.h"
 
 
 #define PLAYER_SQUADNAME "player_squad"
@@ -425,6 +426,9 @@ struct ScriptedNPCInteraction_t
 		iszTheirWeapon = NULL_STRING;
 #ifdef MAPBASE
 		vecRelativeEndPos = vec3_origin;
+		bHasSeparateSequenceNames = false;
+		flMaxAngleDiff = DSS_MAX_ANGLE_DIFF;
+		iszRelatedInteractions = NULL_STRING;
 		MiscCriteria = NULL_STRING;
 #endif
 
@@ -432,6 +436,10 @@ struct ScriptedNPCInteraction_t
 		{
 			sPhases[i].iszSequence = NULL_STRING;
 			sPhases[i].iActivity = ACT_INVALID;
+#ifdef MAPBASE
+			sTheirPhases[i].iszSequence = NULL_STRING;
+			sTheirPhases[i].iActivity = ACT_INVALID;
+#endif
 		}
 	}
 
@@ -459,13 +467,48 @@ struct ScriptedNPCInteraction_t
 	float		flNextAttemptTime;
 
 #ifdef MAPBASE
-	// Unrecognized keyvalues are tested against response criteria later.
-	// This was originally a CUtlVector that carries response contexts, but I couldn't get it working due to some CUtlVector-struct shenanigans.
-	// It works when we use a single string_t that's split and read each time the code runs, but feel free to improve on this.
-	string_t	MiscCriteria; // CUtlVector<ResponseContext_t>
+	ScriptedNPCInteraction_Phases_t sTheirPhases[SNPCINT_NUM_PHASES];	// The animations played by the target NPC, if they are different
+	bool		bHasSeparateSequenceNames;
+
+	float		flMaxAngleDiff;
+	string_t	iszRelatedInteractions;	// These interactions will be delayed as well when this interaction is used.
+
+	// Unrecognized keyvalues which are tested against response criteria later.
+	string_t	MiscCriteria;
 #endif
 
 	DECLARE_SIMPLE_DATADESC();
+};
+
+// -----------------------------------------
+// Glow sprite data
+// -----------------------------------------
+struct EyeGlow_t
+{
+	EyeGlow_t()
+	{
+		red = 0;
+		green = 0;
+		blue = 0;
+		scale = 0;
+		alpha = 0;
+		renderMode = kRenderTransAdd;
+		brightness = 0;
+		proxyScale = 0.0f;
+		spriteName = NULL_STRING;
+		attachment = NULL_STRING;
+	}
+
+	int red;
+	int green;
+	int blue;
+	int alpha;
+	RenderMode_t renderMode;
+	float brightness;
+	float scale;
+	float proxyScale;
+	string_t spriteName;
+	string_t attachment;
 };
 
 //=============================================================================
@@ -665,6 +708,9 @@ public:
 	virtual void		SetPlayerAvoidState( void );
 	virtual void		PlayerPenetratingVPhysics( void );
 
+	// can the npc be punted with the gravgun? e.g. headcrabs, antlions, rollergrubs
+	virtual bool		IsPhyscannonPuntable( void ) { return false; }
+
 	virtual bool		ShouldAlwaysThink();
 	void				ForceGatherConditions()	{ m_bForceConditionsGather = true; SetEfficiency( AIE_NORMAL ); }	// Force an NPC out of PVS to call GatherConditions on next think
 	bool				IsForceGatherConditionsSet() { return m_bForceConditionsGather; }
@@ -782,6 +828,12 @@ protected:
 
 	bool				IsInChoreo() const;
 
+	//-------------------------------------
+	// RTBR-Stuff
+	//-------------------------------------
+public:
+	virtual bool		CanBeStunnedBySteambow( void ) const { return true; }		// This is true for most NPCs.
+
 private:
 	// This function maps the type through TranslateSchedule() and then retrieves the pointer
 	// to the actual CAI_Schedule from the database of schedules available to this class.
@@ -838,6 +890,9 @@ protected: // pose parameters
 	int					m_poseAim_Pitch;
 	int					m_poseAim_Yaw;
 	int					m_poseMove_Yaw;
+#ifdef MAPBASE
+	int					m_poseInteractionRelativeYaw;
+#endif
 	virtual void		PopulatePoseParameters( void );
 
 public:
@@ -845,6 +900,10 @@ public:
 
 	// Return the stored pose parameter for "move_yaw"
 	inline int			LookupPoseMoveYaw()		{ return m_poseMove_Yaw; }
+
+#ifdef MAPBASE
+	inline int			LookupPoseInteractionRelativeYaw()	{ return m_poseInteractionRelativeYaw; }
+#endif
  
 
 	//-----------------------------------------------------
@@ -1086,7 +1145,7 @@ public:
 	virtual void		OnLooked( int iDistance );
 	virtual void		OnListened();
 
-	virtual void		OnSeeEntity( CBaseEntity *pEntity ) {}
+	virtual void		OnSeeEntity( CBaseEntity *pEntity );
 
 	// If true, AI will try to see this entity regardless of distance.
 	virtual bool		ShouldNotDistanceCull() { return false; }
@@ -1162,6 +1221,11 @@ public:
 
 	void				SetDeathPose( const int &iDeathPose ) { m_iDeathPose = iDeathPose; }
 	void				SetDeathPoseFrame( const int &iDeathPoseFrame ) { m_iDeathFrame = iDeathPoseFrame; }
+
+#ifdef MAPBASE
+	int					GetDeathPose() { return m_iDeathPose; }
+	int					GetDeathPoseFrame() { return m_iDeathFrame; }
+#endif
 	
 	void				SelectDeathPose( const CTakeDamageInfo &info );
 	virtual bool		ShouldPickADeathPose( void ) { return true; }
@@ -1253,9 +1317,24 @@ private:
 	void				VScriptSetEnemy( HSCRIPT pEnemy );
 	Vector				VScriptGetEnemyLKP();
 
-	HSCRIPT				VScriptFindEnemyMemory( HSCRIPT pEnemy );
+	int					VScriptNumEnemies();
+
+	HSCRIPT				VScriptGetFirstEnemyMemory();
+	HSCRIPT				VScriptGetNextEnemyMemory( HSCRIPT hMemory );
+
+	HSCRIPT				VScriptFindEnemyMemory( HSCRIPT hEnemy );
+	bool				VScriptUpdateEnemyMemory( HSCRIPT hEnemy, const Vector &position, HSCRIPT hInformer );
+	void				VScriptClearEnemyMemory( HSCRIPT hEnemy );
+
+	void				VScriptSetFreeKnowledgeDuration( float flDuration );
+	void				VScriptSetEnemyDiscardTime( float flDuration );
 
 	int					VScriptGetState();
+	int					VScriptGetIdealState();
+	void				VScriptSetIdealState( int nNPCState );
+
+	HSCRIPT				VScriptGetTarget();
+	void				VScriptSetTarget( HSCRIPT hTarget );
 
 	void				VScriptWake( HSCRIPT hActivator ) { Wake( ToEnt(hActivator) ); }
 	void				VScriptSleep() { Sleep(); }
@@ -1290,12 +1369,29 @@ private:
 	void				VScriptSetCondition( const char *szCondition ) { SetCondition( GetConditionID( szCondition ) ); }
 	void				VScriptClearCondition( const char *szCondition ) { ClearCondition( GetConditionID( szCondition ) ); }
 
+	void				VScriptSetCustomInterruptCondition( const char *szCondition ) { SetCustomInterruptCondition( GetConditionID( szCondition ) ); }
+	bool				VScriptIsCustomInterruptConditionSet( const char *szCondition ) { return IsCustomInterruptConditionSet( GetConditionID( szCondition ) ); }
+	void				VScriptClearCustomInterruptCondition( const char *szCondition ) { ClearCustomInterruptCondition( GetConditionID( szCondition ) ); }
+
+	void				VScriptChainStartTask( const char *szTask, float flTaskData ) { ChainStartTask( AI_RemapFromGlobal( GetTaskID( szTask ) ), flTaskData ); }
+	void				VScriptChainRunTask( const char *szTask, float flTaskData ) { ChainRunTask( AI_RemapFromGlobal( GetTaskID( szTask ) ), flTaskData ); }
+	void				VScriptFailTask( const char *szFailReason ) { TaskFail( szFailReason ); }
+	void				VScriptCompleteTask() { TaskComplete(); }
+	int					VScriptGetTaskStatus() { return (int)GetTaskStatus(); }
+
 	HSCRIPT				VScriptGetExpresser();
 
 	HSCRIPT				VScriptGetCine();
 	int					GetScriptState() { return m_scriptState; }
 
 	HSCRIPT				VScriptGetSquad();
+
+	HSCRIPT				VScriptGetBestSound( int validTypes );
+	HSCRIPT				VScriptGetFirstHeardSound();
+	HSCRIPT				VScriptGetNextHeardSound( HSCRIPT hSound );
+
+	HSCRIPT				VScriptGetFirstSeenEntity( int nSeenType );
+	HSCRIPT				VScriptGetNextSeenEntity( HSCRIPT hEnt, int nSeenType );
 #endif
 
 	//-----------------------------------------------------
@@ -1304,10 +1400,14 @@ private:
 public:
 	float GetInteractionYaw( void ) const { return m_flInteractionYaw; }
 
+	bool IsRunningDynamicInteraction( void ) { return (m_iInteractionState != NPCINT_NOT_RUNNING && (m_hCine != NULL)); }
+	bool IsActiveDynamicInteraction( void ) { return (m_iInteractionState == NPCINT_RUNNING_ACTIVE && (m_hCine != NULL)); }
+	CAI_BaseNPC *GetInteractionPartner( void );
+
 protected:
 	void ParseScriptedNPCInteractions( void );
 	void AddScriptedNPCInteraction( ScriptedNPCInteraction_t *pInteraction  );
-	const char *GetScriptedNPCInteractionSequence( ScriptedNPCInteraction_t *pInteraction, int iPhase );
+	const char *GetScriptedNPCInteractionSequence( ScriptedNPCInteraction_t *pInteraction, int iPhase, bool bOtherNPC = false );
 	void StartRunningInteraction( CAI_BaseNPC *pOtherNPC, bool bActive );
 	void StartScriptedNPCInteraction( CAI_BaseNPC *pOtherNPC, ScriptedNPCInteraction_t *pInteraction, Vector vecOtherOrigin, QAngle angOtherAngles );
 	void CheckForScriptedNPCInteractions( void );
@@ -1320,17 +1420,16 @@ protected:
 #endif
 	bool InteractionCouldStart( CAI_BaseNPC *pOtherNPC, ScriptedNPCInteraction_t *pInteraction, Vector &vecOrigin, QAngle &angAngles );
 	virtual bool CanRunAScriptedNPCInteraction( bool bForced = false );
-	bool IsRunningDynamicInteraction( void ) { return (m_iInteractionState != NPCINT_NOT_RUNNING && (m_hCine != NULL)); }
-	bool IsActiveDynamicInteraction( void ) { return (m_iInteractionState == NPCINT_RUNNING_ACTIVE && (m_hCine != NULL)); }
 	ScriptedNPCInteraction_t *GetRunningDynamicInteraction( void ) { return &(m_ScriptedInteractions[m_iInteractionPlaying]); }
 	void SetInteractionCantDie( bool bCantDie ) { m_bCannotDieDuringInteraction = bCantDie; }
 	bool HasInteractionCantDie( void );
+	bool HasValidInteractionsOnCurrentEnemy( void );
+	virtual bool CanStartDynamicInteractionDuringMelee() { return false; }
 
 	void InputForceInteractionWithNPC( inputdata_t &inputdata );
 	void StartForcedInteraction( CAI_BaseNPC *pNPC, int iInteraction );
 	void CleanupForcedInteraction( void );
 	void CalculateForcedInteractionPosition( void );
-	CAI_BaseNPC *GetInteractionPartner( void );
 
 private:
 	// Forced interactions
@@ -1380,6 +1479,11 @@ public:
 	virtual void		FearSound( void )				 			{ return; };
 	virtual void		LostEnemySound( void ) 						{ return; };
 	virtual void		FoundEnemySound( void ) 					{ return; };
+#ifdef MAPBASE
+	// New versions of the above functions which pass the enemy in question as a parameter. Chains to the original by default
+	virtual void		LostEnemySound( CBaseEntity *pEnemy )		{ LostEnemySound(); };
+	virtual void		FoundEnemySound( CBaseEntity *pEnemy )		{ FoundEnemySound(); };
+#endif
 	virtual void		BarnacleDeathSound( void )					{ CTakeDamageInfo info;	PainSound( info ); }
 
 	virtual void		SpeakSentence( int sentenceType ) 			{ return; };
@@ -1974,6 +2078,9 @@ public:
 	//---------------------------------
 
 	virtual void		Ignite( float flFlameLifetime, bool bNPCOnly = true, float flSize = 0.0f, bool bCalledByLevelDesigner = false );
+#ifdef MAPBASE
+	virtual void		EnemyIgnited( CAI_BaseNPC *pVictim ) {}
+#endif
 	virtual bool		PassesDamageFilter( const CTakeDamageInfo &info );
 
 	//---------------------------------
@@ -2228,6 +2335,9 @@ public:
 	static const char*	GetActivityName	(int actID);	
 
 	static void			AddActivityToSR(const char *actName, int conID);
+#ifdef MAPBASE
+	static int			GetOrRegisterActivity( const char *actName );
+#endif
 	
 	static void			AddEventToSR(const char *eventName, int conID);
 	static const char*	GetEventName	(int actID);
@@ -2367,6 +2477,14 @@ public:
 	static ScriptHook_t	g_Hook_GetActualShootPosition;
 	static ScriptHook_t	g_Hook_OverrideMove;
 	static ScriptHook_t	g_Hook_ShouldPlayFakeSequenceGesture;
+	static ScriptHook_t	g_Hook_IsValidEnemy;
+	static ScriptHook_t	g_Hook_CanBeAnEnemyOf;
+	static ScriptHook_t	g_Hook_UpdateEnemyMemory;
+	static ScriptHook_t	g_Hook_OnSeeEntity;
+	static ScriptHook_t	g_Hook_OnListened;
+	static ScriptHook_t	g_Hook_BuildScheduleTestBits;
+	static ScriptHook_t	g_Hook_StartTask;
+	static ScriptHook_t	g_Hook_RunTask;
 #endif
 
 private:
@@ -2411,8 +2529,20 @@ public:
 	void				GetPlayerAvoidBounds( Vector *pMins, Vector *pMaxs );
 
 	void				StartPingEffect( void ) { m_flTimePingEffect = gpGlobals->curtime + 2.0f; DispatchUpdateTransmitState(); }
-};
 
+	virtual void		StartEye(void); // Start glow effects for this NPC
+	virtual void		KillSprites(float flDelay); // Stop all glow effects
+
+protected:
+	// Glow Effects
+	CSprite*	m_pEyeGlow;
+	bool		m_bNoGlow; // Don't glow!
+
+	virtual CSprite*	GetGlowSpritePtr(int i);
+	virtual void		SetGlowSpritePtr(int i, CSprite* sprite);
+	virtual EyeGlow_t*	GetEyeGlowData(int i);
+	virtual int			GetNumGlows() { return 1; };
+};
 
 //-----------------------------------------------------------------------------
 // Purpose: Returns whether our ideal activity has started. If not, we are in

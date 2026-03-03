@@ -76,6 +76,7 @@ private:
 
 	CNetworkVar(bool, m_bActive);
 	CNetworkVar(float, m_flChargeLevel);
+	CNetworkVar( bool, m_bSwinging );
 };
 
 #endif // WEAPON_STUNSTICK_H

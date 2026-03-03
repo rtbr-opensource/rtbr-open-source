@@ -40,6 +40,8 @@
 #include "mapbase/GlobalStrings.h"
 #endif
 
+#include "rtbr_shareddefs.h"
+
 extern Vector PointOnLineNearestPoint(const Vector& vStartPos, const Vector& vEndPos, const Vector& vPoint);
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -477,6 +479,10 @@ void CNPC_Alyx::Activate( void )
 			pInteraction->iszMyWeapon = AllocPooledString("!=WEPCLASS_HANDGUN");
 	}
 #endif
+
+	if ( GlobalEntity_GetState("antlion_allied") == GLOBAL_ON )
+		SetCollisionGroup( RTBRCOLLISION_GROUP_ALYXFRIENDANTLION ); // This exists so that Alyx does not collide with antlions when they're friendly,
+																	// otherwise, business as usual.
 }
 
 //-----------------------------------------------------------------------------
@@ -1092,10 +1098,14 @@ void CNPC_Alyx::Event_KilledOther( CBaseEntity *pVictim, const CTakeDamageInfo &
 //-----------------------------------------------------------------------------
 void CNPC_Alyx::EnemyIgnited( CAI_BaseNPC *pVictim )
 {
+#ifdef MAPBASE
+	BaseClass::EnemyIgnited( pVictim );
+#else
 	if ( FVisible( pVictim ) )
 	{
 		SpeakIfAllowed( TLK_ENEMY_BURNING );
 	}
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -1252,6 +1262,7 @@ void CNPC_Alyx::DoCustomSpeechAI( void )
 
 	CBasePlayer *pPlayer = AI_GetSinglePlayer();
 
+#ifndef MAPBASE // Ported to CNPC_PlayerCompanion
 	if ( HasCondition(COND_NEW_ENEMY) && GetEnemy() )
 	{
 		if ( GetEnemy()->Classify() == CLASS_HEADCRAB )
@@ -1278,6 +1289,7 @@ void CNPC_Alyx::DoCustomSpeechAI( void )
 			}
 		}
 	}
+#endif
 
 	// Darkness mode speech
 	ClearCondition( COND_ALYX_IN_DARK );
@@ -1917,6 +1929,7 @@ int CNPC_Alyx::SelectSchedule( void )
 //-----------------------------------------------------------------------------
 int CNPC_Alyx::SelectScheduleDanger( void )
 {
+#ifndef MAPBASE
 	if( HasCondition( COND_HEAR_DANGER ) )
 	{
 		CSound *pSound;
@@ -1929,6 +1942,7 @@ int CNPC_Alyx::SelectScheduleDanger( void )
 			SpeakIfAllowed( TLK_DANGER_ZOMBINE_GRENADE );
 		}
 	}
+#endif
 	
 	return BaseClass::SelectScheduleDanger();
 }

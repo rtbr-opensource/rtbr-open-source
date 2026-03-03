@@ -27,6 +27,10 @@
 	#include "player_resource.h"
 	#include "tactical_mission.h"
 	#include "gamestats.h"
+	#include "ai_basenpc.h"
+#ifdef MAPBASE
+	#include "maprules.h"
+#endif
 
 #endif
 
@@ -379,7 +383,7 @@ bool IsExplosionTraceBlocked( trace_t *ptr )
 // Default implementation of radius damage
 //-----------------------------------------------------------------------------
 #define ROBUST_RADIUS_PROBE_DIST 16.0f // If a solid surface blocks the explosion, this is how far to creep along the surface looking for another way to the target
-void CGameRules::RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrcIn, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore )
+void CGameRules::RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrcIn, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore, int iFlags /* = 0 */ )
 {
 	const int MASK_RADIUS_DAMAGE = MASK_SHOT&(~CONTENTS_HITBOX);
 	CBaseEntity *pEntity = NULL;
@@ -389,10 +393,12 @@ void CGameRules::RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc
 
 	Vector vecSrc = vecSrcIn;
 
-	if ( flRadius )
+	if ( flRadius && !(iFlags & RD_NOFALLOFF) )
 		falloff = info.GetDamage() / flRadius;
-	else
+	else if ( !flRadius )
 		falloff = 1.0;
+	else
+		falloff = 0;
 
 	int bInWater = (UTIL_PointContents ( vecSrc ) & MASK_WATER) ? true : false;
 
@@ -492,7 +498,7 @@ void CGameRules::RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc
 
 				// UNDONE: Probably shouldn't let children block parents either?  Or maybe those guys should set their owner if they want this behavior?
 				// HL2 - Dissolve damage is not reduced by interposing non-world objects
-				if( tr.m_pEnt && tr.m_pEnt != pEntity && tr.m_pEnt->GetOwnerEntity() != pEntity )
+				if ( tr.m_pEnt && tr.m_pEnt != pEntity && tr.m_pEnt->GetOwnerEntity() != pEntity )
 				{
 					// Some entity was hit by the trace, meaning the explosion does not have clear
 					// line of sight to the entity that it's trying to hurt. If the world is also
@@ -560,6 +566,20 @@ void CGameRules::RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc
 			adjustedInfo.AdjustPlayerDamageInflictedForSkillLevel();
 		}
 
+		if (pEntity->IsNPC())
+		{
+			CAI_BaseNPC *pNPC = static_cast<CAI_BaseNPC*>(pEntity);
+			if (pNPC->GetState() != NPC_STATE_SCRIPT && (iFlags & RD_STUNNPC) && pNPC->IRelationType( info.GetAttacker() ) <= D_FR) {
+				if ( pNPC->CanBeStunnedBySteambow() && !(pNPC->IsCurSchedule(SCHED_DIE) || pNPC->GetHealth() <= 0) )	
+				{
+					// stun the NPC if it is an enemy of the player
+					pNPC->ResetActivity();
+					pNPC->SetActivity( ACT_IDLE );
+					pNPC->SetSchedule( SCHED_FAIL ); // i hope that nobody besides me has the displeasure of seeing this -50iq monstrosity
+				}
+			}
+		}
+
 		Vector dir = vecSpot - vecSrc;
 		VectorNormalize( dir );
 
@@ -619,6 +639,27 @@ bool CGameRules::ClientCommand( CBaseEntity *pEdict, const CCommand &args )
 	{
 		if( GetVoiceGameMgr()->ClientCommand( static_cast<CBasePlayer*>(pEdict), args ) )
 			return true;
+
+#ifdef MAPBASE
+		if ( FStrEq( args[0], "menuselect" ) )
+		{
+			if ( args.ArgC() >= 2 )
+			{
+				int slot = atoi( args[1] );
+
+				// See if this is from a game_menu
+				for ( int i = 0; i < IGameMenuAutoList::AutoList().Count(); i++ )
+				{
+					CGameMenu *pMenu = static_cast<CGameMenu*>( IGameMenuAutoList::AutoList()[i] );
+					if ( pMenu->IsActiveOnTarget( pEdict ) )
+					{
+						pMenu->MenuSelected( slot, pEdict );
+						return true;
+					}
+				}
+			}
+		}
+#endif
 	}
 
 	return false;
@@ -943,7 +984,7 @@ void CGameRules::ClientSettingsChanged( CBasePlayer *pPlayer )
 	if ( pszFov )
 	{
 		int iFov = atoi(pszFov);
-		iFov = clamp( iFov, 75, 90 );
+		iFov = clamp( iFov, MIN_FOV, MAX_FOV );
 		pPlayer->SetDefaultFOV( iFov );
 	}
 
@@ -962,3 +1003,28 @@ CTacticalMissionManager *CGameRules::TacticalMissionManagerFactory( void )
 }
 
 #endif
+
+#ifdef MAPBASE
+void CGameRules::ClientCommandKeyValues(edict_t* pEntity, KeyValues* pKeyValues)
+{
+#ifndef CLIENT_DLL
+	static int s_nEntityCommandSymbol = KeyValues::CallGetSymbolForString("EntityCommand");
+	static int s_nEntIndexSymbol = KeyValues::CallGetSymbolForString("entindex");
+	static int s_nCommandDataSymbol = KeyValues::CallGetSymbolForString("command_data");
+
+	CBasePlayer* pPlayer = (CBasePlayer*)GetContainingEntity(pEntity);
+	if (!pPlayer)
+		return;
+
+	if (pKeyValues->GetNameSymbol() == s_nEntityCommandSymbol)
+	{
+		CBaseEntity* pEntity = CBaseEntity::Instance(pKeyValues->GetInt(s_nEntIndexSymbol));
+		KeyValues* pkvCommand = pKeyValues->FindKey(s_nCommandDataSymbol);
+		if (pEntity && pkvCommand)
+		{
+			pEntity->HandleEntityCommand(pPlayer, pkvCommand);
+		}
+	}
+#endif // GAME_DLL
+}
+#endif // MAPBASE

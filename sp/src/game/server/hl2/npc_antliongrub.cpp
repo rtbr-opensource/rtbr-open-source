@@ -411,6 +411,10 @@ void CAntlionGrub::Spawn( void )
 	// Reset
 	m_flFlinchTime = 0.0f;
 	m_flNextIdleSoundTime = gpGlobals->curtime + random->RandomFloat( 4.0f, 8.0f );
+
+	// skins are done this way instead of being set randomly with RandomInt() as
+	// it creates more variation with immediate surrounding rollergrubs
+	SetSkin((entindex() % 2));
 }
 
 //-----------------------------------------------------------------------------
@@ -724,6 +728,9 @@ void CAntlionGrub::SpawnSquashedGrub( void )
 	if ( pGib )
 	{
 		pGib->AddEffects( EF_NOSHADOW );
+
+		// ensures my squashed corpse shares the same skin as me
+		pGib->GetBaseAnimating()->SetSkin(m_nSkin);
 	}
 }
 

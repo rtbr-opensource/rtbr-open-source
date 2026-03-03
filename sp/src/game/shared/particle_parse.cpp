@@ -22,6 +22,9 @@
 #include "tier0/memdbgon.h"
 
 #define PARTICLES_MANIFEST_FILE				"particles/particles_manifest.txt"
+#ifdef RTBR_DEV
+ConVar particle_debug("particle_debug", "0", 0, "Forces all particles dispatched to use a debug effect.");
+#endif
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
@@ -285,8 +288,15 @@ void DispatchParticleEffect( const char *pszParticleName, ParticleAttachment_t i
 {
 	CEffectData	data;
 
+#ifdef RTBR_DEV
+	if (particle_debug.GetBool()) {
+		data.m_nHitBox = GetParticleSystemIndex("DEBUG_BRR");
+	} else {
+		data.m_nHitBox = GetParticleSystemIndex(pszParticleName);
+	}
+#else
 	data.m_nHitBox = GetParticleSystemIndex( pszParticleName );
-
+#endif
 	if ( pEntity )
 	{
 #ifdef CLIENT_DLL
@@ -338,9 +348,15 @@ void DispatchParticleEffect( const char *pszParticleName, ParticleAttachment_t i
 	}
 
 	CEffectData	data;
-
+#ifdef RTBR_DEV
+	if (particle_debug.GetBool()) {
+		data.m_nHitBox = GetParticleSystemIndex("DEBUG_BRR");
+	} else {
+		data.m_nHitBox = GetParticleSystemIndex(pszParticleName);
+	}
+#else
 	data.m_nHitBox = GetParticleSystemIndex( pszParticleName );
-
+#endif
 	if ( pEntity )
 	{
 #ifdef CLIENT_DLL
@@ -388,8 +404,15 @@ void DispatchParticleEffect( int iEffectIndex, Vector vecOrigin, Vector vecStart
 {
 	CEffectData	data;
 
+#ifdef RTBR_DEV
+	if (particle_debug.GetBool()) {
+		data.m_nHitBox = GetParticleSystemIndex("DEBUG_BRR");
+	} else {
+		data.m_nHitBox = iEffectIndex;
+	}
+#else
 	data.m_nHitBox = iEffectIndex;
-
+#endif
 	data.m_vOrigin = vecOrigin;
 	data.m_vStart = vecStart;
 	data.m_vAngles = vecAngles;
@@ -425,7 +448,15 @@ void DispatchParticleEffect( const char *pszParticleName, Vector vecOrigin, QAng
 	int iEffectIndex = GetParticleSystemIndex( pszParticleName );
 
 	CEffectData	data;
+#if 0
+	if (particle_debug.GetBool()) {
+		data.m_nHitBox = GetParticleSystemIndex("DEBUG_BRR");
+	} else {
+		data.m_nHitBox = iEffectIndex;
+	}
+#else
 	data.m_nHitBox = iEffectIndex;
+#endif
 	data.m_vOrigin = vecOrigin;
 	data.m_vAngles = vecAngles;
 

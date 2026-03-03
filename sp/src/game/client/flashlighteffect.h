@@ -63,6 +63,20 @@ public:
 	CTextureReference m_HeadlightTexture;
 };
 
+class CCrabSynthLightEffect : public CFlashlightEffect
+{
+public:
 
+	CCrabSynthLightEffect();
+	~CCrabSynthLightEffect();
+
+	virtual void UpdateLight(const Vector& vecPos, const Vector& vecDir, const Vector& vecRight, const Vector& vecUp, int nDistance);
+
+	bool	m_bShadowsEnabled;
+	float	m_flBrightnessScale;
+	float	m_flFOV;
+	float	m_flHorzFOV;
+	float	m_Color[3];
+};
 
 #endif // FLASHLIGHTEFFECT_H

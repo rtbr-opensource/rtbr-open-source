@@ -23,6 +23,7 @@ enum Hull_t
 	HULL_LARGE,				// Antlion Guard
 	HULL_LARGE_CENTERED,	// Mortar Synth
 	HULL_MEDIUM_TALL,		// Hunter
+	HULL_SMALL,				// Rollergrub
 //--------------------------------------------
 	NUM_HULLS,
 	HULL_NONE				// No Hull (appears after num hulls as we don't want to count it)
@@ -40,7 +41,8 @@ enum Hull_Bits_t
 	bits_LARGE_HULL				=	0x00000080,
 	bits_LARGE_CENTERED_HULL	=	0x00000100,
 	bits_MEDIUM_TALL_HULL		=	0x00000200,
-	bits_HULL_BITS_MASK			=	0x000002ff,
+	bits_SMALL_HULL				=	0x00000400,
+	bits_HULL_BITS_MASK			=	0x000006ff,
 };
 
 inline int HullToBit( Hull_t hull )

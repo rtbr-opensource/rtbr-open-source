@@ -152,6 +152,8 @@ protected:
 	void				MoveToDivebomb(float flInterval);
 	void				BlendPhyscannonLaunchSpeed();
 
+	virtual const char	*GetScannerExplosionEffect( void ) { return ""; }
+
 private:
 	bool	GetGoalDirection( Vector *vOut );
 

@@ -263,6 +263,10 @@ public:
 
 	virtual bool			CanBecomeServerRagdoll( void ) { return true; }
 
+#ifdef MAPBASE
+	virtual void			OnEnemyRangeAttackedMe( CBaseEntity *pEnemy, const Vector &vecDir, const Vector &vecEnd ) {}
+#endif
+
 	// -----------------------
 	// Damage
 	// -----------------------
@@ -347,6 +351,8 @@ public:
 	// A version of BecomeRagdollBoogie() that allows the color to change and returns the entity itself instead.
 	// In order to avoid breaking anything, it doesn't change the original function.
 	virtual CBaseEntity		*BecomeRagdollBoogie( CBaseEntity *pKiller, const Vector &forceVector, float duration, int flags, const Vector *vecColor );
+
+	bool					ShouldFadeServerRagdolls() const;
 #endif
 
 	CBaseEntity				*FindHealthItem( const Vector &vecPosition, const Vector &range );
@@ -441,6 +447,7 @@ public:
 	int					ScriptRelationType( HSCRIPT pTarget );
 	int					ScriptRelationPriority( HSCRIPT pTarget );
 	void				ScriptSetRelationship( HSCRIPT pTarget, int disposition, int priority );
+	void				ScriptSetClassRelationship( int classify, int disposition, int priority );
 
 	HSCRIPT				ScriptGetVehicleEntity();
 
@@ -463,6 +470,7 @@ public:
 	static void			AllocateDefaultRelationships( );
 	static void			SetDefaultRelationship( Class_T nClass, Class_T nClassTarget,  Disposition_t nDisposition, int nPriority );
 #ifdef MAPBASE
+	static bool			DefaultRelationshipsLoaded();
 	static Disposition_t	GetDefaultRelationshipDisposition( Class_T nClassSource, Class_T nClassTarget );
 	static int				GetDefaultRelationshipPriority( Class_T nClassSource, Class_T nClassTarget );
 	int						GetDefaultRelationshipPriority( Class_T nClassTarget );
@@ -525,6 +533,7 @@ public:
 	void				AddGlowEffect( void );
 	void				RemoveGlowEffect( void );
 	bool				IsGlowEffectActive( void );
+	void				SetGlowColor( float red, float green, float blue, float alpha );
 #endif // GLOWS_ENABLE
 
 #ifdef INVASION_DLL
@@ -569,6 +578,8 @@ public:
 #ifdef GLOWS_ENABLE
 protected:
 	CNetworkVar( bool, m_bGlowEnabled );
+	CNetworkVector( m_GlowColor );
+	CNetworkVar( float, m_GlowAlpha );
 #endif // GLOWS_ENABLE
 
 private:
@@ -692,7 +703,7 @@ inline void	CBaseCombatCharacter::PowerupThink( int iPowerup )						{ return; }
 
 EXTERN_SEND_TABLE(DT_BaseCombatCharacter);
 
-void RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore );
+void RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore, int iFlags = 0 );
 
 //-----------------------------------------------------------------------------
 // Purpose: 

@@ -48,8 +48,6 @@ void CNPC_XenTree::Precache()
 		SetModelName( AllocPooledString( "models/tree.mdl" ) );
 	}
 
-	m_bIsRetracted = false;
-
 	PrecacheScriptSound( "npc_xentree.swing" );
 	PrecacheScriptSound( "npc_xentree.hit" );
 
@@ -66,15 +64,8 @@ void CNPC_XenTree::OnChangeActivity( Activity eNewActivity )
 	switch (eNewActivity)
 	{
 		case ACT_MELEE_ATTACK1:
-		{
-			if (GetEnemy())
-			{
-				variant_t Val;
-				Val.Set( FIELD_EHANDLE, GetEnemy() );
-				m_OnLower.CBaseEntityOutput::FireOutput( Val, GetEnemy(), this );
-			}
 			EmitSound( "npc_xentree.swing" );
-		}
+
 		break;
 	}
 }

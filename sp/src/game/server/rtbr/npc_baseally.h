@@ -1,29 +1,12 @@
+//========= Copyright (c) RTBR Team, 2022 ============//
+//
+// Purpose: All allies derive from this base class
+//
+//====================================================//
+
 #include "cbase.h"
-#include "ai_default.h"
-#include "ai_task.h"
-#include "ai_schedule.h"
-#include "ai_node.h"
-#include "ai_hull.h"
-#include "ai_hint.h"
-#include "ai_squad.h"
-#include "ai_senses.h"
-#include "ai_navigator.h"
-#include "ai_motor.h"
-#include "ai_behavior.h"
-#include "ai_baseactor.h"
-#include "ai_behavior_lead.h"
-#include "ai_behavior_follow.h"
-#include "ai_behavior_standoff.h"
-#include "ai_behavior_assault.h"
 #include "npc_playercompanion.h"
-#include "soundent.h"
-#include "game.h"
-#include "npcevent.h"
-#include "activitylist.h"
-#include "vstdlib/random.h"
-#include "engine/IEngineSound.h"
 #include "sceneentity.h"
-#include "ai_behavior_functank.h"
 
 //=========================================================
 // Barney activities

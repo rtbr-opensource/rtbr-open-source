@@ -90,6 +90,8 @@ public:
 	void HeadlightTurnOn( void ) { m_bHeadlightIsOn = true; }
 	void HeadlightTurnOff( void ) { m_bHeadlightIsOn = false; }
 
+	virtual void Touch( CBaseEntity *pOther );
+
 private:
 
 	void		FireCannon( void );
@@ -131,7 +133,13 @@ protected:
 	bool			m_bGunHasBeenCutOff;
 	float			m_flDangerSoundTime;
 	int				m_nBulletType;
+
+#ifdef RTBR_DLL
+	CNetworkVar( bool, m_bCannonCharging );
+#else
 	bool			m_bCannonCharging;
+#endif
+
 	float			m_flCannonTime;
 	float			m_flCannonChargeStartTime;
 	Vector			m_vecGunOrigin;
@@ -166,6 +174,12 @@ protected:
 	bool			m_bHasPoop;
 
 	CNetworkVar( bool, m_bHeadlightIsOn );
+
+	CNetworkVar( Vector, m_vGaussBeam1 ); // Main gauss beam start pos
+	CNetworkVar( Vector, m_vGaussBeam2 ); // Main gauss beam end pos/Reflected gauss beam start pos
+	CNetworkVar( Vector, m_vGaussBeam3 ); // Reflected gauss beam end pos
+	CNetworkVar( bool, m_bCannonFiring );
+	CNetworkVar( float, m_flCannonChargeAmount );
 };
 
 #endif // VEHICLE_JEEP_H

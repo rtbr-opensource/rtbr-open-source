@@ -76,6 +76,10 @@ public:
 	virtual const char *GetCannonicalName( const char *pClassName );
 	void ReportEntitySizes();
 
+#ifdef MAPBASE
+	virtual void UninstallFactory(const char* pClassName);
+#endif // MAPBASE
+
 private:
 	IEntityFactory *FindFactory( const char *pClassName );
 public:
@@ -203,6 +207,11 @@ void CEntityFactoryDictionary::ReportEntitySizes()
 }
 
 #ifdef MAPBASE
+void CEntityFactoryDictionary::UninstallFactory(const char* pClassName)
+{
+	m_Factories.Remove(pClassName);
+}
+
 int EntityFactory_AutoComplete( const char *cmdname, CUtlVector< CUtlString > &commands, CUtlRBTree< CUtlString > &symbols, char *substring, int checklen = 0 )
 {
 	CEntityFactoryDictionary *pFactoryDict = (CEntityFactoryDictionary*)EntityFactoryDictionary();
@@ -1120,14 +1129,19 @@ void UTIL_HudMessageAll( const hudtextparms_t &textparms, const char *pMessage, 
 	UTIL_HudMessage( NULL, textparms, pMessage, pszFont, bAutobreak );
 }
 
-void UTIL_HudHintText( CBaseEntity *pEntity, const char *pMessage )
+void UTIL_HudHintText( CBaseEntity *pEntity, const char *pMessage, const bool bDim /* = false */ )
 {
 	if ( !pEntity )
 		return;
 
 	CSingleUserRecipientFilter user( (CBasePlayer *)pEntity );
 	user.MakeReliable();
-	UserMessageBegin( user, "KeyHintText" );
+	if ( bDim ) {
+		UserMessageBegin( user, "DimKeyHintText" );
+	}
+	else {
+		UserMessageBegin( user, "KeyHintText" );
+	}
 		WRITE_BYTE( 1 );	// one string
 		WRITE_STRING( pMessage );
 	MessageEnd();

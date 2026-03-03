@@ -695,6 +695,10 @@ bool CNPC_Barnacle::CanPickup( CBaseCombatCharacter *pBCC )
 		return false;
 #endif
 
+	// Don't pickup turrets
+	if (FClassnameIs( pBCC, "npc_protozoan" ))
+		return false;
+
 	// Don't pick up a dead player or NPC
 	if( !pBCC->IsAlive() )
 		return false;

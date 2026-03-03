@@ -83,8 +83,7 @@ ConVar fire_dmgscale( "fire_dmgscale", "0.1" );
 ConVar fire_dmgbase( "fire_dmgbase", "1" );
 ConVar fire_growthrate( "fire_growthrate", "1.0" );
 ConVar fire_dmginterval( "fire_dmginterval", "1.0" );
-
-ConVar fire_flarescale("fire_flarescale", "3.0");
+ConVar fire_flarescale("fire_flarescale", "0");
 
 
 #define VPROF_FIRE(s) VPROF( s )
@@ -1198,7 +1197,7 @@ void CFire::Extinguish( float heat )
 		return;
 
 	m_lastDamage = gpGlobals->curtime + 0.5;
-	bool out = m_flHeatLevel > 0 ? true : false;
+	bool out = m_flHeatLevel > 0 ? false : true;
 
 	m_flHeatLevel -= heat;
 	m_flHeatAbsorb += fire_extabsorb.GetFloat() * heat;
@@ -1222,6 +1221,7 @@ void CFire::Extinguish( float heat )
 			GoOut();
 		}
 	}
+	DevMsg( "%f\n", m_flHeatLevel );
 }
 
 bool CFire::GoOut()

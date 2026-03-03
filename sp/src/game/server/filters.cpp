@@ -162,10 +162,10 @@ void CBaseFilter::InputSetField( inputdata_t& inputdata )
 
 #ifdef MAPBASE_VSCRIPT
 bool CBaseFilter::ScriptPassesFilter( HSCRIPT pCaller, HSCRIPT pEntity ) { return PassesFilter( ToEnt(pCaller), ToEnt(pEntity) ); }
-bool CBaseFilter::ScriptPassesDamageFilter( HSCRIPT pCaller, HSCRIPT pInfo ) { return (pInfo) ? PassesDamageFilter( ToEnt( pCaller ), *const_cast<const CTakeDamageInfo*>(HScriptToClass<CTakeDamageInfo>( pInfo )) ) : NULL; }
-bool CBaseFilter::ScriptPassesFinalDamageFilter( HSCRIPT pCaller, HSCRIPT pInfo ) { return (pInfo) ? PassesFinalDamageFilter( ToEnt( pCaller ), *const_cast<const CTakeDamageInfo*>(HScriptToClass<CTakeDamageInfo>( pInfo )) ) : NULL; }
-bool CBaseFilter::ScriptBloodAllowed( HSCRIPT pCaller, HSCRIPT pInfo ) { return (pInfo) ? BloodAllowed( ToEnt( pCaller ), *const_cast<const CTakeDamageInfo*>(HScriptToClass<CTakeDamageInfo>( pInfo )) ) : NULL; }
-bool CBaseFilter::ScriptDamageMod( HSCRIPT pCaller, HSCRIPT pInfo ) { return (pInfo) ? DamageMod( ToEnt( pCaller ), *HScriptToClass<CTakeDamageInfo>( pInfo ) ) : NULL; }
+bool CBaseFilter::ScriptPassesDamageFilter( HSCRIPT pCaller, HSCRIPT pInfo ) { return (pInfo) ? PassesDamageFilter( ToEnt( pCaller ), *const_cast<const CTakeDamageInfo*>(HScriptToClass<CTakeDamageInfo>( pInfo )) ) : false; }
+bool CBaseFilter::ScriptPassesFinalDamageFilter( HSCRIPT pCaller, HSCRIPT pInfo ) { return (pInfo) ? PassesFinalDamageFilter( ToEnt( pCaller ), *const_cast<const CTakeDamageInfo*>(HScriptToClass<CTakeDamageInfo>( pInfo )) ) : false; }
+bool CBaseFilter::ScriptBloodAllowed( HSCRIPT pCaller, HSCRIPT pInfo ) { return (pInfo) ? BloodAllowed( ToEnt( pCaller ), *const_cast<const CTakeDamageInfo*>(HScriptToClass<CTakeDamageInfo>( pInfo )) ) : false; }
+bool CBaseFilter::ScriptDamageMod( HSCRIPT pCaller, HSCRIPT pInfo ) { return (pInfo) ? DamageMod( ToEnt( pCaller ), *HScriptToClass<CTakeDamageInfo>( pInfo ) ) : false; }
 #endif
 
 
@@ -996,6 +996,9 @@ public:
 
 	bool PassesFilterImpl( CBaseEntity *pCaller, CBaseEntity *pEntity )
 	{
+		if (!pEntity)
+			return false;
+
 		if (FStrEq(STRING(m_strFilterSkin), "-1") /*m_strFilterSkin == NULL_STRING|| FStrEq(STRING(m_strFilterSkin), "")*/)
 			return Matcher_NamesMatch(STRING(m_iFilterModel), STRING(pEntity->GetModelName()));
 		else if (pEntity->GetBaseAnimating())
@@ -1011,6 +1014,17 @@ public:
 		inputdata.value.Convert(FIELD_STRING);
 		m_iFilterModel = inputdata.value.StringID();
 	}
+
+	bool KeyValue( const char *szKeyName, const char *szValue )
+	{
+		if (FStrEq( szKeyName, "filtername" ))
+		{
+			m_iFilterModel = AllocPooledString( szValue );
+			return true;
+		}
+		else
+			return BaseClass::KeyValue( szKeyName, szValue );
+	}
 };
 
 LINK_ENTITY_TO_CLASS( filter_activator_model, CFilterModel );
@@ -1019,7 +1033,6 @@ BEGIN_DATADESC( CFilterModel )
 
 	// Keyfields
 	DEFINE_KEYFIELD( m_iFilterModel,	FIELD_STRING,	"filtermodel" ),
-	DEFINE_KEYFIELD( m_iFilterModel,	FIELD_STRING,	"filtername" ),
 	DEFINE_KEYFIELD( m_strFilterSkin,	FIELD_STRING,	"skin" ),
 
 END_DATADESC()

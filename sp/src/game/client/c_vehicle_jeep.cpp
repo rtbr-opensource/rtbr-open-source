@@ -13,6 +13,9 @@
 #include "c_te_effect_dispatch.h"
 #include "fx.h"
 
+#include "in_buttons.h"
+#include "debugoverlay_shared.h"
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -28,6 +31,12 @@ ConVar r_JeepViewBlendToTime( "r_JeepViewBlendToTime", "1.5", FCVAR_CHEAT );
 
 IMPLEMENT_CLIENTCLASS_DT( C_PropJeep, DT_PropJeep, CPropJeep )
 	RecvPropBool( RECVINFO( m_bHeadlightIsOn ) ),
+	RecvPropBool( RECVINFO( m_bCannonCharging ) ),
+	RecvPropVector( RECVINFO( m_vGaussBeam1 ) ),
+	RecvPropVector( RECVINFO( m_vGaussBeam2 ) ),
+	RecvPropVector( RECVINFO( m_vGaussBeam3 ) ),
+	RecvPropVector( RECVINFO( m_bCannonFiring ) ),
+	RecvPropFloat( RECVINFO( m_flCannonChargeAmount ) ),
 END_RECV_TABLE()
 
 //-----------------------------------------------------------------------------
@@ -41,6 +50,13 @@ C_PropJeep::C_PropJeep()
 	
 	ConVarRef r_JeepFOV( "r_JeepFOV" );
 	m_ViewSmoothingData.flFOV = r_JeepFOV.GetFloat();
+
+	m_bCannonCharging = false;
+	m_bChargeEffectsActive = false;
+
+	m_vGaussBeam1 = vec3_invalid;
+	m_vGaussBeam2 = vec3_invalid;
+	m_vGaussBeam3 = vec3_invalid;
 }
 
 //-----------------------------------------------------------------------------
@@ -54,8 +70,29 @@ C_PropJeep::~C_PropJeep()
 	}
 }
 
+void C_PropJeep::Precache( void )
+{
+	PrecacheParticleSystem( "weapon_gauss_capacitor_charge" );
+	PrecacheParticleSystem( "weapon_gauss_coil_charge" );
+	PrecacheParticleSystem( "weapon_gauss_exhaust_charge" );
+	PrecacheParticleSystem( "weapon_gauss_beam" );
+	PrecacheParticleSystem( "weapon_gauss_beam_reflect" );
+
+	BaseClass::Precache();
+}
+
+void C_PropJeep::Spawn( void )
+{
+	Precache();
+
+	BaseClass::Spawn();
+}
+
 void C_PropJeep::Simulate( void )
 {
+	if ( !m_bCannonCharging )
+		m_bChargeEffectsActive = false;
+
 	// The dim light is the flashlight.
 	if ( m_bHeadlightIsOn )
 	{
@@ -91,7 +128,73 @@ void C_PropJeep::Simulate( void )
 		m_pHeadlight = NULL;
 	}
 
+	if ( m_bCannonCharging && !m_bChargeEffectsActive )
+	{
+		// Startup charging effects.
+		m_hCapacitorEffect = ParticleProp()->Create( "weapon_gauss_capacitor_charge", PATTACH_ABSORIGIN_FOLLOW );
+		ParticleProp()->AddControlPoint( m_hCapacitorEffect, 0, this, PATTACH_POINT_FOLLOW, "capacitor");
+
+		m_hCoilEffect = ParticleProp()->Create( "weapon_gauss_coil_charge", PATTACH_ABSORIGIN_FOLLOW );
+		ParticleProp()->AddControlPoint( m_hCoilEffect, 0, this, PATTACH_POINT_FOLLOW, "muzzle");
+
+		m_hExhaustEffect = ParticleProp()->Create( "weapon_gauss_exhaust_charge", PATTACH_ABSORIGIN_FOLLOW );
+		ParticleProp()->AddControlPoint( m_hExhaustEffect, 0, this, PATTACH_POINT_FOLLOW, "exhaust");
+
+		m_bChargeEffectsActive = true;
+	}
+	else if ( m_bCannonFiring )
+	{
+		// Player has fired, disable effects.
+		ParticleProp()->StopEmission( m_hCapacitorEffect );
+		ParticleProp()->StopEmission( m_hCoilEffect );
+		ParticleProp()->StopEmission( m_hExhaustEffect );
+	}
+
+	if ( m_bCannonFiring )
+		DrawGaussBeams();
+
+	if ( m_bCannonFiring )
+	{
+		// Force this back to false so we don't get too wild with the VFX.
+		// The server will update itself next tick.
+		m_bCannonFiring = false;
+	}
+
 	BaseClass::Simulate();
+}
+
+void C_PropJeep::DrawGaussBeams( void )
+{
+	float flChargeAmount = m_flCannonChargeAmount;
+	if ( flChargeAmount < 0.01f )
+	{
+		flChargeAmount = 1.0f;
+	}
+
+	// create the main beam
+	m_hGaussBeam1 = ParticleProp()->Create( "weapon_gauss_beam", PATTACH_ABSORIGIN_FOLLOW );
+	ParticleProp()->AddControlPoint( m_hGaussBeam1, 0, this, PATTACH_POINT_FOLLOW, "muzzle" );
+	ParticleProp()->AddControlPoint( m_hGaussBeam1, 1, NULL, PATTACH_WORLDORIGIN, 0, m_vGaussBeam2 );
+	m_hGaussBeam1->SetControlPoint( 2, Vector( flChargeAmount, 0, 0 ) );
+
+	if ( m_vGaussBeam3 != vec3_invalid )
+	{
+		// create the second beam, for the reflection
+		m_hGaussBeam2 = ParticleProp()->Create( "weapon_gauss_beam_reflect", PATTACH_ABSORIGIN_FOLLOW );
+		ParticleProp()->AddControlPoint( m_hGaussBeam2, 0, NULL, PATTACH_WORLDORIGIN, 0, m_vGaussBeam2 );
+		ParticleProp()->AddControlPoint( m_hGaussBeam2, 1, NULL, PATTACH_WORLDORIGIN, 0, m_vGaussBeam3 );
+		m_hGaussBeam2->SetControlPoint( 2, Vector( flChargeAmount, 0, 0 ) );
+	}
+}
+
+void C_PropJeep::OnExitedVehicle( C_BaseCombatCharacter *pPassenger )
+{
+	BaseClass::OnExitedVehicle( pPassenger );
+
+	// Player exited the vehicle, get rid of our charging fx.
+	ParticleProp()->StopEmission( m_hCapacitorEffect );
+	ParticleProp()->StopEmission( m_hCoilEffect );
+	ParticleProp()->StopEmission( m_hExhaustEffect );
 }
 
 //-----------------------------------------------------------------------------

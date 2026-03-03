@@ -41,7 +41,7 @@
 #include "physics_collisionevent.h"
 #include "gamestats.h"
 #include "vehicle_base.h"
-#include "particles\particles.h"
+#include "particles/particles.h"
 #include "particle_parse.h"
 #ifdef MAPBASE
 #include "mapbase/GlobalStrings.h"
@@ -298,6 +298,8 @@ void CBaseProp::Precache( void )
 
 	PrecacheScriptSound( "Metal.SawbladeStick" );
 	PrecacheScriptSound( "PropaneTank.Burst" );
+	PrecacheScriptSound( "Eggclutch.Explode" );
+	PrecacheScriptSound( "KingSpit.Explode" );
 
 #ifdef HL2_EPISODIC
 	UTIL_PrecacheOther( "env_flare" );
@@ -1340,6 +1342,12 @@ int CBreakableProp::OnTakeDamage( const CTakeDamageInfo &inputInfo )
 //-----------------------------------------------------------------------------
 void CBreakableProp::Event_Killed( const CTakeDamageInfo &info )
 {
+#ifdef MAPBASE_VSCRIPT
+	// False = Cheat death
+	if (ScriptDeathHook( const_cast<CTakeDamageInfo *>(&info) ) == false)
+		return;
+#endif
+
 	IPhysicsObject *pPhysics = VPhysicsGetObject();
 	if ( pPhysics && !pPhysics->IsMoveable() )
 	{
@@ -1893,6 +1901,20 @@ void CBreakableProp::Break( CBaseEntity *pBreaker, const CTakeDamageInfo &info )
 				0.0f, this );
 			DispatchParticleEffect("explosion_gas", GetAbsOrigin(), GetAbsAngles());
 			EmitSound("PropaneTank.Burst");
+		}
+		else if ( HasInteraction( PROPINTER_PHYSGUN_BREAK_ANTLION ) ){
+			ExplosionCreate( WorldSpaceCenter(), angles, pAttacker, m_explodeDamage, m_explodeRadius,
+				SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NOPARTICLES | SF_ENVEXPLOSION_NOFIREBALL | SF_ENVEXPLOSION_NODLIGHTS | SF_ENVEXPLOSION_NOSMOKE | SF_ENVEXPLOSION_SURFACEONLY | SF_ENVEXPLOSION_NOSOUND,
+				0.0f, this );
+			DispatchParticleEffect( "explosion_eggclutch", GetAbsOrigin(), GetAbsAngles() );
+			EmitSound( "EggClutch.Explode" );
+		}
+		else if (HasInteraction( PROPINTER_PHYSGUN_BREAK_KINGSPIT )){
+			ExplosionCreate( WorldSpaceCenter(), angles, pAttacker, m_explodeDamage, m_explodeRadius,
+				SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NOPARTICLES | SF_ENVEXPLOSION_NOFIREBALL | SF_ENVEXPLOSION_NODLIGHTS | SF_ENVEXPLOSION_NOSMOKE | SF_ENVEXPLOSION_SURFACEONLY | SF_ENVEXPLOSION_NOSOUND,
+				0.0f, this );
+			DispatchParticleEffect( "explosion_kingspit", GetAbsOrigin(), GetAbsAngles() );
+			EmitSound( "KingSpit.Explode" );
 		}
 		else
 		{
@@ -3026,6 +3048,7 @@ BEGIN_DATADESC( CPhysicsProp )
 	DEFINE_OUTPUT( m_MotionEnabled, "OnMotionEnabled" ),
 	DEFINE_OUTPUT( m_OnPhysGunPickup, "OnPhysGunPickup" ),
 	DEFINE_OUTPUT( m_OnPhysGunOnlyPickup, "OnPhysGunOnlyPickup" ),
+	DEFINE_OUTPUT( m_OnPhysGunPull, "OnPhysGunPull" ),
 	DEFINE_OUTPUT( m_OnPhysGunPunt, "OnPhysGunPunt" ),
 	DEFINE_OUTPUT( m_OnPhysGunDrop, "OnPhysGunDrop" ),
 	DEFINE_OUTPUT( m_OnPlayerUse, "OnPlayerUse" ),
@@ -3394,6 +3417,13 @@ void CPhysicsProp::OnPhysGunPickup( CBasePlayer *pPhysGunUser, PhysGunPickup_t r
 	}
 
 	CheckRemoveRagdolls();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CPhysicsProp::OnPhysGunPull( CBasePlayer* pPhysGunUser ) {
+	m_OnPhysGunPull.FireOutput(pPhysGunUser, this);
 }
 
 //-----------------------------------------------------------------------------
@@ -4203,6 +4233,12 @@ BEGIN_DATADESC(CBasePropDoor)
 #ifdef MAPBASE
 	DEFINE_INPUTFUNC(FIELD_VOID, "AllowPlayerUse", InputAllowPlayerUse),
 	DEFINE_INPUTFUNC(FIELD_VOID, "DisallowPlayerUse", InputDisallowPlayerUse),
+
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetFullyOpenSound", InputSetFullyOpenSound ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetFullyClosedSound", InputSetFullyClosedSound ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetMovingSound", InputSetMovingSound ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetLockedSound", InputSetLockedSound ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetUnlockedSound", InputSetUnlockedSound ),
 #endif
 
 	DEFINE_OUTPUT(m_OnBlockedOpening, "OnBlockedOpening"),
@@ -4224,6 +4260,34 @@ END_DATADESC()
 
 IMPLEMENT_SERVERCLASS_ST(CBasePropDoor, DT_BasePropDoor)
 END_SEND_TABLE()
+
+#ifdef MAPBASE_VSCRIPT
+BEGIN_ENT_SCRIPTDESC( CBasePropDoor, CBaseAnimating, "The base class used by prop doors, such as prop_door_rotating." )
+
+	DEFINE_SCRIPTFUNC_NAMED( ScriptIsDoorOpen, "IsDoorOpen", "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptIsDoorAjar, "IsDoorAjar", "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptIsDoorOpening, "IsDoorOpening", "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptIsDoorClosed, "IsDoorClosed", "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptIsDoorClosing, "IsDoorClosing", "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptIsDoorLocked, "IsDoorLocked", "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptIsDoorBlocked, "IsDoorBlocked", "" )
+
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetActivator, "GetActivator", "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetDoorList, "GetDoorList", "Get connected door entity by index." )
+	DEFINE_SCRIPTFUNC( GetDoorListCount, "Get number of connected doors." )
+
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetFullyOpenSound, "GetFullyOpenSound", "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetFullyClosedSound, "GetFullyClosedSound", "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetMovingSound, "GetMovingSound", "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetLockedSound, "GetLockedSound", "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetUnlockedSound, "GetUnlockedSound", "" )
+
+	DEFINE_SCRIPTFUNC( DoorCanClose, "Return true if the door has room to close. Boolean is for whether or not this is an automatic close and not manually triggered by someone." )
+	DEFINE_SCRIPTFUNC( DoorCanOpen, "Return true if there are other doors connected to this one." )
+	DEFINE_SCRIPTFUNC( HasSlaves, "" )
+
+END_SCRIPTDESC();
+#endif
 
 CBasePropDoor::CBasePropDoor( void )
 {
@@ -4696,6 +4760,54 @@ void CBasePropDoor::InputOpenAwayFrom(inputdata_t &inputdata)
 	CBaseEntity *pOpenAwayFrom = gEntList.FindEntityByName( NULL, inputdata.value.String(), NULL, inputdata.pActivator, inputdata.pCaller );
 	OpenIfUnlocked(inputdata.pActivator, pOpenAwayFrom);
 }
+
+
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CBasePropDoor::InputSetFullyOpenSound( inputdata_t &inputdata )
+{
+	m_SoundOpen = inputdata.value.StringID();
+	PrecacheScriptSound( STRING( m_SoundOpen ) );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CBasePropDoor::InputSetFullyClosedSound( inputdata_t &inputdata )
+{
+	m_SoundClose = inputdata.value.StringID();
+	PrecacheScriptSound( STRING( m_SoundClose ) );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CBasePropDoor::InputSetMovingSound( inputdata_t &inputdata )
+{
+	m_SoundMoving = inputdata.value.StringID();
+	PrecacheScriptSound( STRING( m_SoundMoving ) );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CBasePropDoor::InputSetLockedSound( inputdata_t &inputdata )
+{
+	m_ls.sLockedSound = inputdata.value.StringID();
+	PrecacheScriptSound( STRING( m_ls.sLockedSound ) );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CBasePropDoor::InputSetUnlockedSound( inputdata_t &inputdata )
+{
+	m_ls.sUnlockedSound = inputdata.value.StringID();
+	PrecacheScriptSound( STRING( m_ls.sUnlockedSound ) );
+}
+#endif
 
 
 //-----------------------------------------------------------------------------
@@ -6313,14 +6425,12 @@ void CPropDoorRotating::Break( CBaseEntity *pBreaker, const CTakeDamageInfo &inf
 }
 #endif
 
-#ifdef MAPBASE
 void CPropDoorRotating::InputSetSpeed(inputdata_t &inputdata)
 {
 	AssertMsg1(inputdata.value.Float() > 0.0f, "InputSetSpeed on %s called with negative parameter!", GetDebugName() );
 	m_flSpeed = inputdata.value.Float();
 	DoorResume();
 }
-#endif
 
 // Debug sphere
 class CPhysSphere : public CPhysicsProp
@@ -6365,15 +6475,6 @@ public:
 BEGIN_DATADESC( CPhysSphere )
 	DEFINE_KEYFIELD( m_fRadius, FIELD_FLOAT, "radius"),
 END_DATADESC()
-#endif
-
-#ifndef MAPBASE // Yes, all I'm doing is moving this up a few lines and I'm still using the preprocessor.
-void CPropDoorRotating::InputSetSpeed(inputdata_t &inputdata)
-{
-	AssertMsg1(inputdata.value.Float() > 0.0f, "InputSetSpeed on %s called with negative parameter!", GetDebugName() );
-	m_flSpeed = inputdata.value.Float();
-	DoorResume();
-}
 #endif
 
 LINK_ENTITY_TO_CLASS( prop_sphere, CPhysSphere );

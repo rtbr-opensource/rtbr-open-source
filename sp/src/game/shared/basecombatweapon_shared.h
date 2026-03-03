@@ -252,6 +252,7 @@ public:
 	virtual void			SetPickupTouch( void );
 	virtual void 			DefaultTouch( CBaseEntity *pOther );	// default weapon touch
 	virtual void			GiveTo( CBaseEntity *pOther );
+	virtual bool			RestocksAmmoOnTouch(void) { return true; }
 
 	// HUD Hints
 	virtual bool			ShouldDisplayAltFireHUDHint();
@@ -300,7 +301,6 @@ public:
 	virtual void			Detach() {}
 
 	// Weapon behaviour
-	bool					m_bDrawFramesOver = false;
 	virtual void			ItemPreFrame( void );					// called each frame by the player PreThink
 	virtual void			ItemPostFrame( void );					// called each frame by the player PostThink
 	virtual void			ItemBusyFrame( void );					// called each frame by the player PostThink, if the player's not ready to attack yet
@@ -310,9 +310,14 @@ public:
 																	// but they are out of ammo. The default implementation
 																	// either reloads, switches weapons, or plays an empty sound.
 
+	virtual bool			ShouldSecondaryAttackRecoil() const { return false; } // Should a weapon's secondary attack recoil (e.g. burst fires)
 	virtual bool			ShouldBlockPrimaryFire() { return false; }
 
 #ifdef CLIENT_DLL
+#ifdef MAPBASE
+	virtual bool			DispatchMuzzleEffect( const char *options, bool isFirstPerson );
+#endif
+
 	virtual void			CreateMove( float flInputSampleTime, CUserCmd *pCmd, const QAngle &vecOldViewAngles ) {}
 	virtual int				CalcOverrideModelIndex() OVERRIDE;
 #endif
@@ -322,6 +327,7 @@ public:
 	// Reloading
 	virtual	void			CheckReload( void );
 	virtual void			FinishReload( void );
+	virtual void			FinishReloadSecondary( void );
 	virtual void			AbortReload( void );
 	virtual bool			Reload( void );
 	bool					DefaultReload( int iClipSize1, int iClipSize2, int iActivity );
@@ -396,7 +402,7 @@ public:
 	bool					IsLocked( CBaseEntity *pAsker );
 
 	//All weapons can be picked up by NPCs by default
-	virtual bool			CanBePickedUpByNPCs( void ) { return true;	}
+	virtual bool			CanBePickedUpByNPCs(void);
 
 	virtual int				GetSkinOverride() const { return -1; }
 
@@ -428,12 +434,13 @@ public:
 	virtual bool			UsesClipsForAmmo2( void ) const;
 	bool					IsMeleeWeapon() const;
 #ifdef MAPBASE
-	float					GetViewmodelFOVOverride() const;
+	virtual float			GetViewmodelFOVOverride() const;
 	float					GetBobScale() const;
 	float					GetSwayScale() const;
 	float					GetSwaySpeedScale() const;
 	virtual const char		*GetDroppedModel( void ) const;
-	bool					UsesHands( void ) const;
+	virtual bool			UsesHands( void ) const;
+	virtual int				GetHandRig( void ) const;
 #endif
 
 	// derive this function if you mod uses encrypted weapon info files
@@ -513,6 +520,11 @@ public:
 	void				SetNextPrimaryAttack( float flVal ) { m_flNextPrimaryAttack = flVal; }
 	float				NextSecondaryAttack() { return m_flNextSecondaryAttack; }
 	void				SetNextSecondaryAttack( float flVal ) { m_flNextSecondaryAttack = flVal; }
+
+	// Derived classes can override this to provide more nuanced fidget conditions per-weapon.
+	virtual bool		ShouldWeaponFidget() { return true; }
+	// Derived classes can override this to provide more nuanced autoaim conditions per-weapon.
+	virtual bool		ShouldWeaponAutoAim() { return true; }
 #endif
 
 public:
@@ -664,7 +676,7 @@ public:
 private:
 
 	bool			m_bFirstTime;		// (rtbr) Whether the weapon has been equipped once already or not
-
+	bool			m_bDrawFramesOver;
 
 	typedef CHandle< CBaseCombatCharacter > CBaseCombatCharacterHandle;
 	CNetworkVar( CBaseCombatCharacterHandle, m_hOwner );				// Player carrying this weapon
@@ -743,6 +755,7 @@ public:
 	int						m_iSubType;
 	float					m_flNextFidgetReload;
 	bool					m_bNoEmptyReload;
+	int						m_iStoredAmmo;
 
 	float					m_flUnlockTime;
 	EHANDLE					m_hLocker;				// Who locked this weapon.

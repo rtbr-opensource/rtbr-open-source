@@ -259,6 +259,7 @@ void CHudCrosshair::Paint( void )
 	}
 
 	float flPlayerScale = 1.0f;
+	flPlayerScale *= pPlayer->m_Local.m_flCrosshairScale;
 #ifdef TF_CLIENT_DLL
 	Color clr( cl_crosshair_red.GetInt(), cl_crosshair_green.GetInt(), cl_crosshair_blue.GetInt(), 255 );
 	flPlayerScale = cl_crosshair_scale.GetFloat() / 32.0f;  // the player can change the scale in the options/multiplayer tab
@@ -302,5 +303,5 @@ void CHudCrosshair::SetCrosshair( CHudTexture *texture, const Color& clr )
 //-----------------------------------------------------------------------------
 void CHudCrosshair::ResetCrosshair()
 {
-	SetCrosshair( m_pDefaultCrosshair, Color(255, 255, 255, 255) );
+	SetCrosshair( m_pDefaultCrosshair, Color(255, 155, 0, 255) ); // rtbr orange
 }

@@ -27,7 +27,7 @@ public:
 	void Precache( void );
 	Class_T	Classify( void );
 	
-	virtual const char * GetSoundscriptClassname() { return m_bIsBaby ? "NPC_Babysquid" : "NPC_Bullsquid"; }
+	virtual const char * GetSoundscriptClassname() { return m_bIsBaby ? "NPC_BabyBullsquid" : "NPC_Bullsquid"; }
 
 	float MaxYawSpeed ( void );
 
@@ -58,6 +58,7 @@ public:
 
 	int				SelectSchedule( void );
 	int 			TranslateSchedule( int scheduleType );
+	int				SelectFailSchedule(int failedSchedule, int failedTask, AI_TaskFailureCode_t taskFailCode);
 
 	virtual Activity NPC_TranslateActivity( Activity eNewActivity );
 

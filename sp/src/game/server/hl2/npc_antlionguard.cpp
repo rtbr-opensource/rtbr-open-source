@@ -298,6 +298,8 @@ public:
 
 	virtual Activity	NPC_TranslateActivity( Activity baseAct );
 
+	virtual bool		CanBeStunnedBySteambow( void ) const { return false; }
+
 #if HL2_EPISODIC
 	//---------------------------------
 	// Navigation & Movement -- prevent stopping paths for the guard
@@ -373,7 +375,6 @@ private:
 	bool			m_bDecidedNotToStop;
 	bool			m_bPreferPhysicsAttack;
 
-	CNetworkVar( bool, m_bCavernBreed );	// If this guard is meant to be a cavern dweller (uses different assets)
 	CNetworkVar( bool, m_bInCavern );		// Behavioral hint telling the guard to change his behavior
 					
 	Vector			m_vecPhysicsTargetStartPos;
@@ -414,7 +415,7 @@ protected:
 
 // inline accessors
 public:	
-	inline bool IsCavernBreed( void ) const { return m_bCavernBreed; }
+	inline bool IsCavernBreed( void ) const { return m_nSkin >= 2; }
 	inline bool IsInCavern( void ) const { return m_bInCavern; }
 };
 
@@ -456,7 +457,6 @@ BEGIN_DATADESC( CNPC_AntlionGuard )
 	DEFINE_FIELD( m_iBleedingLevel,				FIELD_CHARACTER ),
 #endif
 
-	DEFINE_KEYFIELD( m_bCavernBreed,FIELD_BOOLEAN, "cavernbreed" ),
 	DEFINE_KEYFIELD( m_bInCavern,	FIELD_BOOLEAN, "incavern" ),
 	DEFINE_KEYFIELD( m_strShoveTargets,	FIELD_STRING, "shovetargets" ),
 
@@ -644,7 +644,6 @@ const impactdamagetable_t &CNPC_AntlionGuard::GetPhysicsImpactDamageTable( void 
 
 CNPC_AntlionGuard::CNPC_AntlionGuard( void )
 {
-	m_bCavernBreed = false;
 	m_bInCavern = false;
 
 	m_iszPhysicsPropClass = AllocPooledString( "prop_physics" );
@@ -653,7 +652,6 @@ CNPC_AntlionGuard::CNPC_AntlionGuard( void )
 LINK_ENTITY_TO_CLASS( npc_antlionguard, CNPC_AntlionGuard );
 
 IMPLEMENT_SERVERCLASS_ST(CNPC_AntlionGuard, DT_NPC_AntlionGuard)
-	SendPropBool( SENDINFO( m_bCavernBreed ) ),
 	SendPropBool( SENDINFO( m_bInCavern ) ),
 
 #if ANTLIONGUARD_BLOOD_EFFECTS
@@ -782,10 +780,8 @@ void CNPC_AntlionGuard::Spawn( void )
 	SetModel( DefaultOrCustomModel( ANTLIONGUARD_MODEL ) );
 
 	// Switch our skin (for now), if we're the cavern guard
-	if ( m_bCavernBreed )
-	{
-		m_nSkin = 1;
-		
+	if ( IsCavernBreed() )
+	{	
 		// Add glows
 		CreateGlow( &(m_hCaveGlow[0]), "attach_glow1" );
 		CreateGlow( &(m_hCaveGlow[1]), "attach_glow2" );
@@ -2077,7 +2073,7 @@ void CNPC_AntlionGuard::HandleAnimEvent( animevent_t *pEvent )
 		RemoveEffects( EF_NODRAW );
 		RemoveFlag( FL_NOTARGET );
 
-		if ( m_bCavernBreed )
+		if ( IsCavernBreed() )
 		{
 			if ( m_hCaveGlow[0] )
 				m_hCaveGlow[0]->TurnOn();

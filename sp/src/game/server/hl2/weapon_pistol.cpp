@@ -43,11 +43,13 @@ class CWeaponPistol : public CHLSelectFireMachineGun
 	DECLARE_DATADESC();
 
 public:
-	DECLARE_CLASS( CWeaponPistol, CBaseHLCombatWeapon );
+	DECLARE_CLASS( CWeaponPistol, CHLSelectFireMachineGun );
 
 	CWeaponPistol(void);
 
 	DECLARE_SERVERCLASS();
+
+	virtual void OnRestore( void );
 
 	bool Holster(CBaseCombatWeapon * pSwitchingTo);
 
@@ -71,7 +73,6 @@ public:
 	void	UpdatePenaltyTime( void );
 
 	int		CapabilitiesGet( void ) { return bits_CAP_WEAPON_RANGE_ATTACK1; }
-	Activity	GetPrimaryAttackActivity( void );
 
 	virtual bool Reload( void );
 
@@ -135,7 +136,6 @@ private:
 	float	m_flSoonestPrimaryAttack;
 	float	m_flLastAttackTime;
 	float	m_flAccuracyPenalty;
-	int		m_nNumShotsFired;
 	bool	m_bPrimary;
 };
 
@@ -151,7 +151,6 @@ BEGIN_DATADESC( CWeaponPistol )
 	DEFINE_FIELD( m_flSoonestPrimaryAttack, FIELD_TIME ),
 	DEFINE_FIELD( m_flLastAttackTime,		FIELD_TIME ),
 	DEFINE_FIELD( m_flAccuracyPenalty,		FIELD_FLOAT ), //NOTENOTE: This is NOT tracking game time
-	DEFINE_FIELD( m_nNumShotsFired,			FIELD_INTEGER ),
 	DEFINE_FIELD(m_bPrimary,				FIELD_BOOLEAN ),
 
 END_DATADESC()
@@ -321,6 +320,18 @@ CWeaponPistol::CWeaponPistol( void )
 	m_fMaxRange2		= 200;
 
 	m_bFiresUnderwater	= true;
+	m_bAltFiresUnderwater = true;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Save/Restore Callback
+//-----------------------------------------------------------------------------
+void CWeaponPistol::OnRestore( void )
+{
+	// Set this so we can shoot after save/loading
+	m_iBurstSize = 0;
+
+	BaseClass::OnRestore();
 }
 
 //-----------------------------------------------------------------------------
@@ -388,7 +399,7 @@ void CWeaponPistol::FireNPCPrimaryAttack( CBaseCombatCharacter *pOperator, Vecto
 	CSoundEnt::InsertSound( SOUND_COMBAT|SOUND_CONTEXT_GUNFIRE, pOperator->GetAbsOrigin(), SOUNDENT_VOLUME_PISTOL, 0.2, pOperator, SOUNDENT_CHANNEL_WEAPON, pOperator->GetEnemy() );
 
 	WeaponSound( SINGLE_NPC );
-	pOperator->FireBullets( 1, vecShootOrigin, vecShootDir, VECTOR_CONE_PRECALCULATED, MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 2 );
+	pOperator->FireBullets( 1, vecShootOrigin, vecShootDir, VECTOR_CONE_PRECALCULATED, MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 1 );
 	pOperator->DoMuzzleFlash();
 	m_iClip1 = m_iClip1 - 1;
 }
@@ -431,15 +442,6 @@ void CWeaponPistol::PrimaryAttack( void )
 		return;
 
 	if ((gpGlobals->curtime - m_flLastAttackTime) >= GetFireRate()) {
-		if ((gpGlobals->curtime - m_flLastAttackTime) > GetFireRate())
-		{
-			m_nNumShotsFired = 0;
-		}
-		else
-		{
-			m_nNumShotsFired++;
-		}
-
 		m_flLastAttackTime = gpGlobals->curtime;
 		m_flSoonestPrimaryAttack = gpGlobals->curtime + PISTOL_FASTEST_REFIRE_TIME;
 		CSoundEnt::InsertSound(SOUND_COMBAT, GetAbsOrigin(), SOUNDENT_VOLUME_PISTOL, 0.2, GetOwner());
@@ -455,12 +457,12 @@ void CWeaponPistol::PrimaryAttack( void )
 			pOwner->ViewPunchReset();
 		}
 		m_bPrimary = true;
-		BaseClass::PrimaryAttack();
+		CHLMachineGun::PrimaryAttack();
 
 		// Add an accuracy penalty which can move past our maximum penalty time if we're really spastic
 		m_flAccuracyPenalty += PISTOL_ACCURACY_SHOT_PENALTY_TIME;
 
-		m_iPrimaryAttacks++;
+		//m_iPrimaryAttacks++;
 		gamestats->Event_WeaponFired(pOwner, true, GetClassname());
 
 		m_flNextSecondaryAttack = gpGlobals->curtime + GetFireRate();
@@ -479,7 +481,6 @@ void CWeaponPistol::SecondaryAttack() {
 	if (Clip1() == 1)
 	{
 		// no point doing the double burst when we can't even fire 2 bullets
-		WeaponSound( SINGLE );
 		PrimaryAttack();
 		return;
 	}
@@ -562,27 +563,20 @@ void CWeaponPistol::ItemPostFrame( void )
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: 
-// Output : int
-//-----------------------------------------------------------------------------
-Activity CWeaponPistol::GetPrimaryAttackActivity( void )
-{
-	if ( m_nNumShotsFired < 1 )
-		return ACT_VM_PRIMARYATTACK;
-
-	if ( m_nNumShotsFired < 2 )
-		return ACT_VM_RECOIL1;
-
-	if ( m_nNumShotsFired < 3 )
-		return ACT_VM_RECOIL2;
-
-	return ACT_VM_RECOIL3;
-}
-
-//-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 bool CWeaponPistol::Reload( void )
 {
+	// stop any existing bursts
+	if (m_iBurstSize > 0)
+	{
+		// The burst is over!
+		SetThink( NULL );
+		// idle immediately to stop the firing animation
+		SetWeaponIdleTime( gpGlobals->curtime );
+		// Force set the burst size so we can use primary fire again
+		m_iBurstSize = 0;
+	}
+
 	bool fRet = false;
 #ifdef USES_EMPTY_RELOADS
 	if (m_iClip1 > 0) {
@@ -602,6 +596,10 @@ bool CWeaponPistol::Reload( void )
 	return fRet;
 }
 
+#ifdef MAPBASE
+ConVar weapon_pistol_upwards_viewkick( "weapon_pistol_upwards_viewkick", "0" );
+#endif
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
@@ -614,7 +612,11 @@ void CWeaponPistol::AddViewKick( void )
 
 	QAngle	viewPunch;
 
+#ifdef MAPBASE
+	viewPunch.x = weapon_pistol_upwards_viewkick.GetBool() ? random->RandomFloat( -0.5f, -0.25f ) : random->RandomFloat( 0.25f, 0.5f );
+#else
 	viewPunch.x = random->RandomFloat( 0.25f, 0.5f );
+#endif
 	viewPunch.y = random->RandomFloat( -.6f, .6f );
 	viewPunch.z = 0.0f;
 
@@ -628,6 +630,5 @@ void CWeaponPistol::AddViewKick( void )
 //-----------------------------------------------------------------------------
 bool CWeaponPistol::Holster(CBaseCombatWeapon *pSwitchingTo)
 {
-
 	return BaseClass::Holster(pSwitchingTo);
 }

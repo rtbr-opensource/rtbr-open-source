@@ -47,31 +47,9 @@ ConVar npc_combine_protected_run( "npc_combine_protected_run", "0", FCVAR_NONE, 
 ConVar npc_combine_altfire_not_allies_only( "npc_combine_altfire_not_allies_only", "1", FCVAR_NONE, "Mapbase: Elites are normally only allowed to fire their alt-fire attack at the player and the player's allies; This allows elites to alt-fire at other enemies too." );
 
 ConVar npc_combine_new_cover_behavior( "npc_combine_new_cover_behavior", "1", FCVAR_NONE, "Mapbase: Toggles small patches for parts of npc_combine AI related to soldiers failing to take cover. These patches are minimal and only change cases where npc_combine would otherwise look at an enemy without shooting or run up to the player to melee attack when they don't have to. Consult the Mapbase wiki for more information." );
+
+ConVar npc_combine_fixed_shootpos( "npc_combine_fixed_shootpos", "0", FCVAR_NONE, "Mapbase: Toggles fixed Combine soldier shoot position." );
 #endif
-
-#define COMBINE_SKIN_DEFAULT		0
-#define COMBINE_SKIN_SHOTGUNNER		1
-
-
-#ifndef MAPBASE
-#define COMBINE_GRENADE_THROW_SPEED 650
-#define COMBINE_GRENADE_TIMER		3.5
-#define COMBINE_GRENADE_FLUSH_TIME	3.0		// Don't try to flush an enemy who has been out of sight for longer than this.
-#define COMBINE_GRENADE_FLUSH_DIST	256.0	// Don't try to flush an enemy who has moved farther than this distance from the last place I saw him.
-#endif
-
-#define COMBINE_LIMP_HEALTH				20
-#ifndef MAPBASE
-#define	COMBINE_MIN_GRENADE_CLEAR_DIST	250
-#endif
-
-#define COMBINE_EYE_STANDING_POSITION	Vector( 0, 0, 66 )
-#define COMBINE_GUN_STANDING_POSITION	Vector( 0, 0, 57 )
-#define COMBINE_EYE_CROUCHING_POSITION	Vector( 0, 0, 40 )
-#define COMBINE_GUN_CROUCHING_POSITION	Vector( 0, 0, 36 )
-#define COMBINE_SHOTGUN_STANDING_POSITION	Vector( 0, 0, 36 )
-#define COMBINE_SHOTGUN_CROUCHING_POSITION	Vector( 0, 0, 36 )
-#define COMBINE_MIN_CROUCH_DISTANCE		256.0
 
 //-----------------------------------------------------------------------------
 // Static stuff local to this file.
@@ -133,36 +111,10 @@ Activity ACT_TURRET_CARRY_WALK;
 Activity ACT_TURRET_CARRY_RUN;
 #endif
 
-// -----------------------------------------------
-//	> Squad slots
-// -----------------------------------------------
-enum SquadSlot_T
-{	
-	SQUAD_SLOT_GRENADE1 = LAST_SHARED_SQUADSLOT,
-	SQUAD_SLOT_GRENADE2,
-	SQUAD_SLOT_ATTACK_OCCLUDER,
-	SQUAD_SLOT_OVERWATCH,
-};
-
-enum TacticalVariant_T
-{
-	TACTICAL_VARIANT_DEFAULT = 0,
-	TACTICAL_VARIANT_PRESSURE_ENEMY,				// Always try to close in on the player.
-	TACTICAL_VARIANT_PRESSURE_ENEMY_UNTIL_CLOSE,	// Act like VARIANT_PRESSURE_ENEMY, but go to VARIANT_DEFAULT once within 30 feet
-#ifdef MAPBASE
-	TACTICAL_VARIANT_GRENADE_HAPPY,					// Throw grenades as if you're fighting a turret
-#endif
-};
-
 enum PathfindingVariant_T
 {
 	PATHFINDING_VARIANT_DEFAULT = 0,
 };
-
-
-#define bits_MEMORY_PAIN_LIGHT_SOUND		bits_MEMORY_CUSTOM1
-#define bits_MEMORY_PAIN_HEAVY_SOUND		bits_MEMORY_CUSTOM2
-#define bits_MEMORY_PLAYER_HURT				bits_MEMORY_CUSTOM3
 
 LINK_ENTITY_TO_CLASS( npc_combine, CNPC_Combine );
 
@@ -764,7 +716,7 @@ bool CNPC_Combine::IsAltFireCapable( void )
 //-----------------------------------------------------------------------------
 bool CNPC_Combine::IsGrenadeCapable( void )
 {
-	return !IsElite() || m_bAlternateCapable;
+	return !(IsElite() || IsGunner()) || m_bAlternateCapable;
 }
 #endif
 
@@ -1884,7 +1836,7 @@ int CNPC_Combine::SelectCombatSchedule()
 
 				if( !bFirstContact && OccupyStrategySlotRange( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK2 ) )
 				{
-					if( random->RandomInt(0, 100) < 60 )
+					if (!IsStrategySlotRangeOccupied(SQUAD_SLOT_GUNNER, SQUAD_SLOT_GUNNER) && random->RandomInt(0, 100) < 60)
 					{
 						return SCHED_ESTABLISH_LINE_OF_FIRE;
 					}
@@ -1904,13 +1856,17 @@ int CNPC_Combine::SelectCombatSchedule()
 	// ---------------------
 	if ( ( HasCondition ( COND_NO_PRIMARY_AMMO ) || HasCondition ( COND_LOW_PRIMARY_AMMO ) ) && !HasCondition( COND_CAN_MELEE_ATTACK1) )
 	{
+		if (HasCondition(COND_SEE_ENEMY) && IsStrategySlotRangeOccupied(SQUAD_SLOT_GUNNER, SQUAD_SLOT_GUNNER) && CanGrenadeEnemy())
+		{
+			return SCHED_COMBINE_GRENADE_AND_RELOAD;
+		}
 		return SCHED_HIDE_AND_RELOAD;
 	}
 
 	// ----------------------
 	// LIGHT DAMAGE
 	// ----------------------
-	if ( HasCondition( COND_LIGHT_DAMAGE ) )
+	if (HasCondition(COND_LIGHT_DAMAGE) && !IsStrategySlotRangeOccupied(SQUAD_SLOT_GUNNER, SQUAD_SLOT_GUNNER))
 	{
 		if ( GetEnemy() != NULL )
 		{
@@ -1969,6 +1925,37 @@ int CNPC_Combine::SelectCombatSchedule()
 	int attackSchedule = SelectScheduleAttack();
 	if ( attackSchedule != SCHED_NONE )
 		return attackSchedule;
+
+	// ------------------------------------------------------
+	// behaviour if squad has an emplaced gunner
+	// ------------------------------------------------------
+	if (!IsGunner() && IsStrategySlotRangeOccupied(SQUAD_SLOT_GUNNER, SQUAD_SLOT_GUNNER))
+	{
+		if (!HasMemory(bits_MEMORY_INCOVER) && HasCondition(COND_ENEMY_OCCLUDED))
+		{
+			Stand();
+			DesireStand();
+
+			// if enemy is in grenade range, grenade them
+			if (CanGrenadeEnemy() && OccupyStrategySlot(SQUAD_SLOT_GRENADE1))
+			{
+				return SCHED_COMBINE_RANGE_ATTACK2;
+			}
+
+
+			if (OccupyStrategySlot(SQUAD_SLOT_ATTACK1))
+			{
+				if (HasMemory(bits_MEMORY_PLAYER_HURT))
+				{
+					// rush in and try to finish them off
+					AnnounceAssault();
+					return SCHED_COMBINE_ASSAULT;
+				}
+				// press enemy
+				return SCHED_COMBINE_PRESS_ATTACK;
+			}
+		}
+	}
 
 	if (HasCondition(COND_ENEMY_OCCLUDED))
 	{
@@ -2422,7 +2409,7 @@ int CNPC_Combine::TranslateSchedule( int scheduleType )
 			if ( m_pSquad )
 			{
 				// Have to explicitly check innate range attack condition as may have weapon with range attack 2
-				if (	g_pGameRules->IsSkillLevel( SKILL_HARD )	&& 
+				if (!IsGunner() &&	g_pGameRules->IsSkillLevel(SKILL_HARD) &&
 					HasCondition(COND_CAN_RANGE_ATTACK2)		&&
 					OccupyStrategySlot( SQUAD_SLOT_GRENADE1 ) )
 				{
@@ -2444,7 +2431,7 @@ int CNPC_Combine::TranslateSchedule( int scheduleType )
 			else
 			{
 				// Have to explicitly check innate range attack condition as may have weapon with range attack 2
-				if ( random->RandomInt(0,1) && HasCondition(COND_CAN_RANGE_ATTACK2) )
+				if (!IsGunner() && (random->RandomInt(0, 1) || IsStrategySlotRangeOccupied(SQUAD_SLOT_GUNNER, SQUAD_SLOT_GUNNER)) && HasCondition(COND_CAN_RANGE_ATTACK2))
 				{
 					return SCHED_COMBINE_GRENADE_COVER1;
 				}
@@ -2541,13 +2528,31 @@ int CNPC_Combine::TranslateSchedule( int scheduleType )
 				return SCHED_COMBINE_AR2_ALTFIRE;
 			}
 
-			if( IsUsingTacticalVariant( TACTICAL_VARIANT_PRESSURE_ENEMY ) && !IsRunningBehavior() )
+			if( (IsUsingTacticalVariant( TACTICAL_VARIANT_PRESSURE_ENEMY ) || IsStrategySlotRangeOccupied(SQUAD_SLOT_GUNNER, SQUAD_SLOT_GUNNER)) && !IsRunningBehavior() )
 			{
 				if( OccupyStrategySlotRange( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK2 ) )
 				{
 					return SCHED_COMBINE_PRESS_ATTACK;
 				}
 			}
+
+#ifdef MAPBASE
+			extern ConVar ai_enemy_memory_fixes;
+
+			// SCHED_COMBINE_ESTABLISH_LINE_OF_FIRE uses TASK_GET_PATH_TO_ENEMY_LKP_LOS, a task with a mistake
+			// detailed in CAI_BaseNPC::StartTask and fixed by ai_enemy_memory_fixes.
+			// 
+			// However, SCHED_COMBINE_ESTABLISH_LINE_OF_FIRE only stops being used once the NPC has LOS to its target.
+			// Since the fixed task now uses the enemy's last known position instead of the enemy's actual position,
+			// this schedule risks getting stuck in a loop.
+			// 
+			// This code makes the soldier run up directly to the last known position if it's visible, allowing the AI
+			// to mark the enemy as eluded.
+			if ( ai_enemy_memory_fixes.GetBool() && FVisible( GetEnemyLKP() ) )
+			{
+				return SCHED_COMBINE_PRESS_ATTACK;
+			}
+#endif
 
 			return SCHED_COMBINE_ESTABLISH_LINE_OF_FIRE;
 		}
@@ -2557,7 +2562,7 @@ int CNPC_Combine::TranslateSchedule( int scheduleType )
 			// stand up, just in case
 			// Stand();
 			// DesireStand();
-			if( CanGrenadeEnemy() && OccupyStrategySlot( SQUAD_SLOT_GRENADE1 ) && random->RandomInt( 0, 100 ) < 20 )
+			if( CanGrenadeEnemy() && OccupyStrategySlot( SQUAD_SLOT_GRENADE1 ) && (random->RandomInt( 0, 100 ) < 20 || IsStrategySlotRangeOccupied(SQUAD_SLOT_GUNNER, SQUAD_SLOT_GUNNER)))
 			{
 				// If I COULD throw a grenade and I need to reload, 20% chance I'll throw a grenade before I hide to reload.
 				return SCHED_COMBINE_GRENADE_AND_RELOAD;
@@ -2575,7 +2580,9 @@ int CNPC_Combine::TranslateSchedule( int scheduleType )
 			if ( HasCondition( COND_NO_PRIMARY_AMMO ) || HasCondition( COND_LOW_PRIMARY_AMMO ) )
 			{
 				// Ditch the strategy slot for attacking (which we just reserved!)
-				VacateStrategySlot();
+				if (!IsGunner()){
+					VacateStrategySlot();
+				}
 				return TranslateSchedule( SCHED_HIDE_AND_RELOAD );
 			}
 
@@ -2959,6 +2966,28 @@ Vector CNPC_Combine::Weapon_ShootPosition( )
 	// FIXME: rename this "estimated" since it's not based on animation
 	// FIXME: the orientation won't be correct when testing from arbitary positions for arbitary angles
 
+#ifdef MAPBASE
+	// HACKHACK: This weapon shoot position code does not work properly when in close range, causing the aim
+	// to drift to the left as the enemy gets closer to it.
+	// This problem is usually bearable for regular combat, but it causes dynamic interaction yaw to be offset
+	// as well, preventing most from ever being triggered.
+	// Ideally, this should be fixed from the root cause, but due to the sensitivity of such a change, this is
+	// currently being tied to a cvar which is off by default.
+	// 
+	// If the cvar is disabled but the soldier has valid interactions on its current enemy, then a separate hack
+	// will still attempt to correct the drift as the enemy gets closer.
+	if ( npc_combine_fixed_shootpos.GetBool() )
+	{
+		right *= 0.0f;
+	}
+	else if ( HasValidInteractionsOnCurrentEnemy() )
+	{
+		float flDistSqr = GetEnemy()->WorldSpaceCenter().DistToSqr( WorldSpaceCenter() );
+		if (flDistSqr < Square( 128.0f ))
+			right *= (flDistSqr / Square( 128.0f ));
+	}
+#endif
+
 	if  ( bStanding )
 	{
 		if( HasShotgun() )
@@ -3121,13 +3150,22 @@ void CNPC_Combine::PainSound ( void )
 // Input  :
 // Output :
 //-----------------------------------------------------------------------------
+#ifdef MAPBASE
+void CNPC_Combine::LostEnemySound( CBaseEntity *pEnemy )
+#else
 void CNPC_Combine::LostEnemySound( void)
+#endif
 {
 	if ( gpGlobals->curtime <= m_flNextLostSoundTime )
 		return;
 
 #ifdef COMBINE_SOLDIER_USES_RESPONSE_SYSTEM
-	if (SpeakIfAllowed( TLK_CMB_LOSTENEMY, UTIL_VarArgs("lastseenenemy:%d", GetEnemyLastTimeSeen()) ))
+	AI_CriteriaSet modifiers;
+	ModifyOrAppendEnemyCriteria( modifiers, pEnemy );
+
+	modifiers.AppendCriteria( "lastseenenemy", gpGlobals->curtime - GetEnemies()->LastTimeSeen( pEnemy ) );
+
+	if (SpeakIfAllowed( TLK_CMB_LOSTENEMY, modifiers ))
 	{
 		m_flNextLostSoundTime = gpGlobals->curtime + random->RandomFloat(5.0,15.0);
 	}
@@ -3155,10 +3193,17 @@ void CNPC_Combine::LostEnemySound( void)
 // Input  :
 // Output :
 //-----------------------------------------------------------------------------
+#ifdef MAPBASE
+void CNPC_Combine::FoundEnemySound( CBaseEntity *pEnemy )
+#else
 void CNPC_Combine::FoundEnemySound( void)
+#endif
 {
 #ifdef COMBINE_SOLDIER_USES_RESPONSE_SYSTEM
-	SpeakIfAllowed( TLK_CMB_REFINDENEMY, SENTENCE_PRIORITY_HIGH );
+	AI_CriteriaSet modifiers;
+	ModifyOrAppendEnemyCriteria( modifiers, pEnemy );
+
+	SpeakIfAllowed( TLK_CMB_REFINDENEMY, modifiers, SENTENCE_PRIORITY_HIGH );
 #else
 	m_Sentences.Speak( "COMBINE_REFIND_ENEMY", SENTENCE_PRIORITY_HIGH );
 #endif
@@ -3529,7 +3574,7 @@ bool CNPC_Combine::CanGrenadeEnemy( bool bUseFreeKnowledge )
 #ifdef MAPBASE
 	if ( !IsGrenadeCapable() )
 #else
-	if ( IsElite() )
+	if ( IsElite() || IsGunner() )
 #endif
 		return false;
 
@@ -3886,6 +3931,8 @@ const char* CNPC_Combine::GetSquadSlotDebugName( int iSquadSlot )
 		break;
 	case SQUAD_SLOT_OVERWATCH:			return "SQUAD_SLOT_OVERWATCH";
 		break;
+	case SQUAD_SLOT_GUNNER:				return "SQUAD_SLOT_GUNNER";
+		break;
 	}
 
 	return BaseClass::GetSquadSlotDebugName( iSquadSlot );
@@ -3964,9 +4011,6 @@ DECLARE_ACTIVITY( ACT_COMBINE_AR2_ALTFIRE )
 DECLARE_ACTIVITY( ACT_WALK_EASY )
 DECLARE_ACTIVITY( ACT_WALK_MARCH )
 #ifdef MAPBASE
-DECLARE_ACTIVITY( ACT_TURRET_CARRY_IDLE )
-DECLARE_ACTIVITY( ACT_TURRET_CARRY_WALK )
-DECLARE_ACTIVITY( ACT_TURRET_CARRY_RUN )
 #endif
 
 DECLARE_ANIMEVENT( COMBINE_AE_BEGIN_ALTFIRE )
@@ -3974,6 +4018,7 @@ DECLARE_ANIMEVENT( COMBINE_AE_ALTFIRE )
 
 DECLARE_SQUADSLOT( SQUAD_SLOT_GRENADE1 )
 DECLARE_SQUADSLOT( SQUAD_SLOT_GRENADE2 )
+DECLARE_SQUADSLOT( SQUAD_SLOT_GUNNER )
 
 DECLARE_CONDITION( COND_COMBINE_NO_FIRE )
 DECLARE_CONDITION( COND_COMBINE_DEAD_FRIEND )
@@ -4703,5 +4748,4 @@ DEFINE_SCHEDULE
  "		COND_ENEMY_DEAD"
  "		COND_CAN_MELEE_ATTACK1"
  )
-
  AI_END_CUSTOM_NPC()

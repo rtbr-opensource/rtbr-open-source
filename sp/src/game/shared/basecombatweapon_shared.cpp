@@ -74,6 +74,7 @@ CBaseCombatWeapon::CBaseCombatWeapon()
 	m_bReloadsSingly	= false;
 
 	m_bFirstTime		= true;
+	m_bDrawFramesOver	= false;
 
 	// Defaults to zero
 	m_nViewModelIndex	= 0;
@@ -241,7 +242,7 @@ const unsigned char *CBaseCombatWeapon::GetEncryptionKey( void )
 void CBaseCombatWeapon::Precache( void )
 {
 #if defined( CLIENT_DLL )
-	Assert( Q_strlen( GetClassname() ) > 0 );
+	Assert( Q_strlen(GetWeaponScriptName() ) > 0 );
 	// Msg( "Client got %s\n", GetClassname() );
 #endif
 	m_iPrimaryAmmoType = m_iSecondaryAmmoType = -1;
@@ -323,7 +324,7 @@ void CBaseCombatWeapon::Precache( void )
 	else
 	{
 		// Couldn't read data file, remove myself
-		Warning( "Error reading weapon data file for: %s\n", GetClassname() );
+		Warning( "Error reading weapon data file for: %s\n", GetWeaponScriptName() );
 	//	Remove( );	//don't remove, this gets released soon!
 	}
 }
@@ -515,6 +516,11 @@ const char *CBaseCombatWeapon::GetDroppedModel() const
 bool CBaseCombatWeapon::UsesHands() const
 {
 	return GetWpnData().m_bUsesHands;
+}
+
+int CBaseCombatWeapon::GetHandRig() const
+{
+	return GetWpnData().m_nHandRig;
 }
 #endif
 
@@ -716,7 +722,7 @@ bool CBaseCombatWeapon::CanBeSelected( void )
 {
 	if ( !VisibleInWeaponSelection() )
 		return false;
-
+		
 	return HasAmmo();
 }
 
@@ -1054,7 +1060,7 @@ bool CBaseCombatWeapon::ShouldDisplayReloadHUDHint()
 void CBaseCombatWeapon::DisplayReloadHudHint()
 {
 #if !defined( CLIENT_DLL )
-	UTIL_HudHintText( GetOwner(), "valve_hint_reload" );
+	UTIL_HudHintText( GetOwner(), "valve_hint_reload", true);
 	m_iReloadHudHintCount++;
 	m_bReloadHudHintDisplayed = true;
 	m_flHudHintMinDisplayTime = gpGlobals->curtime + MIN_HUDHINT_DISPLAY_TIME;
@@ -1136,7 +1142,7 @@ WeaponClass_t CBaseCombatWeapon::WeaponClassFromString(const char *str)
 		return WEPCLASS_RIFLE;
 	else if (FStrEq(str, "WEPCLASS_SHOTGUN"))
 		return WEPCLASS_SHOTGUN;
-	else if (FStrEq(str, "WEPCLASS_HEAY"))
+	else if (FStrEq(str, "WEPCLASS_HEAVY"))
 		return WEPCLASS_HEAVY;
 
 	else if (FStrEq(str, "WEPCLASS_MELEE"))
@@ -1690,7 +1696,8 @@ bool CBaseCombatWeapon::DefaultDeploy( char *szViewModel, char *szWeaponModel, i
 
 	// Weapons that don't autoswitch away when they run out of ammo 
 	// can still be deployed when they have no ammo.
-	if ( !HasAnyAmmo() && AllowsAutoSwitchFrom() )
+	// This also applies to weapons which can be selected while empty.
+	if ( !HasAnyAmmo() && AllowsAutoSwitchFrom() && !(GetWeaponFlags() & ITEM_FLAG_SELECTONEMPTY))
 		return false;
 
 	CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
@@ -2106,7 +2113,7 @@ void CBaseCombatWeapon::ItemPostFrame( void )
 	//Track the duration of the fire
 	//FIXME: Check for IN_ATTACK2 as well?
 	//FIXME: What if we're calling ItemBusyFrame?
-	m_fFireDuration = ( pOwner->m_nButtons & IN_ATTACK ) ? ( m_fFireDuration + gpGlobals->frametime ) : 0.0f;
+	m_fFireDuration = (pOwner->m_nButtons & IN_ATTACK || (ShouldSecondaryAttackRecoil() && pOwner->m_nButtons & IN_ATTACK2)) ? (m_fFireDuration + gpGlobals->frametime) : 0.0f;
 
 	if ( UsesClipsForAmmo1() )
 	{
@@ -2126,7 +2133,7 @@ void CBaseCombatWeapon::ItemPostFrame( void )
 		}
 		else
 #endif
-		if (UsesSecondaryAmmo() && pOwner->GetAmmoCount(m_iSecondaryAmmoType)<=0 )
+		if (UsesSecondaryAmmo() && pOwner->GetAmmoCount(m_iSecondaryAmmoType)<=0 && !UsesClipsForAmmo2())
 		{
 			if (m_flNextEmptySoundTime < gpGlobals->curtime)
 			{
@@ -2156,16 +2163,16 @@ void CBaseCombatWeapon::ItemPostFrame( void )
 
 			SecondaryAttack();
 
-			// Secondary ammo doesn't have a reload animation
-			if ( UsesClipsForAmmo2() )
-			{
-				// reload clip2 if empty
-				if (m_iClip2 < 1)
-				{
-					pOwner->RemoveAmmo( 1, m_iSecondaryAmmoType );
-					m_iClip2 = m_iClip2 + 1;
-				}
-			}
+			// Secondary ammo does have a reload animation so we don't need this
+			//if ( UsesClipsForAmmo2() )
+			//{
+			//	// reload clip2 if empty
+			//	if (m_iClip2 < 1)
+			//	{
+			//		pOwner->RemoveAmmo( 1, m_iSecondaryAmmoType );
+			//		m_iClip2 = m_iClip2 + 1;
+			//	}
+			//}
 		}
 	}
 	
@@ -2236,7 +2243,11 @@ void CBaseCombatWeapon::ItemPostFrame( void )
 		// no fire buttons down or reloading
 		if ( !ReloadOrSwitchWeapons() && ( m_bInReload == false ) )
 		{
-			WeaponIdle();
+			// don't force the idle animation if we're allowed to draw this weapon while it's empty
+			if (!(GetWeaponFlags() & ITEM_FLAG_SELECTONEMPTY) || HasAnyAmmo())
+			{
+				WeaponIdle();
+			}
 		}
 	}
 }
@@ -2446,22 +2457,22 @@ bool CBaseCombatWeapon::DefaultReload( int iClipSize1, int iClipSize2, int iActi
 			bReload = true;
 		}
 		else {
-			if (GetActivity() == ACT_VM_IDLE && m_flNextFidgetReload < gpGlobals->curtime) {
+			if (GetActivity() == ACT_VM_IDLE && m_flNextFidgetReload < gpGlobals->curtime && ShouldWeaponFidget()) {
 				SendWeaponAnim(ACT_VM_FIDGET);
 				m_flNextFidgetReload = gpGlobals->curtime + 2.0f;
 			}
 		}
 	}
 
-	if ( UsesClipsForAmmo2() )
-	{
-		// need to reload secondary clip?
-		int secondary = MIN(iClipSize2 - m_iClip2, pOwner->GetAmmoCount(m_iSecondaryAmmoType));
-		if ( secondary != 0 )
-		{
-			bReload = true;
-		}
-	}
+	//if ( UsesClipsForAmmo2() )
+	//{
+	//	// need to reload secondary clip?
+	//	int secondary = MIN(iClipSize2 - m_iClip2, pOwner->GetAmmoCount(m_iSecondaryAmmoType));
+	//	if ( secondary != 0 )
+	//	{
+	//		bReload = true;
+	//	}
+	//}
 
 	if ( !bReload )
 		return false;
@@ -2664,17 +2675,28 @@ void CBaseCombatWeapon::FinishReload( void )
 			pOwner->RemoveAmmo( primary, m_iPrimaryAmmoType);
 		}
 
+		if ( m_bReloadsSingly )
+		{
+			m_bInReload = false;
+		}
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Reload has finished.
+//-----------------------------------------------------------------------------
+void CBaseCombatWeapon::FinishReloadSecondary( void )
+{
+	CBaseCombatCharacter *pOwner = GetOwner();
+
+	if (pOwner)
+	{
 		// If I use secondary clips, reload secondary
 		if ( UsesClipsForAmmo2() )
 		{
 			int secondary = MIN( GetMaxClip2() - m_iClip2, pOwner->GetAmmoCount(m_iSecondaryAmmoType));
 			m_iClip2 += secondary;
 			pOwner->RemoveAmmo( secondary, m_iSecondaryAmmoType );
-		}
-
-		if ( m_bReloadsSingly )
-		{
-			m_bInReload = false;
 		}
 	}
 }
@@ -2916,6 +2938,15 @@ bool CBaseCombatWeapon::IsLocked( CBaseEntity *pAsker )
 	return ( m_flUnlockTime > gpGlobals->curtime && m_hLocker != pAsker );
 }
 
+bool CBaseCombatWeapon::CanBePickedUpByNPCs(void)
+{
+#ifdef MAPBASE
+	return GetWpnData().m_nWeaponRestriction != WPNRESTRICT_PLAYER_ONLY;
+#else
+	return true;
+#endif // MAPBASE
+}
+
 //-----------------------------------------------------------------------------
 // Purpose:
 // Input  :
@@ -3148,6 +3179,9 @@ BEGIN_ENT_SCRIPTDESC( CBaseCombatWeapon, CBaseAnimating, "The base class for all
 	DEFINE_SCRIPTFUNC( GetViewModel, "Get the weapon's view model." )
 	DEFINE_SCRIPTFUNC( GetDroppedModel, "Get the weapon's unique dropped model if it has one." )
 
+	DEFINE_SCRIPTFUNC( UsesHands, "" )
+	DEFINE_SCRIPTFUNC( GetHandRig, "" )
+
 	DEFINE_SCRIPTFUNC( GetWeight, "Get the weapon's weight." )
 	DEFINE_SCRIPTFUNC( GetPrintName, "" )
 
@@ -3244,6 +3278,8 @@ BEGIN_DATADESC( CBaseCombatWeapon )
 
 	DEFINE_FIELD( m_flUnlockTime,		FIELD_TIME ),
 	DEFINE_FIELD( m_hLocker,			FIELD_EHANDLE ),
+
+	DEFINE_FIELD( m_iStoredAmmo, FIELD_INTEGER ),
 
 	//	DEFINE_FIELD( m_iViewModelIndex, FIELD_INTEGER ),
 	//	DEFINE_FIELD( m_iWorldModelIndex, FIELD_INTEGER ),

@@ -35,6 +35,11 @@ public:
 	void InitPose( Vector pos[], Quaternion q[] );
 	void AccumulatePose( Vector pos[], Quaternion q[], int sequence, float cycle, float flWeight, float flTime, CIKContext *pIKContext );
 	void CalcAutoplaySequences(	Vector pos[], Quaternion q[], float flRealTime, CIKContext *pIKContext );
+#ifdef RTBR_DEV
+#ifdef CLIENT_DLL
+	virtual void CalcPose( const CStudioHdr *pStudioHdr, CIKContext *pIKContext, Vector pos[], Quaternion q[], int sequence, float cycle, const float poseParameter[], int boneMask, float flWeight, float flTime );
+#endif
+#endif
 private:
 	void AddSequenceLayers( Vector pos[], Quaternion q[], mstudioseqdesc_t &seqdesc, int sequence, float cycle, float flWeight, float flTime, CIKContext *pIKContext );
 	void AddLocalLayers( Vector pos[], Quaternion q[], mstudioseqdesc_t &seqdesc, int sequence, float cycle, float flWeight, float flTime, CIKContext *pIKContext );
@@ -2382,6 +2387,87 @@ void CalcPose(
 		seq_ik.SolveSequenceLocks( seqdesc, pos, q );
 	}
 }
+#endif
+
+#if 0
+#ifdef CLIENT_DLL
+//-----------------------------------------------------------------------------
+// Purpose: calculate a pose for a single sequence
+//			adds autolayers, runs local ik rukes
+//-----------------------------------------------------------------------------
+void CBoneSetup::CalcPose(
+	const CStudioHdr *pStudioHdr,
+	CIKContext *pIKContext,
+	Vector pos[], 
+	Quaternion q[], 
+	int sequence, 
+	float cycle,
+	const float poseParameter[],
+	int boneMask,
+	float flWeight,
+	float flTime
+	)
+{
+	mstudioseqdesc_t	&seqdesc = ((CStudioHdr *)pStudioHdr)->pSeqdesc( sequence );
+
+	Assert( flWeight >= 0.0f && flWeight <= 1.0f );
+	// This shouldn't be necessary, but the Assert should help us catch whoever is screwing this up
+	flWeight = clamp( flWeight, 0.0f, 1.0f );
+
+	// add any IK locks to prevent numautolayers from moving extremities 
+	CIKContext seq_ik;
+	if (seqdesc.numiklocks)
+	{
+		seq_ik.Init( pStudioHdr, vec3_angle, vec3_origin, 0.0, 0, boneMask ); // local space relative so absolute position doesn't mater
+		seq_ik.AddSequenceLocks( seqdesc, pos, q );
+	}
+
+	CalcPoseSingle( pStudioHdr, pos, q, seqdesc, sequence, cycle, poseParameter, boneMask, flTime );
+
+	if ( pIKContext )
+	{
+		pIKContext->AddDependencies( seqdesc, sequence, cycle, poseParameter, flWeight );
+	}
+	
+	AddSequenceLayers( pos, q, seqdesc, sequence, cycle, flWeight, flTime, pIKContext );
+
+	if (seqdesc.numiklocks)
+	{
+		seq_ik.SolveSequenceLocks( seqdesc, pos, q );
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: calculate a pose for a single sequence
+//			adds autolayers, runs local ik rukes
+// 
+// RTBR VERSION - This is used for the hydra.
+// NOTE: This was moved to the CBoneSetup so we can access it from NPC code.
+
+// NOTE PS - Apparently IBoneSetup is NOT an interface for CBoneSetup??
+// Can't change that now or else all the animation code will break...
+// So instead I'll just break the interface so we can access this from 
+// higher level code.
+// 
+// NOTE PS PS - Actually, it kinda is an interface class...
+// We'll just pass through to the implementation here.
+//-----------------------------------------------------------------------------
+void IBoneSetup::CalcPose(
+	const CStudioHdr *pStudioHdr,
+	CIKContext *pIKContext,
+	Vector pos[], 
+	Quaternion q[], 
+	int sequence, 
+	float cycle,
+	const float poseParameter[],
+	int boneMask,
+	float flWeight,
+	float flTime
+	)
+{
+	m_pBoneSetup->CalcPose( pStudioHdr, pIKContext, pos, q, sequence, cycle, poseParameter, boneMask, flWeight, flTime );
+}
+#endif
 #endif
 
 //-----------------------------------------------------------------------------

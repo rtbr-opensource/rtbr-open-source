@@ -91,6 +91,9 @@ ConVar	ai_shot_bias_max( "ai_shot_bias_max", "1.0", FCVAR_REPLICATED );
 ConVar	ai_debug_shoot_positions( "ai_debug_shoot_positions", "0", FCVAR_REPLICATED | FCVAR_CHEAT );
 
 ConVar	tracer_debug_effect("tracer_debug_effect", "0", FCVAR_NONE);
+#if defined(MAPBASE) && defined(GAME_DLL)
+ConVar	ai_shot_notify_targets( "ai_shot_notify_targets", "0", FCVAR_NONE, "Allows fired bullets to notify the NPCs and players they are targeting, regardless of whether they hit them or not. Can be used for custom AI and speech." );
+#endif
 
 // Utility func to throttle rate at which the "reasonable position" spew goes out
 static double s_LastEntityReasonableEmitTime;
@@ -2065,6 +2068,8 @@ void CBaseEntity::FireBullets( const FireBulletsInfo_t &info )
 							break;
 						case 5:
 							DispatchParticleEffect("weapon_tracer_357", vecTracerSrc, vecTracerDest, vecMuzzleAngles);
+						case 7:
+							DispatchParticleEffect("weapon_tracer_shotgun", vecTracerSrc, vecTracerDest, vecMuzzleAngles);
 							break;
 						case 28:
 							DispatchParticleEffect("weapon_tracer_rifle", vecTracerSrc, vecTracerDest, vecMuzzleAngles);
@@ -2151,6 +2156,25 @@ void CBaseEntity::FireBullets( const FireBulletsInfo_t &info )
 		CTakeDamageInfo dmgInfo( this, pAttacker, flCumulativeDamage, nDamageType );
 		gamestats->Event_WeaponHit( pPlayer, info.m_bPrimaryAttack, pPlayer->GetActiveWeapon()->GetClassname(), dmgInfo );
 	}
+
+#ifdef MAPBASE
+	if ( ai_shot_notify_targets.GetBool() )
+	{
+		if ( IsPlayer() )
+		{
+			// Look for probable target to notify of attack
+			CBaseEntity *pAimTarget = static_cast<CBasePlayer*>(this)->GetProbableAimTarget( info.m_vecSrc, info.m_vecDirShooting );
+			if ( pAimTarget && pAimTarget->IsCombatCharacter() )
+			{
+				pAimTarget->MyCombatCharacterPointer()->OnEnemyRangeAttackedMe( this, vecDir, vecEnd );
+			}
+		}
+		else if ( GetEnemy() && GetEnemy()->IsCombatCharacter() )
+		{
+			GetEnemy()->MyCombatCharacterPointer()->OnEnemyRangeAttackedMe( this, vecDir, vecEnd );
+		}
+	}
+#endif
 #endif
 }
 #ifdef GAME_DLL
@@ -2814,6 +2838,18 @@ void CBaseEntity::SetScriptOwnerEntity(HSCRIPT pOwner)
 	SetOwnerEntity(ToEnt(pOwner));
 }
 
+#ifdef MAPBASE_VSCRIPT
+HSCRIPT CBaseEntity::ScriptGetGroundEntity()
+{
+	return ToHScript( m_hGroundEntity.Get() );
+}
+
+void CBaseEntity::ScriptSetGroundEntity( HSCRIPT hGroundEnt )
+{
+	SetGroundEntity( ToEnt( hGroundEnt ) );
+}
+#endif
+
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 const Vector& CBaseEntity::ScriptGetColorVector()
@@ -2852,6 +2888,14 @@ HSCRIPT CBaseEntity::ScriptGetPhysicsObject( void )
 		return g_pScriptVM->RegisterInstance( VPhysicsGetObject() );
 	else
 		return NULL;
+}
+
+//-----------------------------------------------------------------------------
+// Vscript: Gets the entity's physics object if it has one
+//-----------------------------------------------------------------------------
+void CBaseEntity::ScriptPhysicsInitNormal( int nSolidType, int nSolidFlags, bool createAsleep )
+{
+	VPhysicsInitNormal( (SolidType_t)nSolidType, nSolidFlags, createAsleep );
 }
 
 
@@ -3069,7 +3113,7 @@ void CBaseEntity::ScriptSetContextThink( const char* szContext, HSCRIPT hFunc, f
 
 		float nextthink = gpGlobals->curtime + flTime;
 
-		pf->m_hfnThink = hFunc;
+		pf->m_hfnThink = g_pScriptVM->CopyObject( hFunc );
 		pf->m_flNextThink = nextthink;
 
 #ifdef GAME_DLL

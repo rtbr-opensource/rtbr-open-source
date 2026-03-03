@@ -10,6 +10,7 @@
 #include "smoke_trail.h"
 #include "soundent.h"
 #include "engine/IEngineSound.h"
+#include "particle_parse.h"
 #include "npc_bullseye.h"
 #include "entitylist.h"
 #include "antlion_maker.h"
@@ -35,6 +36,9 @@ CBugBaitSensor* GetBugBaitSensorList()
 CBugBaitSensor::CBugBaitSensor( void )
 {
 	g_BugBaitSensorList.Insert( this );
+#ifdef MAPBASE
+	m_bUseRadius = true;
+#endif
 }
 
 CBugBaitSensor::~CBugBaitSensor( void )
@@ -49,10 +53,32 @@ BEGIN_DATADESC( CBugBaitSensor )
 
 	DEFINE_KEYFIELD( m_bEnabled, FIELD_BOOLEAN, "Enabled" ),
 	DEFINE_KEYFIELD( m_flRadius, FIELD_FLOAT, "radius" ),
+	DEFINE_KEYFIELD( m_bUseRadius, FIELD_BOOLEAN, "useradius" ),
+	DEFINE_KEYFIELD( m_vecMins, FIELD_VECTOR, "bmins" ),
+	DEFINE_KEYFIELD( m_vecMaxs, FIELD_VECTOR, "bmaxs" ),
+
+#ifdef MAPBASE
+	DEFINE_KEYFIELD( m_bUseRadius, FIELD_BOOLEAN, "useradius" ),
+	DEFINE_KEYFIELD( m_vecMins, FIELD_VECTOR, "bmins" ),
+	DEFINE_KEYFIELD( m_vecMaxs, FIELD_VECTOR, "bmaxs" ),
+#endif
 
 	DEFINE_INPUTFUNC( FIELD_VOID, "Enable", InputEnable ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "Disable", InputDisable ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "Toggle", InputToggle ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "EnableRadius", InputEnableRadius ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "DisableRadius", InputDisableRadius ),
+	DEFINE_INPUTFUNC( FIELD_INTEGER, "SetRadius", InputSetRadius ),
+	DEFINE_INPUTFUNC( FIELD_VECTOR, "SetMins", InputSetMins ),
+	DEFINE_INPUTFUNC( FIELD_VECTOR, "SetMaxs", InputSetMaxs ),
+
+#ifdef MAPBASE
+	DEFINE_INPUTFUNC( FIELD_VOID, "EnableRadius", InputEnableRadius ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "DisableRadius", InputDisableRadius ),
+	DEFINE_INPUTFUNC( FIELD_INTEGER, "SetRadius", InputSetRadius ),
+	DEFINE_INPUTFUNC( FIELD_VECTOR, "SetMins", InputSetMins ),
+	DEFINE_INPUTFUNC( FIELD_VECTOR, "SetMaxs", InputSetMaxs ),
+#endif
 
 	// Function Pointers
 	DEFINE_OUTPUT( m_OnBaited, "OnBaited" ),
@@ -129,6 +155,7 @@ void CGrenadeBugBait::Precache( void )
 	PrecacheModel( GRENADE_MODEL );
 
 	PrecacheScriptSound( "GrenadeBugBait.Splat" );
+	PrecacheParticleSystem( "weapon_bugbait_impact" );
 
 	BaseClass::Precache();
 }
@@ -151,7 +178,8 @@ void CGrenadeBugBait::BugBaitTouch( CBaseEntity *pOther )
 	}
 
 	//Do effect for the hit
-	SporeExplosion *pSporeExplosion = SporeExplosion::CreateSporeExplosion();
+	DispatchParticleEffect( "weapon_bugbait_impact", GetAbsOrigin(), QAngle( 0, 0, 0 ) );
+	/*SporeExplosion *pSporeExplosion = SporeExplosion::CreateSporeExplosion();
 
 	if ( pSporeExplosion )
 	{
@@ -172,7 +200,7 @@ void CGrenadeBugBait::BugBaitTouch( CBaseEntity *pOther )
 		pSporeExplosion->m_flSpawnRadius = 32.0f;
 
 		pSporeExplosion->SetLifetime( bugbait_distract_time.GetFloat() );
-	}
+	}*/
 
 	trace_t	tr;
 	Vector traceDir = GetAbsVelocity();
@@ -267,18 +295,42 @@ bool CGrenadeBugBait::ActivateBugbaitTargets( CBaseEntity *pOwner, Vector vecOri
 			continue;
 
 		//Make sure we're within range of the sensor
-		if ( pSensor->GetRadius() > ( pSensor->GetAbsOrigin() - vecOrigin ).Length() )
-		{
-			//Tell the sensor it's been hit
-			if ( pSensor->Baited( pOwner ) )
+#ifdef MAPBASE
+		if ( pSensor->UsesRadius() ){
+#endif
+			if ( pSensor->GetRadius() > (pSensor->GetAbsOrigin() - vecOrigin).Length() )
 			{
-				//If we're suppressing the call to antlions, then don't make a bugbait sound
-				if ( pSensor->SuppressCall() )
+				//Tell the sensor it's been hit
+				if ( pSensor->Baited( pOwner ) )
 				{
-					suppressCall = true;
+					//If we're suppressing the call to antlions, then don't make a bugbait sound
+					if ( pSensor->SuppressCall() )
+					{
+						suppressCall = true;
+					}
+				}
+			}
+#ifdef MAPBASE
+		}
+		else{
+			Vector vMins = pSensor->GetAbsMins();
+			Vector vMaxs = pSensor->GetAbsMaxs();
+			bool inBox = ((vecOrigin.x >= vMins.x && vecOrigin.x <= vMaxs.x) &&
+				(vecOrigin.y >= vMins.y && vecOrigin.y <= vMaxs.y) &&
+				(vecOrigin.z >= vMins.z && vecOrigin.z <= vMaxs.z));
+			if ( inBox ){
+				//Tell the sensor it's been hit
+				if ( pSensor->Baited( pOwner ) )
+				{
+					//If we're suppressing the call to antlions, then don't make a bugbait sound
+					if ( pSensor->SuppressCall() )
+					{
+						suppressCall = true;
+					}
 				}
 			}
 		}
+#endif
 	}
 
 	return suppressCall;

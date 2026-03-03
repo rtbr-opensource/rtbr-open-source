@@ -23,13 +23,21 @@ public:
 
 	void OnChangeActivity( Activity eNewActivity );
 	void HandleAnimEvent( animevent_t *pEvent );
-
-	virtual int SelectExtendSchedule() { return SCHED_MELEE_ATTACK1; }
-	virtual int SelectRetractSchedule() { return SCHED_MELEE_ATTACK1; }
+	
+	virtual bool CanBoogie() OVERRIDE { return false; }
 
 protected:
-	virtual float GetViewDistance() { return 128.0f; }
-	virtual float GetFieldOfView() { return 0.35f; }
+
+	int		StimulusMask() {
+		return /*bits_REACT_XENFLORA_ENTITY_APPROACH |*/
+			bits_REACT_XENFLORA_HURT |
+			/*bits_REACT_XENFLORA_HEAR_DANGER |*/
+			bits_REACT_XENFLORA_NEARBY_GUNSHOT |
+			bits_REACT_XENFLORA_ENEMY_IN_HIT_RANGE;
+	}
+
+	float GetViewDistance() { return 160.0f; }
+	float GetFieldOfView() { return 0.6f; }
 
 private:
 };

@@ -1,48 +1,23 @@
-//-----------------------------------------------------------------------------
-//	CLIENT_RTBR.VPC
-//
-//	Project Script
-//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------	
+//	CLIENT_RTBR.VPC	
+//	
+//	Project Script	
+//-----------------------------------------------------------------------------	
+$Macro SRCDIR		"..\.."	
+$Macro GAMENAME 	"raisingthebarredux"	
+$Macro PDBNAME		"client.pdb"
 
-$Macro SRCDIR		"..\.."
-$Macro GAMENAME 	"raisingthebarredux_release"
-
-$Include "$SRCDIR\game\client\client_episodic_base.vpc"
-
-$Configuration
-{
-	$Compiler
-	{
-		$AdditionalIncludeDirectories	"$BASE;.\rtbr;$SRCDIR\game\shared\rtbr"
-		$PreprocessorDefinitions		"$BASE;RTBR_DLL;SOURCE_2013;RTBR_RELEASE;"
+$Include "$SRCDIR\game\client\client_episodic_base.vpc"	
+$Configuration	
+{	
+	$Compiler	
+	{	
+		$AdditionalIncludeDirectories	"$BASE;.\rtbr;$SRCDIR\game\shared\rtbr"	
+		$PreprocessorDefinitions		"$BASE;RTBR_DLL;SOURCE_2013;RTBR_RELEASE;"	
 	}
-	$PostBuildEvent [!$ANALYZE]
-	{
-		$CommandLine		"if not exist $QUOTE$OUTBINDIR\release_binaries$QUOTE mkdir $QUOTE$OUTBINDIR\release_binaries$QUOTE" "\n" \
-							"if not exist $QUOTE$OUTBINDIR$QUOTE mkdir $QUOTE$OUTBINDIR$QUOTE" "\n" 
-		$CommandLine		"$BASE" "copy $QUOTE$(TargetDir)$(TargetFileName)$QUOTE $QUOTE$OUTBINDIR\release_binaries\$(TargetFileName)$QUOTE" "\n" 
-		$CommandLine		"$BASE" "copy $QUOTE$(TargetDir)$(TargetFileName)$QUOTE $QUOTE$OUTBINDIR\$(TargetFileName)$QUOTE" "\n" \
-							"if ERRORLEVEL 1 goto BuildEventFailed" "\n" \
-							"goto BuildEventOK" "\n" \
-							":BuildEventFailed" "\n" \
-							"echo *** ERROR! PostBuildStep FAILED for $(ProjectName)! EXE or DLL is probably running. ***" "\n" \
-							"del /q $QUOTE$(TargetDir)$(TargetFileName)$QUOTE" "\n" \
-							"exit 1" "\n" \
-							":BuildEventOK" "\n" 
-
-		$CommandLine		"$BASE" "\n" \
-							"call $SRCDIR\devtools\bin\vsign.bat -sign $OUTBINDIR\$(TargetFileName)" "\n" [$RETAIL && $PUBLISH]
-
-		$CommandLine		"$BASE" "\n" \
-							"call $SRCDIR\devtools\bin\vsign.bat -signvalve $OUTBINDIR\$(TargetFileName)" "\n" [!$RETAIL && !$PUBLISH && !$SOURCESDK]
-
-		$Description		"Publishing to $OUTBINDIR"
-		$ExcludedFromBuild	"No"
-	}
-}
-
-$Project "Client (RTBR Release)"
-{
+}	
+$Project "Client (RTBR Release)"	
+{	
 	$Folder "Source Files"	
 	{	
 		-$File	"$SRCDIR\game\shared\weapon_parse_default.cpp"	
@@ -56,6 +31,9 @@ $Project "Client (RTBR Release)"
 				$File	"rtbr\c_weapon_stunstick.cpp"	
 				$File	"rtbr\c_weapon_stunstick.h"	
 				$File	"$SRCDIR\game\shared\rtbr\weapon_parse_rtbr.cpp"	
+				$File 	"rtbr\c_weapon_gauss.cpp"	
+				$File 	"rtbr\c_weapon_hmg.cpp"	
+				$File 	"rtbr\c_weapon_immolator.cpp"
 			}	
 			$Folder "Misc"	
 			{	
@@ -64,7 +42,15 @@ $Project "Client (RTBR Release)"
 			}	
 			$Folder "NPCs"
 			{
+				$Folder "Flora"
+				{
+					$File	"rtbr/flora/c_npc_xenlight.cpp"
+				}
+
+				$File	"rtbr\c_npc_antlionking.cpp"
 				$File	"rtbr\c_npc_cremator.cpp"
+				$File	"rtbr\c_npc_protozoan.cpp"
+				$File	"rtbr\c_npc_wasteland_scanner.cpp"
 				$File	"$SRCDIR\game\shared\rtbr\npc_cremator_shared.h"
 			}
 			$Folder "HUD"	
@@ -72,7 +58,12 @@ $Project "Client (RTBR Release)"
 				$File "rtbr\hud_grenadetimer.cpp"	
 				$File "rtbr\hud_screendamagefx.cpp"	
 				$File "rtbr\hud_damagetiles.cpp"	
-			}	
-		}	
+			}
+
+			$Folder "Game"
+			{
+				$File "$SRCDIR\game\shared\rtbr\rtbr_shareddefs.h"
+			}			
+		}
 	}	
-}
+}	

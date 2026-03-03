@@ -36,14 +36,49 @@
 #define SF_COMBINE_NO_GRENADEDROP ( 1 << 17 )
 #define SF_COMBINE_NO_AR2DROP ( 1 << 18 )
 
+#define COMBINE_SKIN_DEFAULT		0
+#define COMBINE_SKIN_SHOTGUNNER		1
+
+#define bits_MEMORY_PAIN_LIGHT_SOUND		bits_MEMORY_CUSTOM1
+#define bits_MEMORY_PAIN_HEAVY_SOUND		bits_MEMORY_CUSTOM2
+#define bits_MEMORY_PLAYER_HURT				bits_MEMORY_CUSTOM3
+
+#ifndef MAPBASE
+#define COMBINE_GRENADE_THROW_SPEED 650
+#define COMBINE_GRENADE_TIMER		3.5
+#define COMBINE_GRENADE_FLUSH_TIME	3.0		// Don't try to flush an enemy who has been out of sight for longer than this.
+#define COMBINE_GRENADE_FLUSH_DIST	256.0	// Don't try to flush an enemy who has moved farther than this distance from the last place I saw him.
+#endif
+
+#define COMBINE_LIMP_HEALTH				20
+#ifndef MAPBASE
+#define	COMBINE_MIN_GRENADE_CLEAR_DIST	250
+#endif
+
+#define COMBINE_EYE_STANDING_POSITION	Vector( 0, 0, 66 )
+#define COMBINE_GUN_STANDING_POSITION	Vector( 0, 0, 57 )
+#define COMBINE_EYE_CROUCHING_POSITION	Vector( 0, 0, 40 )
+#define COMBINE_GUN_CROUCHING_POSITION	Vector( 0, 0, 36 )
+#define COMBINE_SHOTGUN_STANDING_POSITION	Vector( 0, 0, 36 )
+#define COMBINE_SHOTGUN_CROUCHING_POSITION	Vector( 0, 0, 36 )
+#define COMBINE_MIN_CROUCH_DISTANCE		256.0
+
+enum TacticalVariant_T
+{
+	TACTICAL_VARIANT_DEFAULT = 0,
+	TACTICAL_VARIANT_PRESSURE_ENEMY,				// Always try to close in on the player.
+	TACTICAL_VARIANT_PRESSURE_ENEMY_UNTIL_CLOSE,	// Act like VARIANT_PRESSURE_ENEMY, but go to VARIANT_DEFAULT once within 30 feet
+#ifdef MAPBASE
+	TACTICAL_VARIANT_GRENADE_HAPPY,					// Throw grenades as if you're fighting a turret
+#endif
+};
+
 //=========================================================
 //	>> CNPC_Combine
 //=========================================================
 #ifdef MAPBASE
 class CNPC_Combine : public CAI_GrenadeUser<CAI_BaseActor>
 {
-	DECLARE_DATADESC();
-	DEFINE_CUSTOM_AI;
 	DECLARE_CLASS( CNPC_Combine, CAI_GrenadeUser<CAI_BaseActor> );
 #else
 class CNPC_Combine : public CAI_BaseActor
@@ -54,6 +89,8 @@ class CNPC_Combine : public CAI_BaseActor
 #endif
 
 public:
+	DECLARE_DATADESC();
+	DEFINE_CUSTOM_AI;
 	CNPC_Combine();
 
 	// Create components
@@ -69,6 +106,7 @@ public:
 	int				RangeAttack2Conditions( float flDot, float flDist ); // For innate grenade attack
 	int				MeleeAttack1Conditions( float flDot, float flDist ); // For kick/punch
 	bool			FVisible( CBaseEntity *pEntity, int traceMask = MASK_BLOCKLOS, CBaseEntity **ppBlocker = NULL );
+	bool			FVisible( const Vector &vecTarget, int traceMask = MASK_BLOCKLOS, CBaseEntity **ppBlocker = NULL ) { return BaseClass::FVisible( vecTarget, traceMask, ppBlocker ); }
 	virtual bool	IsCurTaskContinuousMove();
 
 	virtual float	GetJumpGravity() const		{ return 1.8f; }
@@ -112,6 +150,7 @@ public:
 
 	Class_T			Classify( void );
 	bool			IsElite() { return m_fIsElite; }
+	bool			IsGunner() { return m_fIsGunner; }
 #ifdef MAPBASE
 	bool			IsAltFireCapable();
 	bool			IsGrenadeCapable();
@@ -148,6 +187,7 @@ public:
 	Activity		NPC_TranslateActivity( Activity eNewActivity );
 	void			BuildScheduleTestBits( void );
 	virtual int		SelectSchedule( void );
+	virtual int		SelectCombatSchedule();
 	virtual int		SelectFailSchedule( int failedSchedule, int failedTask, AI_TaskFailureCode_t taskFailCode );
 	int				SelectScheduleAttack();
 
@@ -181,8 +221,13 @@ public:
 #endif
 	void			IdleSound( void );
 	void			AlertSound( void );
+#ifdef MAPBASE
+	void			LostEnemySound( CBaseEntity *pEnemy );
+	void			FoundEnemySound( CBaseEntity *pEnemy );
+#else
 	void			LostEnemySound( void );
 	void			FoundEnemySound( void );
+#endif
 	void			AnnounceAssault( void );
 	void			AnnounceEnemyType( CBaseEntity *pEnemy );
 	void			AnnounceEnemyKill( CBaseEntity *pEnemy );
@@ -216,7 +261,7 @@ protected:
 	CAI_Sentence< CNPC_Combine > *GetSentences() { return &m_Sentences; }
 #endif
 
-private:
+protected:
 	//=========================================================
 	// Combine S schedules
 	//=========================================================
@@ -255,6 +300,7 @@ private:
 		SCHED_COMBINE_MOVE_TO_FORCED_GREN_LOS,
 		SCHED_COMBINE_FACE_IDEAL_YAW,
 		SCHED_COMBINE_MOVE_TO_MELEE,
+
 		NEXT_SCHEDULE,
 	};
 
@@ -272,6 +318,7 @@ private:
 		TASK_COMBINE_PLAY_SEQUENCE_FACE_ALTFIRE_TARGET,
 		TASK_COMBINE_GET_PATH_TO_FORCED_GREN_LOS,
 		TASK_COMBINE_SET_STANDING,
+
 		NEXT_TASK
 	};
 
@@ -287,13 +334,23 @@ private:
 		COND_COMBINE_DROP_GRENADE,
 		COND_COMBINE_ON_FIRE,
 		COND_COMBINE_ATTACK_SLOT_AVAILABLE,
+
 		NEXT_CONDITION
 	};
 
-private:
-	// Select the combat schedule
-	int SelectCombatSchedule();
+	// -----------------------------------------------
+	// Combine Squad slots
+	// -----------------------------------------------
+	enum SquadSlot_T
+	{
+		SQUAD_SLOT_GRENADE1 = LAST_SHARED_SQUADSLOT,
+		SQUAD_SLOT_GRENADE2,
+		SQUAD_SLOT_ATTACK_OCCLUDER,
+		SQUAD_SLOT_OVERWATCH,
+		SQUAD_SLOT_GUNNER,
+	};
 
+private:
 	// Should we charge the player?
 	bool ShouldChargePlayer();
 
@@ -314,9 +371,20 @@ private:
 		}
 	};
 
+protected:
 	// Rappel
 	virtual bool IsWaitingToRappel( void ) { return m_RappelBehavior.IsWaitingToRappel(); }
 	void BeginRappel() { m_RappelBehavior.BeginRappel(); }
+
+	int				m_nShots;
+	float			m_flShotDelay;
+	float			m_flStopMoveShootTime;
+
+	bool			m_bShouldPatrol;
+	bool			m_bFirstEncounter;// only put on the handsign show in the squad's first encounter.
+#ifndef MAPBASE // CAI_GrenadeUser
+	float			m_flNextAltFireTime;		// Elites only. Next time to begin considering alt-fire attack.
+#endif
 
 private:
 	int				m_nKickDamage;
@@ -328,8 +396,6 @@ private:
 	bool			m_bUnderthrow;
 	bool			m_bAlternateCapable;
 #endif
-	bool			m_bShouldPatrol;
-	bool			m_bFirstEncounter;// only put on the handsign show in the squad's first encounter.
 
 	// Time Variables
 	float			m_flNextPainSoundTime;
@@ -339,13 +405,6 @@ private:
 #endif
 	float			m_flNextLostSoundTime;
 	float			m_flAlertPatrolTime;		// When to stop doing alert patrol
-#ifndef MAPBASE // CAI_GrenadeUser
-	float			m_flNextAltFireTime;		// Elites only. Next time to begin considering alt-fire attack.
-#endif
-
-	int				m_nShots;
-	float			m_flShotDelay;
-	float			m_flStopMoveShootTime;
 
 #ifndef COMBINE_SOLDIER_USES_RESPONSE_SYSTEM
 	CAI_Sentence< CNPC_Combine > m_Sentences;
@@ -369,6 +428,7 @@ public:
 	int				m_iLastAnimEventHandled;
 #endif
 	bool			m_fIsElite;
+	bool			m_fIsGunner;
 #ifndef MAPBASE // CAI_GrenadeUser
 	Vector			m_vecAltFireTarget;
 #endif

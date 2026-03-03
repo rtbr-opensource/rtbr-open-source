@@ -58,6 +58,7 @@
 #ifdef MAPBASE
 #include "triggers.h"
 #include "mapbase/variant_tools.h"
+#include "mapbase/protagonist_system.h"
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -70,6 +71,8 @@ extern ConVar autoaim_max_dist;
 extern ConVar player_squad_autosummon_enabled;
 #endif
 
+extern ConVar suit_chatterlevel;
+
 // Do not touch with without seeing me, please! (sjb)
 // For consistency's sake, enemy gunfire is traced against a scaled down
 // version of the player's hull, not the hitboxes for the player's model
@@ -81,7 +84,6 @@ extern ConVar player_squad_autosummon_enabled;
 
 // This switches between the single primary weapon, and multiple weapons with buckets approach (jdw)
 #define	HL2_SINGLE_PRIMARY_WEAPON_MODE	0
-
 #define TIME_IGNORE_FALL_DAMAGE 10.0
 
 extern int gEvilImpulse101;
@@ -123,6 +125,7 @@ ConVar player_autoswitch_enabled( "player_autoswitch_enabled", "1", FCVAR_NONE, 
 
 #ifdef SP_ANIM_STATE
 ConVar hl2_use_sp_animstate( "hl2_use_sp_animstate", "1", FCVAR_NONE, "Allows SP HL2 players to use HL2:DM animations for custom player models. (changes may not apply until model is reloaded)" );
+ConVar player_process_scene_events( "player_process_scene_events", "1", FCVAR_NONE, "Allows players to process scene events." );
 #endif
 
 #endif
@@ -269,6 +272,7 @@ public:
 	void InputSetHandModelBodyGroup( inputdata_t &inputdata );
 
 	void InputSetPlayerModel( inputdata_t &inputdata );
+	void InputSetPlayerDrawLegs( inputdata_t &inputdata );
 	void InputSetPlayerDrawExternally( inputdata_t &inputdata );
 #endif
 
@@ -593,6 +597,8 @@ BEGIN_DATADESC( CHL2_Player )
 	DEFINE_INPUTFUNC( FIELD_VOID, "DisableGeigerCounter", InputDisableGeigerCounter ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "ShowSquadHUD", InputShowSquadHUD ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "HideSquadHUD", InputHideSquadHUD ),
+
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetProtagonist", InputSetProtagonist ),
 #endif
 
 	DEFINE_SOUNDPATCH( m_sndLeeches ),
@@ -606,6 +612,10 @@ BEGIN_DATADESC( CHL2_Player )
 	DEFINE_FIELD( m_hLocatorTargetEntity, FIELD_EHANDLE ),
 
 	DEFINE_FIELD( m_flTimeNextLadderHint, FIELD_TIME ),
+
+#ifdef MAPBASE
+	DEFINE_KEYFIELD( m_iszProtagonistName, FIELD_STRING, "ProtagonistName" ),
+#endif
 
 	//DEFINE_FIELD( m_hPlayerProxy, FIELD_EHANDLE ), //Shut up class check!
 
@@ -625,6 +635,9 @@ BEGIN_ENT_SCRIPTDESC( CHL2_Player, CBasePlayer, "The HL2 player entity." )
 	DEFINE_SCRIPTFUNC( RemoveCustomSuitDevice, "Removes a custom suit device ID. (1-3)" )
 	DEFINE_SCRIPTFUNC( IsCustomSuitDeviceActive, "Checks if a custom suit device is active." )
 
+	DEFINE_SCRIPTFUNC( GetProtagonistName, "Gets the player's protagonist name." )
+	DEFINE_SCRIPTFUNC( SetProtagonist, "Sets the player's protagonist entry." )
+
 #ifdef SP_ANIM_STATE
 	DEFINE_SCRIPTFUNC( AddAnimStateLayer, "Adds a custom sequence index as a misc. layer for the singleplayer anim state, wtih parameters for blending in/out, setting the playback rate, holding the animation at the end, and only playing when the player is still." )
 #endif
@@ -640,6 +653,10 @@ CHL2_Player::CHL2_Player()
 
 	m_flArmorReductionTime = 0.0f;
 	m_iArmorReductionFrom = 0;
+
+#ifdef MAPBASE
+	m_nProtagonistIndex = -1;
+#endif
 }
 
 //
@@ -674,8 +691,12 @@ CSuitPowerDevice SuitDeviceCustom[] =
 IMPLEMENT_SERVERCLASS_ST(CHL2_Player, DT_HL2_Player)
 	SendPropDataTable(SENDINFO_DT(m_HL2Local), &REFERENCE_SEND_TABLE(DT_HL2Local), SendProxy_SendLocalDataTable),
 	SendPropBool( SENDINFO(m_fIsSprinting) ),
+#ifdef MAPBASE
+	SendPropInt( SENDINFO( m_nProtagonistIndex ), 8, SPROP_UNSIGNED ),
+#endif
 #ifdef SP_ANIM_STATE
 	SendPropFloat( SENDINFO(m_flAnimRenderYaw), 0, SPROP_NOSCALE ),
+	SendPropFloat( SENDINFO(m_flAnimRenderZ), 0, SPROP_NOSCALE ),
 #endif
 END_SEND_TABLE()
 
@@ -1170,6 +1191,18 @@ void CHL2_Player::PostThink( void )
 		m_pPlayerAnimState->Update( angEyeAngles.y, angEyeAngles.x );
 
 		m_flAnimRenderYaw.Set( m_pPlayerAnimState->GetRenderAngles().y );
+
+		if (m_pPlayerAnimState->IsJumping() && !m_pPlayerAnimState->IsDuckJumping())
+		{
+			m_flAnimRenderZ.Set( -(GetViewOffset().z) );
+		}
+		else
+			m_flAnimRenderZ.Set( 0.0f );
+
+		if (player_process_scene_events.GetBool())
+		{
+			ProcessSceneEvents();
+		}
 	}
 #endif
 }
@@ -1248,6 +1281,11 @@ void CHL2_Player::Activate( void )
 #endif
 
 	GetPlayerProxy();
+
+#ifdef MAPBASE
+	if (m_iszProtagonistName != NULL_STRING)
+		SetProtagonist( STRING( m_iszProtagonistName ) );
+#endif
 }
 
 //------------------------------------------------------------------------------
@@ -1487,7 +1525,10 @@ CStudioHdr *CHL2_Player::OnNewModel()
 }
 
 extern char g_szDefaultPlayerModel[MAX_PATH];
+extern bool g_bDefaultPlayerLegs;
 extern bool g_bDefaultPlayerDrawExternally;
+
+extern char g_szDefaultProtagonist[MAX_PROTAGONIST_NAME];
 #endif
 
 //-----------------------------------------------------------------------------
@@ -1519,7 +1560,14 @@ void CHL2_Player::Spawn(void)
 		RemoveEffects( EF_NODRAW );
 	}
 
+	SetDrawPlayerLegs( g_bDefaultPlayerLegs );
 	SetDrawPlayerModelExternally( g_bDefaultPlayerDrawExternally );
+
+	if (m_iszProtagonistName == NULL_STRING && *g_szDefaultProtagonist)
+		m_iszProtagonistName = MAKE_STRING( g_szDefaultProtagonist );
+	
+	if (m_iszProtagonistName != NULL_STRING)
+		SetProtagonist( STRING( m_iszProtagonistName ) );
 #endif
 
 	//
@@ -1825,7 +1873,7 @@ bool CHL2_Player::CommanderFindGoal( commandgoal_t *pGoal )
 	// Get either our +USE entity or the gravity gun entity
 	CBaseEntity *pHeldEntity = GetPlayerHeldEntity(this);
 	if ( !pHeldEntity )
-		PhysCannonGetHeldEntity( GetActiveWeapon() );
+		pHeldEntity = PhysCannonGetHeldEntity( GetActiveWeapon() );
 
 	CTraceFilterSkipTwoEntities filter( this, pHeldEntity, COLLISION_GROUP_INTERACTIVE_DEBRIS );
 #else
@@ -2570,14 +2618,14 @@ bool CHL2_Player::ApplyBattery( float powerMultiplier )
 		// Suit reports new power level
 		// For some reason this wasn't working in release build -- round it.
 		pct = (int)( (float)(ArmorValue() * 100.0) * (1.0/MAX_NORMAL_BATTERY) + 0.5);
-		pct = (pct / 5);
 		if (pct > 0)
 			pct--;
 	
 		Q_snprintf( szcharge,sizeof(szcharge),"!HEV_%1dP", pct );
 		
 		//UTIL_EmitSoundSuit(edict(), szcharge);
-		SetSuitUpdate(szcharge, FALSE, SUIT_NEXT_IN_30SEC);
+		if (suit_chatterlevel.GetInt() == SUIT_CHATTER_LEVEL_ALL)
+			SetSuitUpdate(szcharge, FALSE, SUIT_NEXT_IN_30SEC);
 		return true;		
 	}
 	return false;
@@ -3348,18 +3396,22 @@ bool CHL2_Player::Weapon_CanUse( CBaseCombatWeapon *pWeapon )
 //-----------------------------------------------------------------------------
 void CHL2_Player::Weapon_Equip( CBaseCombatWeapon *pWeapon )
 {
-#if	HL2_SINGLE_PRIMARY_WEAPON_MODE
-
-	if ( pWeapon->GetSlot() == WEAPON_PRIMARY_SLOT )
+	if (HL2_SINGLE_PRIMARY_WEAPON_MODE)
 	{
-		Weapon_DropSlot( WEAPON_PRIMARY_SLOT );
+		if (pWeapon->GetSlot() == WEAPON_PRIMARY_SLOT)
+		{
+			Weapon_DropSlot( WEAPON_PRIMARY_SLOT );
+		}
 	}
-
-#endif
-
+	
 	if( GetActiveWeapon() == NULL )
 	{
 		m_HL2Local.m_bWeaponLowered = false;
+
+#ifdef SP_ANIM_STATE
+		if (m_pPlayerAnimState)
+			m_pPlayerAnimState->StopWeaponRelax();
+#endif
 	}
 
 	BaseClass::Weapon_Equip( pWeapon );
@@ -3373,79 +3425,78 @@ void CHL2_Player::Weapon_Equip( CBaseCombatWeapon *pWeapon )
 bool CHL2_Player::BumpWeapon( CBaseCombatWeapon *pWeapon )
 {
 
-#if	HL2_SINGLE_PRIMARY_WEAPON_MODE
-
-	CBaseCombatCharacter *pOwner = pWeapon->GetOwner();
-
-	// Can I have this weapon type?
-	if ( pOwner || !Weapon_CanUse( pWeapon ) || !g_pGameRules->CanHavePlayerItem( this, pWeapon ) )
+	if (HL2_SINGLE_PRIMARY_WEAPON_MODE)
 	{
-			if ( gEvilImpulse101 )
+		CBaseCombatCharacter *pOwner = pWeapon->GetOwner();
+
+		// Can I have this weapon type?
+		if (pOwner || !Weapon_CanUse( pWeapon ) || !g_pGameRules->CanHavePlayerItem( this, pWeapon ))
+		{
+			if (gEvilImpulse101)
 			{
 				UTIL_Remove( pWeapon );
 			}
 			return false;
-	}
-
-	// ----------------------------------------
-	// If I already have it just take the ammo
-	// ----------------------------------------
-	if (Weapon_OwnsThisType( pWeapon->GetClassname(), pWeapon->GetSubType())) 
-	{
-		//Only remove the weapon if we attained ammo from it
-		if ( Weapon_EquipAmmoOnly( pWeapon ) == false )
-			return false;
-
-		// Only remove me if I have no ammo left
-		// Can't just check HasAnyAmmo because if I don't use clips, I want to be removed, 
-		if ( pWeapon->UsesClipsForAmmo1() && pWeapon->HasPrimaryAmmo() )
-			return false;
-
-		UTIL_Remove( pWeapon );
-		return false;
-	}
-	// -------------------------
-	// Otherwise take the weapon
-	// -------------------------
-	else 
-	{
-		//Make sure we're not trying to take a new weapon type we already have
-		if ( Weapon_SlotOccupied( pWeapon ) )
-		{
-			CBaseCombatWeapon *pActiveWeapon = Weapon_GetSlot( WEAPON_PRIMARY_SLOT );
-
-			if ( pActiveWeapon != NULL && pActiveWeapon->HasAnyAmmo() == false && Weapon_CanSwitchTo( pWeapon ) )
-			{
-				Weapon_Equip( pWeapon );
-				return true;
-			}
-
-			//Attempt to take ammo if this is the gun we're holding already
-			if ( Weapon_OwnsThisType( pWeapon->GetClassname(), pWeapon->GetSubType() ) )
-			{
-				Weapon_EquipAmmoOnly( pWeapon );
-			}
-
-			return false;
 		}
 
-		pWeapon->CheckRespawn();
+		// ----------------------------------------
+		// If I already have it just take the ammo
+		// ----------------------------------------
+		if (Weapon_OwnsThisType( pWeapon->GetClassname(), pWeapon->GetSubType() ))
+		{
+			//Only remove the weapon if we attained ammo from it
+			if (Weapon_EquipAmmoOnly( pWeapon ) == false)
+				return false;
 
-		pWeapon->AddSolidFlags( FSOLID_NOT_SOLID );
-		pWeapon->AddEffects( EF_NODRAW );
+			// Only remove me if I have no ammo left
+			// Can't just check HasAnyAmmo because if I don't use clips, I want to be removed, 
+			if (pWeapon->UsesClipsForAmmo1() && pWeapon->HasPrimaryAmmo())
+				return false;
 
-		Weapon_Equip( pWeapon );
+			UTIL_Remove( pWeapon );
+			return false;
+		}
+		// -------------------------
+		// Otherwise take the weapon
+		// -------------------------
+		else
+		{
+			//Make sure we're not trying to take a new weapon type we already have
+			if (Weapon_SlotOccupied( pWeapon ))
+			{
+				CBaseCombatWeapon *pActiveWeapon = Weapon_GetSlot( WEAPON_PRIMARY_SLOT );
 
-		EmitSound( "HL2Player.PickupWeapon" );
-		
-		return true;
+				if (pActiveWeapon != NULL && pActiveWeapon->HasAnyAmmo() == false && Weapon_CanSwitchTo( pWeapon ))
+				{
+					Weapon_Equip( pWeapon );
+					return true;
+				}
+
+				//Attempt to take ammo if this is the gun we're holding already
+				if (Weapon_OwnsThisType( pWeapon->GetClassname(), pWeapon->GetSubType() ))
+				{
+					Weapon_EquipAmmoOnly( pWeapon );
+				}
+
+				return false;
+			}
+
+			pWeapon->CheckRespawn();
+
+			pWeapon->AddSolidFlags( FSOLID_NOT_SOLID );
+			pWeapon->AddEffects( EF_NODRAW );
+
+			Weapon_Equip( pWeapon );
+
+			EmitSound( "HL2Player.PickupWeapon" );
+
+			return true;
+		}
 	}
-#else
-
-	return BaseClass::BumpWeapon( pWeapon );
-
-#endif
-
+	else
+	{
+		return BaseClass::BumpWeapon( pWeapon );
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -3455,16 +3506,15 @@ bool CHL2_Player::BumpWeapon( CBaseCombatWeapon *pWeapon )
 //-----------------------------------------------------------------------------
 bool CHL2_Player::ClientCommand( const CCommand &args )
 {
-#if	HL2_SINGLE_PRIMARY_WEAPON_MODE
-
-	//Drop primary weapon
-	if ( !Q_stricmp( args[0], "DropPrimary" ) )
+	if (HL2_SINGLE_PRIMARY_WEAPON_MODE)
 	{
-		Weapon_DropSlot( WEAPON_PRIMARY_SLOT );
-		return true;
+		//Drop primary weapon
+		if ( !Q_stricmp( args[0], "DropPrimary" ) )
+		{
+			Weapon_DropSlot( WEAPON_PRIMARY_SLOT );
+			return true;
+		}
 	}
-
-#endif
 
 	if ( !Q_stricmp( args[0], "emit" ) )
 	{
@@ -3574,30 +3624,30 @@ void CHL2_Player::PlayerUse ( void )
 			usedSomething = true;
 		}
 
-#if	HL2_SINGLE_PRIMARY_WEAPON_MODE
-
-		//Check for weapon pick-up
-		if ( m_afButtonPressed & IN_USE )
+		if (HL2_SINGLE_PRIMARY_WEAPON_MODE)
 		{
-			CBaseCombatWeapon *pWeapon = dynamic_cast<CBaseCombatWeapon *>(pUseEntity);
-
-			if ( ( pWeapon != NULL ) && ( Weapon_CanSwitchTo( pWeapon ) ) )
+			//Check for weapon pick-up
+			if ( m_afButtonPressed & IN_USE )
 			{
-				//Try to take ammo or swap the weapon
-				if ( Weapon_OwnsThisType( pWeapon->GetClassname(), pWeapon->GetSubType() ) )
-				{
-					Weapon_EquipAmmoOnly( pWeapon );
-				}
-				else
-				{
-					Weapon_DropSlot( pWeapon->GetSlot() );
-					Weapon_Equip( pWeapon );
-				}
+				CBaseCombatWeapon *pWeapon = dynamic_cast<CBaseCombatWeapon *>(pUseEntity);
 
-				usedSomething = true;
+				if ( ( pWeapon != NULL ) && ( Weapon_CanSwitchTo( pWeapon ) ) )
+				{
+					//Try to take ammo or swap the weapon
+					if ( Weapon_OwnsThisType( pWeapon->GetClassname(), pWeapon->GetSubType() ) )
+					{
+						Weapon_EquipAmmoOnly( pWeapon );
+					}
+					else
+					{
+						Weapon_DropSlot( pWeapon->GetSlot() );
+						Weapon_Equip( pWeapon );
+					}
+
+					usedSomething = true;
+				}
 			}
 		}
-#endif
 	}
 	else if ( m_afButtonPressed & IN_USE )
 	{
@@ -3628,6 +3678,20 @@ void CHL2_Player::UpdateWeaponPosture( void )
 	{
 		m_LowerWeaponTimer.Set( .3 );
 		VPROF( "CHL2_Player::UpdateWeaponPosture-CheckLower" );
+
+#ifdef MAPBASE
+		if (m_nButtons & IN_VGUIMODE)
+		{
+			//We're over a friendly, drop our weapon
+			if (Weapon_Lower() == false)
+			{
+				//FIXME: We couldn't lower our weapon!
+			}
+
+			return;
+		}
+#endif // MAPBASE
+
 		Vector vecAim = BaseClass::GetAutoaimVector( AUTOAIM_SCALE_DIRECT_ONLY );
 
 		const float CHECK_FRIENDLY_RANGE = 50 * 12;
@@ -3751,6 +3815,11 @@ bool CHL2_Player::Weapon_Lower( void )
 
 	m_HL2Local.m_bWeaponLowered = true;
 
+#ifdef SP_ANIM_STATE
+	if (m_pPlayerAnimState)
+		m_pPlayerAnimState->StartWeaponRelax();
+#endif
+
 	CBaseCombatWeapon *pWeapon = dynamic_cast<CBaseCombatWeapon *>(GetActiveWeapon());
 
 	if ( pWeapon == NULL )
@@ -3772,6 +3841,11 @@ bool CHL2_Player::Weapon_Ready( void )
 		return true;
 
 	m_HL2Local.m_bWeaponLowered = false;
+
+#ifdef SP_ANIM_STATE
+	if (m_pPlayerAnimState)
+		m_pPlayerAnimState->StopWeaponRelax();
+#endif
 
 	CBaseCombatWeapon *pWeapon = dynamic_cast<CBaseCombatWeapon *>(GetActiveWeapon());
 
@@ -3796,7 +3870,7 @@ bool CHL2_Player::Weapon_CanSwitchTo( CBaseCombatWeapon *pWeapon )
 	if (pVehicle && !pPlayer->UsingStandardWeaponsInVehicle())
 		return false;
 
-	if ( !pWeapon->HasAnyAmmo() && !GetAmmoCount( pWeapon->m_iPrimaryAmmoType ) )
+	if ( !pWeapon->HasAnyAmmo() && !GetAmmoCount( pWeapon->m_iPrimaryAmmoType ) && !( pWeapon->GetWeaponFlags() & ITEM_FLAG_SELECTONEMPTY ) )
 		return false;
 
 	if ( !pWeapon->CanDeploy() )
@@ -3986,6 +4060,21 @@ void CHL2_Player::OnRestore()
 {
 	BaseClass::OnRestore();
 	m_pPlayerAISquad = g_AI_SquadManager.FindCreateSquad(AllocPooledString(PLAYER_SQUADNAME));
+
+#ifdef SP_ANIM_STATE
+	if ( m_pPlayerAnimState == NULL )
+	{
+		if ( GetModelPtr() && GetModelPtr()->HaveSequenceForActivity(ACT_HL2MP_IDLE) && hl2_use_sp_animstate.GetBool() )
+		{
+			// Here we create and init the player animation state.
+			m_pPlayerAnimState = CreatePlayerAnimationState(this);
+		}
+		else
+		{
+			m_flAnimRenderYaw = FLT_MAX;
+		}
+	}
+#endif
 }
 
 //---------------------------------------------------------
@@ -4036,6 +4125,10 @@ bool CHL2_Player::Weapon_Switch( CBaseCombatWeapon *pWeapon, int viewmodelindex 
 	{
 		StopZooming();
 	}
+
+#ifdef MAPBASE
+	RefreshProtagonistWeaponData( pWeapon );
+#endif
 
 	return BaseClass::Weapon_Switch( pWeapon, viewmodelindex );
 }
@@ -4432,6 +4525,144 @@ bool CHL2_Player::IsCustomSuitDeviceActive( int iDeviceID )
 
 	return SuitPower_IsDeviceActive( SuitDeviceCustom[iDeviceID] );
 }
+
+//-----------------------------------------------------------------------------
+// Purpose: Gets our protagonist name, if we have one
+//-----------------------------------------------------------------------------
+const char *CHL2_Player::GetProtagonistName() const
+{
+	return STRING( m_iszProtagonistName );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Gets our protagonist index, if we have one
+//-----------------------------------------------------------------------------
+int CHL2_Player::GetProtagonistIndex() const
+{
+	return m_nProtagonistIndex;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Sets our protagonist to the specified entry
+//-----------------------------------------------------------------------------
+void CHL2_Player::InputSetProtagonist( inputdata_t &inputdata )
+{
+	SetProtagonist( inputdata.value.String() );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Sets our protagonist to the specified entry
+//-----------------------------------------------------------------------------
+void CHL2_Player::SetProtagonist( const char *pszProtagonist )
+{
+	if (!pszProtagonist || !*pszProtagonist)
+	{
+		ResetProtagonist();
+		return;
+	}
+
+	int nIndex = g_ProtagonistSystem.FindProtagonistIndex( pszProtagonist );
+	if (nIndex == -1)
+	{
+		Warning( "\"%s\" is not a valid protagonist\n", pszProtagonist );
+		return;
+	}
+
+	if (m_nProtagonistIndex != -1)
+	{
+		// Flush any pre-existing data
+		ResetProtagonist();
+	}
+	
+	m_nProtagonistIndex = nIndex;
+	m_iszProtagonistName = AllocPooledString( pszProtagonist );
+
+	RefreshProtagonistData();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Resets protagonist data
+//-----------------------------------------------------------------------------
+void CHL2_Player::ResetProtagonist()
+{
+	SetModel( g_szDefaultPlayerModel );
+	m_nSkin = 0;
+	m_nBody = 0;
+
+	CBaseViewModel *vm = GetViewModel( 1 );
+	if (vm)
+	{
+		extern char g_szDefaultHandsModel[MAX_PATH];
+		vm->SetWeaponModel( g_szDefaultHandsModel, NULL );
+
+		vm->m_nSkin = 0;
+		vm->m_nBody = 0;
+	}
+
+	// RemoveContext will automatically remove contexts by name, regardless of how values are specified
+	char szContexts[128] = { 0 };
+	g_ProtagonistSystem.GetProtagonist_ResponseContexts( this, szContexts, sizeof( szContexts ) );
+	if (szContexts[0])
+		RemoveContext( szContexts );
+
+	m_iszProtagonistName = NULL_STRING;
+	m_nProtagonistIndex = -1;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Refreshes protagonist data
+//-----------------------------------------------------------------------------
+void CHL2_Player::RefreshProtagonistData()
+{
+	if (m_nProtagonistIndex == -1)
+		return;
+
+	g_ProtagonistSystem.PrecacheProtagonist( this, m_nProtagonistIndex );
+
+	const char *pszProtagModel = g_ProtagonistSystem.GetProtagonist_PlayerModel( this );
+	if (pszProtagModel)
+		SetModel( pszProtagModel );
+
+	m_nSkin = g_ProtagonistSystem.GetProtagonist_PlayerModelSkin( this );
+	m_nBody = g_ProtagonistSystem.GetProtagonist_PlayerModelBody( this );
+
+	char szContexts[128] = { 0 };
+	g_ProtagonistSystem.GetProtagonist_ResponseContexts( this, szContexts, sizeof( szContexts ) );
+	if (szContexts[0])
+		AddContext( szContexts );
+
+	RefreshProtagonistWeaponData( GetActiveWeapon() );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Refreshes protagonist data
+//-----------------------------------------------------------------------------
+void CHL2_Player::RefreshProtagonistWeaponData( CBaseCombatWeapon *pWeapon )
+{
+	if (m_nProtagonistIndex == -1)
+		return;
+
+	CBaseViewModel *vm = GetViewModel( 1 );
+	if (vm)
+	{
+		const char *pszHandModel = g_ProtagonistSystem.GetProtagonist_HandModel( this, pWeapon );
+		if (pszHandModel)
+		{
+			vm->SetWeaponModel( pszHandModel, NULL );
+
+			vm->m_nSkin = g_ProtagonistSystem.GetProtagonist_HandModelSkin( this, pWeapon );
+			vm->m_nBody = g_ProtagonistSystem.GetProtagonist_HandModelBody( this, pWeapon );
+		}
+		else
+		{
+			extern char g_szDefaultHandsModel[MAX_PATH];
+			vm->SetWeaponModel( g_szDefaultHandsModel, NULL );
+
+			vm->m_nSkin = 0;
+			vm->m_nBody = 0;
+		}
+	}
+}
 #endif
 
 //-----------------------------------------------------------------------------
@@ -4591,6 +4822,7 @@ BEGIN_DATADESC( CLogicPlayerProxy )
 	DEFINE_INPUTFUNC( FIELD_INTEGER, "SetHandModelSkin", InputSetHandModelSkin ),
 	DEFINE_INPUTFUNC( FIELD_INTEGER, "SetHandModelBodyGroup", InputSetHandModelBodyGroup ),
 	DEFINE_INPUTFUNC( FIELD_STRING,	"SetPlayerModel", InputSetPlayerModel ),
+	DEFINE_INPUTFUNC( FIELD_BOOLEAN, "SetPlayerDrawLegs", InputSetPlayerDrawLegs ),
 	DEFINE_INPUTFUNC( FIELD_BOOLEAN, "SetPlayerDrawExternally", InputSetPlayerDrawExternally ),
 	DEFINE_INPUT( m_MaxArmor, FIELD_INTEGER, "SetMaxInputArmor" ),
 	DEFINE_INPUT( m_SuitZoomFOV, FIELD_INTEGER, "SetSuitZoomFOV" ),
@@ -5067,6 +5299,15 @@ void CLogicPlayerProxy::InputSetPlayerModel( inputdata_t &inputdata )
 	SetModelName( m_hPlayer->GetModelName() );
 
 	m_hPlayer->SetModel( STRING(iszModel) );
+}
+
+void CLogicPlayerProxy::InputSetPlayerDrawLegs( inputdata_t &inputdata )
+{
+	if (!m_hPlayer)
+		return;
+
+	CBasePlayer *pPlayer = static_cast<CBasePlayer*>(m_hPlayer.Get());
+	pPlayer->SetDrawPlayerLegs( inputdata.value.Bool() );
 }
 
 void CLogicPlayerProxy::InputSetPlayerDrawExternally( inputdata_t &inputdata )

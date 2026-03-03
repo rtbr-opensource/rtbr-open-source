@@ -57,6 +57,11 @@ public:
 	void AccumulatePose( Vector pos[], Quaternion q[], int sequence, float cycle, float flWeight, float flTime, CIKContext *pIKContext );
 	void CalcAutoplaySequences(	Vector pos[], Quaternion q[], float flRealTime, CIKContext *pIKContext );
 	void CalcBoneAdj( Vector pos[], Quaternion q[], const float controllers[] );
+#if 0
+#ifdef CLIENT_DLL
+	virtual void CalcPose( const CStudioHdr *pStudioHdr, CIKContext *pIKContext, Vector pos[], Quaternion q[], int sequence, float cycle, const float poseParameter[], int boneMask, float flWeight, float flTime );
+#endif
+#endif
 	CStudioHdr *GetStudioHdr();
 private:
 	CBoneSetup *m_pBoneSetup;

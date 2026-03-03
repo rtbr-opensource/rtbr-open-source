@@ -320,7 +320,7 @@ BEGIN_ENT_SCRIPTDESC( CBaseAnimating, CBaseEntity, "Animating models" )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptGetSequenceActivity, "GetSequenceActivity", "Gets the activity ID of the specified sequence index" )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptSelectWeightedSequence, "SelectWeightedSequence", "Selects a sequence for the specified activity ID" )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptSelectHeaviestSequence, "SelectHeaviestSequence", "Selects the sequence with the heaviest weight for the specified activity ID" )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptGetSequenceKeyValues, "GetSequenceKeyValues", "Get a KeyValue class instance on the specified sequence. WARNING: This uses the same KeyValue pointer as GetModelKeyValues!" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetSequenceKeyValues, "GetSequenceKeyValues", "Get a KeyValue class instance on the specified sequence" )
 	DEFINE_SCRIPTFUNC( ResetSequenceInfo, "" )
 	DEFINE_SCRIPTFUNC( StudioFrameAdvance, "" )
 	DEFINE_SCRIPTFUNC( GetPlaybackRate, "" )
@@ -338,6 +338,8 @@ BEGIN_ENT_SCRIPTDESC( CBaseAnimating, CBaseEntity, "Animating models" )
 	DEFINE_SCRIPTFUNC( FindBodygroupByName, "Finds a bodygroup by name" )
 	DEFINE_SCRIPTFUNC( GetBodygroupCount, "Gets the number of models in a bodygroup" )
 	DEFINE_SCRIPTFUNC( GetNumBodyGroups, "Gets the number of bodygroups" )
+	DEFINE_SCRIPTFUNC( GetModelScale, "Gets the model's scale" )
+	DEFINE_SCRIPTFUNC( SetModelScale, "Sets the model's scale with the specified change duration" )
 
 	DEFINE_SCRIPTFUNC( Dissolve, "Use 'sprites/blueglow1.vmt' for the default material, Time() for the default start time, false for npcOnly if you don't want it to check if the entity is a NPC first, 0 for the default dissolve type, Vector(0,0,0) for the default dissolver origin, and 0 for the default magnitude." )
 	DEFINE_SCRIPTFUNC( Ignite, "'NPCOnly' only lets this fall through if the entity is a NPC and 'CalledByLevelDesigner' determines whether to treat this like the Ignite input or just an internal ignition call." )
@@ -1262,7 +1264,8 @@ void CBaseAnimating::DispatchAnimEvents ( CBaseAnimating *eventHandler )
 		}
 
 #ifdef MAPBASE_VSCRIPT
-		if (eventHandler->ScriptHookHandleAnimEvent( &event ) == false)
+		scriptanimevent_t wrapper( event );
+		if (!eventHandler->ScriptHookHandleAnimEvent( wrapper ))
 			continue;
 #endif
 
@@ -1300,11 +1303,11 @@ void CBaseAnimating::DispatchAnimEvents ( CBaseAnimating *eventHandler )
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
-bool CBaseAnimating::ScriptHookHandleAnimEvent( animevent_t *pEvent )
+bool CBaseAnimating::ScriptHookHandleAnimEvent( scriptanimevent_t &event )
 {
 	if (m_ScriptScope.IsInitialized() && g_Hook_HandleAnimEvent.CanRunInScope(m_ScriptScope))
 	{
-		HSCRIPT hEvent = g_pScriptVM->RegisterInstance( reinterpret_cast<scriptanimevent_t*>(pEvent) );
+		HSCRIPT hEvent = g_pScriptVM->RegisterInstance( &event );
 
 		// event
 		ScriptVariant_t args[] = { hEvent };
@@ -1331,10 +1334,15 @@ void CBaseAnimating::HandleAnimEvent( animevent_t *pEvent )
 			EmitSound( pEvent->options );
 			return;
 		}
+		if ( pEvent->event == AE_CHANGE_SKIN )
+		{
+			SetSkin(atoi(pEvent->options));
+			return;
+		}
 #ifdef MAPBASE
 		else if ( pEvent->event == AE_NPC_RESPONSE )
 		{
-			if (!MyNPCPointer()->GetExpresser()->IsSpeaking())
+			if (MyNPCPointer() && MyNPCPointer()->GetExpresser() && !MyNPCPointer()->GetExpresser()->IsSpeaking())
 			{
 				DispatchResponse( pEvent->options );
 			}
@@ -1343,6 +1351,18 @@ void CBaseAnimating::HandleAnimEvent( animevent_t *pEvent )
 		else if ( pEvent->event == AE_NPC_RESPONSE_FORCED )
 		{
 			DispatchResponse( pEvent->options );
+			return;
+		}
+		else if ( pEvent->event == AE_VSCRIPT_RUN )
+		{
+			if (!RunScript( pEvent->options ))
+				Warning( "%s failed to run AE_VSCRIPT_RUN on server with \"%s\"\n", GetDebugName(), pEvent->options );
+			return;
+		}
+		else if ( pEvent->event == AE_VSCRIPT_RUN_FILE )
+		{
+			if (!RunScriptFile( pEvent->options ))
+				Warning( "%s failed to run AE_VSCRIPT_RUN_FILE on server with \"%s\"\n", GetDebugName(), pEvent->options );
 			return;
 		}
 #endif
@@ -2294,21 +2314,14 @@ void CBaseAnimating::ScriptGetBoneTransform( int iBone, HSCRIPT hTransform )
 
 //-----------------------------------------------------------------------------
 // VScript access to sequence's key values
-// for iteration and value access, use:
-//	ScriptFindKey, ScriptGetFirstSubKey, ScriptGetString, 
-//	ScriptGetInt, ScriptGetFloat, ScriptGetNextKey
-// NOTE: This is recycled from ScriptGetModelKeyValues() and uses its pointer!!!
 //-----------------------------------------------------------------------------
-HSCRIPT CBaseAnimating::ScriptGetSequenceKeyValues( int iSequence )
+HSCRIPT_RC CBaseAnimating::ScriptGetSequenceKeyValues( int iSequence )
 {
 	KeyValues *pSeqKeyValues = GetSequenceKeyValues( iSequence );
 	HSCRIPT hScript = NULL;
 	if ( pSeqKeyValues )
 	{
-		// UNDONE: how does destructor get called on this
-		m_pScriptModelKeyValues = hScript = scriptmanager->CreateScriptKeyValues( g_pScriptVM, pSeqKeyValues, true );
-
-		// UNDONE: who calls ReleaseInstance on this??? Does name need to be unique???
+		hScript = scriptmanager->CreateScriptKeyValues( g_pScriptVM, pSeqKeyValues );
 	}
 
 	return hScript;
@@ -3652,7 +3665,7 @@ void CBaseAnimating::RefreshCollisionBounds( void )
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-void CBaseAnimating::Ignite( float flFlameLifetime, bool bNPCOnly, float flSize, bool bCalledByLevelDesigner )
+void CBaseAnimating::Ignite( float flFlameLifetime, bool bNPCOnly, float flSize, bool bCalledByLevelDesigner, float flDamageScale )
 {
 	if( IsOnFire() )
 		return;
@@ -3685,6 +3698,7 @@ void CBaseAnimating::Ignite( float flFlameLifetime, bool bNPCOnly, float flSize,
 		{
 			pFlame->SetSize( flSize );
 		}
+		pFlame->SetDamageScale( flDamageScale );
 	}
 
 	m_OnIgnite.FireOutput( this, this );
@@ -3731,10 +3745,10 @@ void CBaseAnimating::IgniteGreen(float flFlameLifetime, bool bNPCOnly, float flS
 	m_OnIgnite.FireOutput(this, this);
 }
 
-void CBaseAnimating::IgniteLifetime( float flFlameLifetime )
+void CBaseAnimating::IgniteLifetime( float flFlameLifetime, float flDamageScale )
 {
 	if( !IsOnFire() )
-		Ignite( 30, false, 0.0f, true );
+		Ignite( 30, false, 0.0f, true, flDamageScale );
 
 	CEntityFlame *pFlame = dynamic_cast<CEntityFlame*>( GetEffectEntity() );
 

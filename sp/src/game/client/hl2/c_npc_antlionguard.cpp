@@ -32,8 +32,6 @@ public:
 	virtual void ClientThink();
 
 private:
-
-	bool m_bCavernBreed;
 	bool m_bInCavern;
 	dlight_t *m_dlight;
 
@@ -61,7 +59,6 @@ END_DATADESC()
 // Networking
 //-----------------------------------------------------------------------------
 IMPLEMENT_CLIENTCLASS_DT(C_NPC_AntlionGuard, DT_NPC_AntlionGuard, CNPC_AntlionGuard)
-	RecvPropBool( RECVINFO( m_bCavernBreed ) ),
 	RecvPropBool( RECVINFO( m_bInCavern ) ),
 
 #if ANTLIONGUARD_BLOOD_EFFECTS
@@ -76,7 +73,7 @@ void C_NPC_AntlionGuard::OnDataChanged( DataUpdateType_t type )
 {
 	BaseClass::OnDataChanged( type );
 
-	if ( (type == DATA_UPDATE_CREATED) && m_bCavernBreed && m_bInCavern )
+	if ( (type == DATA_UPDATE_CREATED) && m_nSkin >= 2 && m_bInCavern )
 	{
 		SetNextClientThink( CLIENT_THINK_ALWAYS );
 	}

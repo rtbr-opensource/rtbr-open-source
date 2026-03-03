@@ -10,8 +10,8 @@
 //=============================================================================//
 
 #include "cbase.h"
-#include "AI_Hint.h"
-#include "AI_Senses.h"
+#include "ai_hint.h"
+#include "ai_senses.h"
 #include "npc_basepredator.h"
 #include "ai_localnavigator.h"
 #include "fire.h"

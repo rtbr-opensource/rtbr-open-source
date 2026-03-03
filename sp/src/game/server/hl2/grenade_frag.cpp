@@ -9,7 +9,7 @@
 #include "basegrenade_shared.h"
 #include "grenade_frag.h"
 #include "particle_parse.h"
-#include "particles\particles.h"
+#include "particles/particles.h"
 #include "Sprite.h"
 #include "SpriteTrail.h"
 #include "soundent.h"
@@ -52,8 +52,8 @@ public:
 	void	DelayThink();
 	void	VPhysicsUpdate( IPhysicsObject *pPhysics );
 	void	OnPhysGunPickup( CBasePlayer *pPhysGunUser, PhysGunPickup_t reason );
-	void	SetCombineSpawned( bool combineSpawned ) { m_bCombineSpawned = combineSpawned; }
-	bool	IsCombineSpawned( void ) const { return m_bCombineSpawned; }
+	void	SetCombineSpawned( bool combineSpawned ) { m_CombineSpawned = combineSpawned; }
+	bool	IsCombineSpawned( void ) const { return m_CombineSpawned; }
 	void	SetPunted( bool punt ) { m_punted = punt; }
 	bool	WasPunted( void ) const { return m_punted; }
 
@@ -70,7 +70,7 @@ protected:
 
 	float	m_flNextBlipTime = -1;
 	bool	m_inSolid;
-	bool	m_bCombineSpawned;
+	bool	m_CombineSpawned;
 	bool	m_punted;
 };
 
@@ -83,7 +83,7 @@ BEGIN_DATADESC( CGrenadeFrag )
 	DEFINE_FIELD( m_pGlowTrail, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_flNextBlipTime, FIELD_TIME ),
 	DEFINE_FIELD( m_inSolid, FIELD_BOOLEAN ),
-	DEFINE_FIELD( m_bCombineSpawned, FIELD_BOOLEAN ),
+	DEFINE_FIELD( m_CombineSpawned, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_punted, FIELD_BOOLEAN ),
 	
 	// Function Pointers
@@ -154,7 +154,7 @@ void CGrenadeFrag::Spawn( void )
 
 	AddSolidFlags( FSOLID_NOT_STANDABLE );
 
-	m_bCombineSpawned	= false;
+	m_CombineSpawned	= false;
 	m_punted			= false;
 
 	BaseClass::Spawn();
@@ -444,15 +444,16 @@ void CGrenadeFrag::InputSetTimer( inputdata_t &inputdata )
 	SetTimer( inputdata.value.Float(), inputdata.value.Float() - FRAG_GRENADE_WARN_TIME );
 }
 
-CBaseGrenade *Fraggrenade_Create( const Vector &position, const QAngle &angles, const Vector &velocity, const AngularImpulse &angVelocity, CBaseEntity *pOwner, float timer, bool combineSpawned, float startTime )
+CBaseGrenade *Fraggrenade_Create( const Vector &position, const QAngle &angles, const Vector &velocity, const AngularImpulse &angVelocity, CBaseEntity *pOwner, float timer, bool combineSpawned )
 {
 	// Don't set the owner here, or the player can't interact with grenades he's thrown
 	CGrenadeFrag *pGrenade = (CGrenadeFrag *)CBaseEntity::Create( "npc_grenade_frag", position, angles, pOwner );
 
-	if ( startTime != -1 ){
+	if ( timer < GRENADE_TIMER ){
 		// cooked grenade
-		float elapsedTime = gpGlobals->curtime - startTime;
-		bool isWarned = elapsedTime > FRAG_GRENADE_WARN_TIME;
+		float flStartTime = gpGlobals->curtime - (GRENADE_TIMER - timer);
+		float flElapsedTime = GRENADE_TIMER - timer;
+		bool isWarned = flElapsedTime > FRAG_GRENADE_WARN_TIME;
 		if ( !isWarned ){
 			pGrenade->SetTimer( timer, timer - FRAG_GRENADE_WARN_TIME );
 		}
@@ -461,13 +462,16 @@ CBaseGrenade *Fraggrenade_Create( const Vector &position, const QAngle &angles, 
 		}
 
 		// find the most optimal next blip time to keep blipping consistent with cooking
-		if ( elapsedTime < ceil( FRAG_GRENADE_WARN_TIME ) ){
-			pGrenade->SetBlipTime( startTime + ceil( elapsedTime ) ); // slow blips
+		if ( flElapsedTime < ceil( FRAG_GRENADE_WARN_TIME ) ){
+			pGrenade->SetBlipTime( flStartTime + ceil( flElapsedTime ) ); // slow blips
 		}
 		else {
 			float blipTime = ceil( FRAG_GRENADE_WARN_TIME );
-			while ( startTime + blipTime <= gpGlobals->curtime ) { blipTime += FRAG_GRENADE_BLIP_FAST_FREQUENCY; }	// fast blips; no upper limit on timer since the grenade will detonate anyway
-			pGrenade->SetBlipTime( startTime + blipTime );
+			while ( flStartTime + blipTime <= gpGlobals->curtime )
+			{
+				blipTime += FRAG_GRENADE_BLIP_FAST_FREQUENCY; // fast blips; no upper limit on timer since the grenade will detonate anyway
+			}
+			pGrenade->SetBlipTime( flStartTime + blipTime );
 		}
 	}
 	else {

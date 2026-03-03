@@ -92,6 +92,8 @@
 #endif
 #endif
 
+#include "rtbr_shareddefs.h"
+
 #ifdef MAPBASE_VSCRIPT
 #include "mapbase/vscript_funcs_shared.h"
 #endif
@@ -129,6 +131,8 @@ ConVar cl_backspeed( "cl_backspeed", "450", FCVAR_REPLICATED | FCVAR_CHEAT );
 
 // This is declared in the engine, too
 ConVar	sv_noclipduringpause( "sv_noclipduringpause", "0", FCVAR_REPLICATED | FCVAR_CHEAT, "If cheats are enabled, then you can noclip with the game paused (for doing screenshots, etc.)." );
+
+ConVar suit_chatterlevel( "suit_chatterlevel", "2", FCVAR_ARCHIVE | FCVAR_SPONLY, "Suit chatter level.\n\t0 = no chatter\n\t1 = minimal chatter\n\t2 = all suit updates" );
 
 extern ConVar sv_maxunlag;
 extern ConVar sv_turbophysics;
@@ -198,9 +202,9 @@ ConVar	sk_player_arm( "sk_player_arm","1" );
 ConVar	sk_player_leg( "sk_player_leg","1" );
 
 // afterburn convars
-ConVar sk_afterburn_duration("sk_afterburn_duration", "5");
-ConVar sk_afterburn_tick("sk_afterburn_tick", "0.5");
-ConVar sk_afterburn_damage("sk_afterburn_damage", "2");
+ConVar sk_afterburn_duration("sk_afterburn_duration", "0");
+ConVar sk_afterburn_tick("sk_afterburn_tick", "0");
+ConVar sk_afterburn_damage("sk_afterburn_damage", "0");
 
 //ConVar	player_usercommand_timeout( "player_usercommand_timeout", "10", 0, "After this many seconds without a usercommand from a player, the client is kicked." );
 #ifdef _DEBUG
@@ -235,12 +239,18 @@ void CC_GiveCurrentAmmo( void )
 					pPlayer->GiveAmmo( giveAmount, GetAmmoDef()->GetAmmoOfIndex(ammoIndex)->pName );
 				}
 			}
+
+
+			#ifdef _XBOX
+			// Give secondary ammo out, as long as the player already has some
+			// from a presumeably natural source. This prevents players on XBox
+			// having Combine Balls and so forth in areas of the game that
+			// were not tested with these items.
 			if( pWeapon->UsesSecondaryAmmo() && pWeapon->HasSecondaryAmmo() )
+			#else
+			if( pWeapon->UsesSecondaryAmmo() )
+			#endif
 			{
-				// Give secondary ammo out, as long as the player already has some
-				// from a presumeably natural source. This prevents players on XBox
-				// having Combine Balls and so forth in areas of the game that
-				// were not tested with these items.
 				int ammoIndex = pWeapon->GetSecondaryAmmoType();
 
 				if( ammoIndex != -1 )
@@ -465,6 +475,7 @@ BEGIN_DATADESC( CBasePlayer )
 
 	// Function Pointers
 	DEFINE_FUNCTION( PlayerDeathThink ),
+	DEFINE_FUNCTION( Fidget ),
 
 	// Inputs
 	DEFINE_INPUTFUNC( FIELD_INTEGER, "SetHealth", InputSetHealth ),
@@ -501,17 +512,19 @@ BEGIN_DATADESC( CBasePlayer )
 	// DEFINE_UTLVECTOR( m_vecPlayerCmdInfo ),
 	// DEFINE_UTLVECTOR( m_vecPlayerSimInfo ),
 	DEFINE_FIELD(m_iIdleTicks, FIELD_INTEGER),
-	DEFINE_FIELD(m_vLastPosition, FIELD_VECTOR),
 	DEFINE_FIELD(m_vViewAngles, FIELD_VECTOR),
 
 	// don't save the afterburn fields, because the tradeoff of players being able to save/load abuse to extinguish themselves
 	// is far outweighed by the quality of life of not losing 20hp if you load a save on fire
 	//DEFINE_FIELD( m_flLastIgniteTick, FIELD_FLOAT ),
+
+	DEFINE_FIELD(m_flArmorDamageAccumulator, FIELD_FLOAT)
 END_DATADESC()
 
 #ifdef MAPBASE_VSCRIPT
 // TODO: Better placement?
 ScriptHook_t	g_Hook_PlayerRunCommand;
+ScriptHook_t	g_Hook_FindUseEntity;
 
 BEGIN_ENT_SCRIPTDESC( CBasePlayer, CBaseCombatCharacter, "The player entity." )
 
@@ -566,12 +579,20 @@ BEGIN_ENT_SCRIPTDESC( CBasePlayer, CBaseCombatCharacter, "The player entity." )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptGetEyeUp, "GetEyeUp", "Gets the player's up eye vector." )
 
 	DEFINE_SCRIPTFUNC_NAMED( ScriptGetViewModel, "GetViewModel", "Returns the viewmodel of the specified index." )
+	
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetUseEntity, "GetUseEntity", "Gets the player's current use entity." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetHeldObject, "GetHeldObject", "Gets the player's currently held object IF it is being held by a gravity gun. To check for the player's held +USE object, use the standalone GetPlayerHeldEntity function." )
 
 	// 
 	// Hooks
 	// 
 	BEGIN_SCRIPTHOOK( g_Hook_PlayerRunCommand, "PlayerRunCommand", FIELD_VOID, "Called when running a player command on the server." )
 		DEFINE_SCRIPTHOOK_PARAM( "command", FIELD_HSCRIPT )
+	END_SCRIPTHOOK()
+	
+	BEGIN_SCRIPTHOOK( g_Hook_FindUseEntity, "FindUseEntity", FIELD_HSCRIPT, "Called when finding an entity to use. The 'entity' parameter is for the entity found by the default function. If 'is_radius' is true, then this entity was found by searching in a radius around the cursor, rather than being directly used. Return a different entity to use something else." )
+		DEFINE_SCRIPTHOOK_PARAM( "entity", FIELD_HSCRIPT )
+		DEFINE_SCRIPTHOOK_PARAM( "is_radius", FIELD_BOOLEAN )
 	END_SCRIPTHOOK()
 
 END_SCRIPTDESC();
@@ -1066,38 +1087,42 @@ void CBasePlayer::DrawDebugGeometryOverlays(void)
 void CBasePlayer::Fidget()
 {
 	if (GetActiveWeapon()) {
-		Vector curPos = GetAbsOrigin();
 		QAngle curAng = GetAbsAngles();
-
+		
 		// Don't fidget if we meet any of the following conditions:
 		// - Weapon animation is not idle (i.e. firing, drawing, reloading, etc.)
+		// - Weapon prevents fidgeting for whatever reason
 		// - Player is moving
+		// - Player is looking around
 		// - Player is zooming
 		// - Player is specifically meant to have a lowered weapon that has no lower animation (e.g. crowbar, magnum)
 		//		- FIXME: Only works when looking at a friendly, not when it's meant to be lowered.
-		// - Player is looking around
+		// Otherwise, increment a counter and eventually fidget.
 
-		if (GetActiveWeapon()->GetActivity() != ACT_VM_IDLE){
+		// fixme: terrible hack for forced fidgets
+		if (m_iIdleTicks >= (int)(IDLE_FIDGET_TIME / IDLE_FIDGET_TICK) && GetActiveWeapon()->ShouldWeaponFidget() && !(m_afButtonPressed & IN_ZOOM || m_nButtons & IN_ZOOM)){
+			m_iIdleTicks = 0;
+			GetActiveWeapon()->SendWeaponAnim( ACT_VM_FIDGET );
+			//SetContextThink(&CBasePlayer::ResetFidget, gpGlobals->curtime + GetActiveWeapon()->SequenceDuration(), "FidgetThink");
+		}
+		else if (GetActiveWeapon()->GetActivity() != ACT_VM_IDLE){
 			m_iIdleTicks = 0; // also handles weapon drawing... unless our drawtime is less than IDLE_FIDGET_TICK seconds
 		}
-		else if (curPos != m_vLastPosition){
-			m_vLastPosition = curPos;
+		else if (!GetActiveWeapon()->ShouldWeaponFidget()) {
 			m_iIdleTicks = 0;
 		}
-		else if (m_afButtonPressed & IN_ZOOM || m_nButtons & IN_ZOOM){
-			m_iIdleTicks = 0;
-		}
-		else if (LookingAtFriendly()){
+		else if (GetLocalVelocity().Length() != 0){
 			m_iIdleTicks = 0;
 		}
 		else if (curAng != m_vViewAngles) {
 			m_vViewAngles = curAng;
 			m_iIdleTicks = 0;
 		}
-		else if (m_iIdleTicks >= (int)(IDLE_FIDGET_TIME / IDLE_FIDGET_TICK)){
+		else if ( m_afButtonPressed & IN_ZOOM || m_nButtons & IN_ZOOM ){
 			m_iIdleTicks = 0;
-			GetActiveWeapon()->SendWeaponAnim( ACT_VM_FIDGET );
-			//SetContextThink(&CBasePlayer::ResetFidget, gpGlobals->curtime + GetActiveWeapon()->SequenceDuration(), "FidgetThink");
+		}
+		else if (LookingAtFriendly()){
+			m_iIdleTicks = 0;
 		}
 		else {
 			m_iIdleTicks++;
@@ -1362,6 +1387,14 @@ int CBasePlayer::OnTakeDamage( const CTakeDamageInfo &inputInfo )
 		flBonus = OLD_ARMOR_BONUS;
 		flRatio = OLD_ARMOR_RATIO;
 	}
+#ifdef RTBR_DLL
+	else if ((info.GetDamageType() & DMG_WLSCANNER) == DMG_WLSCANNER)
+	{
+		// Wasteland scanner zap damage - all damage taken is taken by armour
+		flBonus = ARMOR_BONUS;
+		flRatio = 0;
+	}
+#endif
 	else
 	{
 		flBonus = ARMOR_BONUS;
@@ -1440,6 +1473,25 @@ int CBasePlayer::OnTakeDamage( const CTakeDamageInfo &inputInfo )
 		}
 		else
 		{
+			// Use an armour damage accumulator for the wasteland scanner beam attack (similar to how the current health system works)
+			if ((info.GetDamageType() & DMG_WLSCANNER) == DMG_WLSCANNER)
+			{
+				float flFractionalArmorDamage = info.GetDamage() - floor( info.GetDamage() );
+				float flIntegerArmorDamage = info.GetDamage() - flFractionalArmorDamage;
+
+				// Add fractional damage to the accumulator
+				m_flArmorDamageAccumulator += flFractionalArmorDamage;
+
+				// If the accumulator is holding a full point of damage, move that point
+				// of damage into the damage we're about to inflict.
+				if (m_flArmorDamageAccumulator >= 1.0)
+				{
+					flIntegerArmorDamage += 1.0;
+					m_flArmorDamageAccumulator -= 1.0;
+				}
+				flArmor = flIntegerArmorDamage;
+			}
+
 			m_DmgSave = flArmor;
 			m_ArmorValue -= flArmor;
 		}
@@ -1466,7 +1518,19 @@ int CBasePlayer::OnTakeDamage( const CTakeDamageInfo &inputInfo )
 
 	// Early out if the base class took no damage
 	if ( !fTookDamage )
+#ifdef RTBR_DLL
+	{
+		// View punch if we got hit by the wasteland scanner beam
+		if ((info.GetDamageType() & DMG_WLSCANNER) == DMG_WLSCANNER)
+		{
+			float flPunch = RandomFloat( -1, -2 );
+			m_Local.m_vecPunchAngle.SetX( flPunch );
+		}
 		return 0;
+	}
+#else
+		return 0;
+#endif
 
 	// add to the damage total for clients, which will be sent as a single
 	// message at the end of the frame
@@ -1511,7 +1575,7 @@ int CBasePlayer::OnTakeDamage( const CTakeDamageInfo &inputInfo )
 	m_bitsDamageType |= bitsDamage; // Save this so we can report it to the client
 	m_bitsHUDDamage = -1;  // make sure the damage bits get resent
 
-	while (fTookDamage && (!ftrivial || g_pGameRules->Damage_IsTimeBased( bitsDamage ) ) && ffound && bitsDamage)
+	while (fTookDamage && (!ftrivial || g_pGameRules->Damage_IsTimeBased( bitsDamage ) ) && ffound && bitsDamage && suit_chatterlevel.GetInt() == SUIT_CHATTER_LEVEL_ALL)
 	{
 		ffound = false;
 
@@ -1623,7 +1687,7 @@ int CBasePlayer::OnTakeDamage( const CTakeDamageInfo &inputInfo )
 
 	m_Local.m_vecPunchAngle.SetX( flPunch );
 
-	if (fTookDamage && !ftrivial && fmajor && flHealthPrev >= 75) 
+	if (fTookDamage && !ftrivial && fmajor && flHealthPrev >= 75 && suit_chatterlevel.GetInt() == SUIT_CHATTER_LEVEL_ALL) 
 	{
 		// first time we take major damage...
 		// turn automedic on if not on
@@ -1633,7 +1697,7 @@ int CBasePlayer::OnTakeDamage( const CTakeDamageInfo &inputInfo )
 		SetSuitUpdate("!HEV_HEAL7", false, SUIT_NEXT_IN_30MIN);	// morphine shot
 	}
 	
-	if (fTookDamage && !ftrivial && fcritical && flHealthPrev < 75)
+	if (fTookDamage && !ftrivial && fcritical && flHealthPrev < 75 && suit_chatterlevel.GetBool())
 	{
 
 		// already took major damage, now it's critical...
@@ -1643,19 +1707,19 @@ int CBasePlayer::OnTakeDamage( const CTakeDamageInfo &inputInfo )
 			SetSuitUpdate("!HEV_HLTH2", false, SUIT_NEXT_IN_10MIN);	// health critical
 	
 		// give critical health warnings
-		if (!random->RandomInt(0,3) && flHealthPrev < 50)
+		if (!random->RandomInt(0,3) && flHealthPrev < 50 && suit_chatterlevel.GetInt() == SUIT_CHATTER_LEVEL_ALL)
 			SetSuitUpdate("!HEV_DMG7", false, SUIT_NEXT_IN_5MIN); //seek medical attention
 	}
 
 	// if we're taking time based damage, warn about its continuing effects
-	if (fTookDamage && g_pGameRules->Damage_IsTimeBased( info.GetDamageType() ) && flHealthPrev < 75)
+	if (fTookDamage && g_pGameRules->Damage_IsTimeBased( info.GetDamageType() ) && flHealthPrev < 75 && suit_chatterlevel.GetBool())
 		{
-			if (flHealthPrev < 50)
+			if (flHealthPrev < 50 && suit_chatterlevel.GetInt() == SUIT_CHATTER_LEVEL_ALL)
 			{
 				if (!random->RandomInt(0,3))
 					SetSuitUpdate("!HEV_DMG7", false, SUIT_NEXT_IN_5MIN); //seek medical attention
 			}
-			else
+			else if (flHealthPrev >= 50)
 				SetSuitUpdate("!HEV_HLTH1", false, SUIT_NEXT_IN_10MIN);	// health dropping
 		}
 
@@ -4381,6 +4445,11 @@ void CBasePlayer::CheckTimeBasedDamage()
 	}
 }
 
+void CBasePlayer::SetXenHealing( bool bEnable )
+{
+	m_Local.m_bBeingXenHealed = bEnable;
+}
+
 /*
 THE POWER SUIT
 
@@ -4583,6 +4652,15 @@ void CBasePlayer::SetSuitUpdate(const char *name, int fgroup, int iNoRepeatTime)
 		// due to static channel design, etc. We don't play HEV sounds in multiplayer right now.
 		return;
 	}
+
+#ifdef MAPBASE
+	if ( HasContext("silent_suit", "1") )
+		return;
+#endif
+
+	// suit must be allowed to talk
+	if (suit_chatterlevel.GetInt() == SUIT_CHATTER_LEVEL_NONE)
+		return;
 
 	// if name == NULL, then clear out the queue
 
@@ -6394,7 +6472,7 @@ void CBasePlayer::ImpulseCommands( )
 		}
 		break;
 	case	69:
-		if (GetActiveWeapon()->GetActivity() == ACT_VM_IDLE){
+		if (GetActiveWeapon() && GetActiveWeapon()->GetActivity() == ACT_VM_IDLE){
 			m_iIdleTicks = (int)(IDLE_FIDGET_TIME / IDLE_FIDGET_TICK); // basically just force a fidget
 			Fidget();
 		}
@@ -6667,6 +6745,16 @@ void CBasePlayer::CheatImpulseCommands( int iImpulse )
 		GiveNamedItem("weapon_annabelle");
 		GiveNamedItem("weapon_flaregun");
 		GiveNamedItem("weapon_physcannon");
+		GiveAmmo( 255, "Gauss" );
+		GiveNamedItem( "weapon_gauss" );
+		GiveAmmo( 255, "OICW" );
+		GiveAmmo(6, "smg1_grenade");
+		GiveNamedItem( "weapon_oicw" );
+		GiveNamedItem( "weapon_bugbait" );
+		GiveNamedItem("weapon_crossbow");
+		GiveAmmo( 16,	"XBowBolt" );
+		GiveAmmo( 255, "HMG" );
+		GiveNamedItem("weapon_hmg");
 		GiveNamedItem( "weapon_smg1" );
 		GiveNamedItem( "weapon_frag" );
 		GiveNamedItem( "weapon_crowbar" );
@@ -7102,6 +7190,10 @@ bool CBasePlayer::BumpWeapon( CBaseCombatWeapon *pWeapon )
 		return false;
 	}
 
+	// Weapons that require +use to restock should not refill the ammo if they aren't being +use'd, UNLESS we're impulse 101'ing.
+	if ( !pWeapon->RestocksAmmoOnTouch() && !pWeapon->HasSpawnFlags( SF_WEAPON_USED ) && !gEvilImpulse101 )
+		return false;
+
 	// Act differently in the episodes
 	if ( hl2_episodic.GetBool() )
 	{
@@ -7123,7 +7215,7 @@ bool CBasePlayer::BumpWeapon( CBaseCombatWeapon *pWeapon )
 	// ----------------------------------------
 	// If I already have it just take the ammo
 	// ----------------------------------------
-	if (Weapon_OwnsThisType( pWeapon->GetClassname(), pWeapon->GetSubType())) 
+	if (Weapon_OwnsThisType( pWeapon->GetClassname(), pWeapon->GetSubType()) && pWeapon->RestocksAmmoOnTouch()) 
 	{
 		if( Weapon_EquipAmmoOnly( pWeapon ) )
 		{
@@ -7147,7 +7239,7 @@ bool CBasePlayer::BumpWeapon( CBaseCombatWeapon *pWeapon )
 	// --------------------------------------------------------------------------------
 	// If we own a weapon in the same position take the ammo but leave the weapon behind
 	// --------------------------------------------------------------------------------
-	if (!pWeapon->HasSpawnFlags(SF_WEAPON_USED)) // Make sure we're being used and not being bumped
+	if ( !pWeapon->HasSpawnFlags( SF_WEAPON_USED ) && pWeapon->RestocksAmmoOnTouch() ) // Make sure we're being used and not being bumped
 	{
 		for (int i=0;i<MAX_WEAPONS;i++) 
 		{
@@ -7157,7 +7249,7 @@ bool CBasePlayer::BumpWeapon( CBaseCombatWeapon *pWeapon )
 			{
 				//Weapon_EquipAmmoOnly( pWeapon );
 
-				// I'm too lazy to make my own version of Weapon_EquipAmmoOnly that doesn't check if we already have the weapon first 
+				// Weapon_EquipAmmoOnly checks the array again, which isn't necessary here
 				int	primaryGiven	= (pWeapon->UsesClipsForAmmo1()) ? pWeapon->m_iClip1 : pWeapon->GetPrimaryAmmoCount();
 				int secondaryGiven	= (pWeapon->UsesClipsForAmmo2()) ? pWeapon->m_iClip2 : pWeapon->GetSecondaryAmmoCount();
 
@@ -7530,6 +7622,10 @@ bool CBasePlayer::ShouldAutoaim( void )
 	if ( gpGlobals->maxClients > 1 )
 		return false;
 
+	// weapon must not prohibit autoaim
+	if (!GetActiveWeapon()->ShouldWeaponAutoAim())
+		return false;
+
 	// autoaiming is only for easy and medium skill
 	return ( IsX360() || !g_pGameRules->IsSkillLevel(SKILL_HARD) );
 }
@@ -7885,6 +7981,93 @@ void CBasePlayer::ResetAutoaim( void )
 	m_fOnTarget = false;
 }
 
+#ifdef MAPBASE
+ConVar  player_debug_probable_aim_target( "player_debug_probable_aim_target", "0", FCVAR_CHEAT, "" );
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+CBaseEntity *CBasePlayer::GetProbableAimTarget( const Vector &vecSrc, const Vector &vecDir )
+{
+	trace_t tr;
+	CBaseEntity *pIgnore = NULL;
+	if (IsInAVehicle())
+		pIgnore = GetVehicleEntity();
+
+	CTraceFilterSkipTwoEntities traceFilter( this, pIgnore, COLLISION_GROUP_NONE );
+
+	// Based on dot product and distance
+	// If we aim directly at something, only return it if there's not a larger entity slightly off-center
+	// Should be weighted based on whether an entity is a NPC, etc.
+	CBaseEntity *pBestEnt = NULL;
+	float flBestWeight = 0.0f;
+	for (CBaseEntity *pEntity = UTIL_EntitiesInPVS( this, NULL ); pEntity; pEntity = UTIL_EntitiesInPVS( this, pEntity ))
+	{
+		// Combat characters can be unviewable if they just died
+		if (!pEntity->IsViewable() && !pEntity->IsCombatCharacter())
+			continue;
+
+		if (pEntity == this || pEntity->GetMoveParent() == this || pEntity == GetVehicleEntity())
+			continue;
+
+		Vector vecEntDir = (pEntity->EyePosition() - vecSrc);
+		float flDot = DotProduct( vecEntDir.Normalized(), vecDir);
+
+		if (flDot < m_flFieldOfView)
+			continue;
+
+		// Make sure we can see it
+		UTIL_TraceLine( vecSrc, pEntity->EyePosition(), MASK_SHOT, &traceFilter, &tr );
+		if (tr.m_pEnt != pEntity)
+		{
+			if (pEntity->IsCombatCharacter())
+			{
+				// Trace between centers as well just in case our eyes are blocked
+				UTIL_TraceLine( WorldSpaceCenter(), pEntity->WorldSpaceCenter(), MASK_SHOT, &traceFilter, &tr );
+				if (tr.m_pEnt != pEntity)
+					continue;
+			}
+			else
+				continue;
+		}
+
+		float flWeight = flDot - (vecEntDir.LengthSqr() / Square( 2048.0f ));
+
+		if (pEntity->IsCombatCharacter())
+		{
+			// Hostile NPCs are more likely targets
+			if (IRelationType( pEntity ) <= D_FR)
+				flWeight += 0.5f;
+		}
+		else if (pEntity->GetFlags() & FL_AIMTARGET)
+		{
+			// FL_AIMTARGET is often used for props like explosive barrels
+			flWeight += 0.25f;
+		}
+
+		if (player_debug_probable_aim_target.GetBool())
+		{
+			float flWeightClamped = 1.0f - RemapValClamped( flWeight, -2.0f, 2.0f, 0.0f, 1.0f );
+			pEntity->EntityText( 0, UTIL_VarArgs( "%f", flWeight ), 2.0f, flWeightClamped * 255.0f, 255.0f, flWeightClamped * 255.0f, 255 );
+		}
+
+		if (flWeight > flBestWeight)
+		{
+			pBestEnt = pEntity;
+			flBestWeight = flWeight;
+		}
+	}
+	
+	if (player_debug_probable_aim_target.GetBool())
+	{
+		Msg( "Best probable aim target is %s\n", pBestEnt->GetDebugName() );
+		NDebugOverlay::EntityBounds( pBestEnt, 255, 100, 0, 0, 2.0f );
+	}
+
+	return pBestEnt;
+}
+#endif
+
 // ==========================================================================
 //	> Weapon stuff
 // ==========================================================================
@@ -8005,10 +8188,10 @@ void CBasePlayer::Weapon_Equip( CBaseCombatWeapon *pWeapon )
 		Weapon_Switch( pWeapon );
 	}
 	if (GetActiveWeapon() == pWeapon) {
-		if (!FClassnameIs(GetActiveWeapon(), "weapon_stunstick")) {
+		if ( !FClassnameIs( GetActiveWeapon(), "weapon_stunstick" ) && !FClassnameIs( GetActiveWeapon(), "weapon_extinguisher" ) ) {
 			GetActiveWeapon()->SendWeaponAnim(ACT_VM_FIRSTDRAW);
 		}
-		else {
+		else if ( !FClassnameIs( GetActiveWeapon(), "weapon_extinguisher" ) ){
 			CWeaponStunStick* pStunstick = dynamic_cast<CWeaponStunStick*>(GetActiveWeapon());
 			if (!pStunstick->m_bIsCharging) {
 				GetActiveWeapon()->SendWeaponAnim(ACT_VM_FIRSTDRAW);
@@ -8026,7 +8209,7 @@ Activity CBasePlayer::Weapon_TranslateActivity( Activity baseAct, bool *pRequire
 {
 	Activity weaponTranslation = BaseClass::Weapon_TranslateActivity( baseAct, pRequired );
 	
-	if ( GetActiveWeapon() && GetActiveWeapon()->IsEffectActive(EF_NODRAW) && baseAct != ACT_ARM )
+	if ( GetActiveWeapon() && !GetActiveWeapon()->IsWeaponVisible() && baseAct != ACT_ARM )
 	{
 		// Our weapon is holstered. Use the base activity.
 		return baseAct;
@@ -8933,6 +9116,7 @@ void SendProxy_ShiftPlayerSpawnflags( const SendProp *pProp, const void *pStruct
 		// See baseplayer_shared.h for more details.
 		SendPropInt			( SENDINFO( m_spawnflags ), 3, SPROP_UNSIGNED, SendProxy_ShiftPlayerSpawnflags ),
 
+		SendPropBool		( SENDINFO( m_bDrawPlayerLegs ) ),
 		SendPropBool		( SENDINFO( m_bDrawPlayerModelExternally ) ),
 		SendPropBool		( SENDINFO( m_bInTriggerFall ) ),
 #endif
@@ -10524,18 +10708,20 @@ void CBasePlayer::UpdateFXVolume( void )
 	}
 }
 
-bool CBasePlayer::LookingAtFriendly( void ){
+bool CBasePlayer::LookingAtFriendly(void){
 	Vector vecAim = GetAutoaimVector( AUTOAIM_SCALE_DIRECT_ONLY );
 	const float CHECK_FRIENDLY_RANGE = 50 * 12;
 	trace_t	tr;
 	UTIL_TraceLine( EyePosition(), EyePosition() + vecAim * CHECK_FRIENDLY_RANGE, MASK_SHOT, this, COLLISION_GROUP_NONE, &tr );
+
 	CBaseEntity *aimTarget = tr.m_pEnt;
-	if (aimTarget && !tr.DidHitWorld())
+	if ( aimTarget && !tr.DidHitWorld() )
 	{
-		if (!aimTarget->IsNPC() || aimTarget->MyNPCPointer()->GetState() != NPC_STATE_COMBAT)
+		if ( !aimTarget->IsNPC() || aimTarget->MyNPCPointer()->GetState() != NPC_STATE_COMBAT )
 		{
 			Disposition_t dis = IRelationType( aimTarget );
-			if (dis == D_LI)
+
+			if ( dis == D_LI )
 			{
 				return true;
 			}

@@ -4524,7 +4524,10 @@ void CGameMovement::Duck( void )
 					{
 						float flDuckMilliseconds = MAX( 0.0f, GAMEMOVEMENT_DUCK_TIME - (float)player->m_Local.m_flDucktime );
 						float flDuckSeconds = flDuckMilliseconds * 0.001f;
-						player->EmitSound("Player.Uncrouch");
+						if ( ( buttonsReleased & IN_DUCK ) )
+						{
+							player->EmitSound( "Player.Uncrouch" ); // so we don't get uncrouch sound spam
+						}
 						
 						// Finish ducking immediately if duck time is over or not on ground
 						if ( flDuckSeconds > TIME_TO_UNDUCK || ( bInAir && !bDuckJump ) )

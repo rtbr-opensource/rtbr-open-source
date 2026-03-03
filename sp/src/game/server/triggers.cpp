@@ -47,6 +47,7 @@
 
 #define DEBUG_TRANSITIONS_VERBOSE	2
 ConVar g_debug_transitions( "g_debug_transitions", "0", FCVAR_NONE, "Set to 1 and restart the map to be warned if the map has no trigger_transition volumes. Set to 2 to see a dump of all entities & associated results during a transition." );
+ConVar noclip_changelevel("noclip_changelevel", "0", FCVAR_CHEAT);
 
 // Global list of triggers that care about weapon fire
 // Doesn't need saving, the triggers re-add themselves on restore.
@@ -707,6 +708,7 @@ BEGIN_DATADESC( CTriggerHurt )
 #ifdef MAPBASE
 	DEFINE_KEYFIELD( m_flHurtRate, FIELD_FLOAT, "hurtrate" ),
 #endif
+	DEFINE_KEYFIELD(m_bXenPool, FIELD_BOOLEAN, "xenpool"),
 
 	DEFINE_FIELD( m_flLastDmgTime, FIELD_TIME ),
 	DEFINE_FIELD( m_flDmgResetTime, FIELD_TIME ),
@@ -792,6 +794,10 @@ bool CTriggerHurt::HurtEntity( CBaseEntity *pOther, float damage )
 
 	if ( damage < 0 )
 	{
+		if (m_bXenPool && pOther->IsPlayer())
+		{
+			ToBasePlayer( pOther )->SetXenHealing( true );
+		}
 		pOther->TakeHealth( -damage, m_bitsDamageInflict );
 	}
 	else
@@ -858,6 +864,11 @@ void CTriggerHurt::EndTouch( CBaseEntity *pOther )
 		if ( !m_hurtEntities.HasElement( hOther ) )
 		{
 			HurtEntity( pOther, m_flDamage * 0.5 );
+		}
+
+		if (m_bXenPool && pOther->IsPlayer())
+		{
+			ToBasePlayer( pOther )->SetXenHealing( false );
 		}
 	}
 	BaseClass::EndTouch( pOther );
@@ -1848,7 +1859,8 @@ void CChangeLevel::TouchChangeLevel( CBaseEntity *pOther )
 		return;
 	}
 
-	if ( !pPlayer->IsInAVehicle() && pPlayer->GetMoveType() == MOVETYPE_NOCLIP )
+	
+	if ( !pPlayer->IsInAVehicle() && pPlayer->GetMoveType() == MOVETYPE_NOCLIP && !noclip_changelevel.GetBool())
 	{
 		DevMsg("In level transition: %s %s\n", st_szNextMap, st_szNextSpot );
 		return;

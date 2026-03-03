@@ -41,6 +41,7 @@ typedef enum {
 	DEPLOY,
 
 	// Add new shoot sound types here
+	SPECIAL4,
 
 	NUM_SHOOT_SOUND_TYPES,
 } WeaponSound_t;
@@ -57,6 +58,26 @@ int GetWeaponSoundFromString( const char *pszString );
 
 class CHudTexture;
 class KeyValues;
+
+#ifdef MAPBASE
+enum HandRigTypes_e
+{
+	HANDRIG_DEFAULT,	// Default HL2 rig
+	HANDRIG_CSS,		// CS:S viewmodel rig
+	HANDRIG_BLENDER,	// Blender IK rig
+
+	NUM_HAND_RIG_TYPES
+};
+
+enum WeaponUsageRestricions_e
+{
+	WPNRESTRICT_NONE = 0,
+	WPNRESTRICT_PLAYER_ONLY,
+	WPNRESTRICT_NPCS_ONLY,
+
+	NUM_WEAPON_RESTRICTION_TYPES
+};
+#endif // MAPBASE
 
 //-----------------------------------------------------------------------------
 // Purpose: Contains the data read from the weapon's script file. 
@@ -125,6 +146,9 @@ public:
 	char					szDroppedModel[MAX_WEAPON_STRING];		// Model of this weapon when dropped on the ground
 
 	bool					m_bUsesHands;
+	int						m_nHandRig;
+
+	int						m_nWeaponRestriction;
 #endif
 
 // CLIENT DLL

@@ -462,7 +462,7 @@ void CNPC_Dog::Spawn( void )
 		SetModel("models/skitch/skitch.mdl");
 	}
 	else {
-		SetModel("models/dog.mdl");
+		SetModel( DefaultOrCustomModel( "models/dog.mdl" ) );
 	}
 	 
 	SetHullType( HULL_WIDE_HUMAN );
@@ -647,7 +647,7 @@ void CNPC_Dog::PullObject( bool bMantain )
 void CNPC_Dog::Precache( void )
 {
 
-	PrecacheModel( "models/dog.mdl" );
+	PrecacheModel( DefaultOrCustomModel( "models/dog.mdl" ) );
 	PrecacheModel("models/skitch/skitch.mdl");
 	
 	PrecacheScriptSound( "Weapon_PhysCannon.Launch" );

@@ -96,7 +96,7 @@ public:
 	bool PointIsWithin( const Vector &vecPoint );
 
 #ifdef MAPBASE_VSCRIPT
-	bool	ScriptPassesTriggerFilters( HSCRIPT hOther ) { return ToEnt(hOther) ? PassesTriggerFilters( ToEnt(hOther) ) : NULL; }
+	bool	ScriptPassesTriggerFilters( HSCRIPT hOther ) { return ToEnt(hOther) ? PassesTriggerFilters( ToEnt(hOther) ) : false; }
 	HSCRIPT	ScriptGetTouchedEntityOfType( const char *sClassName ) { return ToHScript( GetTouchedEntityOfType(sClassName) ); }
 
 	void	ScriptGetTouchingEntities( HSCRIPT hTable );
@@ -214,6 +214,7 @@ public:
 		// Uh, same here.
 		m_flHurtRate = 0.5f;
 #endif
+		m_bXenPool = false;
 	}
 
 	DECLARE_CLASS( CTriggerHurt, CBaseTrigger );
@@ -243,6 +244,7 @@ public:
 #ifdef MAPBASE
 	float	m_flHurtRate;
 #endif
+	bool	m_bXenPool;
 
 	enum
 	{

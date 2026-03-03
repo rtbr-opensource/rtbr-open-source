@@ -21,7 +21,6 @@
 #include "ai_behavior_follow.h"
 #include "ai_behavior_standoff.h"
 #include "ai_behavior_assault.h"
-#include "npc_playercompanion.h"
 #include "npc_baseally.h"
 #include "soundent.h"
 #include "game.h"

@@ -28,6 +28,7 @@ BEGIN_DATADESC( CEntityFlame )
 	DEFINE_FIELD( m_bUseHitboxes, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_iNumHitboxFires, FIELD_INTEGER ),
 	DEFINE_FIELD( m_flHitboxFireScale, FIELD_FLOAT ),
+	DEFINE_FIELD(m_flDamageScale, FIELD_FLOAT),
 	// DEFINE_FIELD( m_bPlayingSound, FIELD_BOOLEAN ),
 	
 	DEFINE_FUNCTION( FlameThink ),
@@ -353,7 +354,7 @@ void CEntityFlame::FlameThink( void )
 		// Directly harm the entity I'm attached to. This is so we can precisely control how much damage the entity
 		// that is on fire takes without worrying about the flame's position relative to the bodytarget (which is the
 		// distance that the radius damage code uses to determine how much damage to inflict)
-		m_hEntAttached->TakeDamage( CTakeDamageInfo( this, this, FLAME_DIRECT_DAMAGE, DMG_BURN | DMG_DIRECT ) );
+		m_hEntAttached->TakeDamage( CTakeDamageInfo( this, this, FLAME_DIRECT_DAMAGE * m_flDamageScale, DMG_BURN | DMG_DIRECT ) );
 
 		if( !m_hEntAttached->IsNPC() && hl2_episodic.GetBool() )
 		{

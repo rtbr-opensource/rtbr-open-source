@@ -18,6 +18,9 @@ STUB_WEAPON_CLASS( weapon_binoculars, WeaponBinoculars, C_BaseHLCombatWeapon );
 STUB_WEAPON_CLASS( weapon_bugbait, WeaponBugBait, C_BaseHLCombatWeapon );
 STUB_WEAPON_CLASS( weapon_flaregun, Flaregun, C_BaseHLCombatWeapon );
 STUB_WEAPON_CLASS( weapon_annabelle, WeaponAnnabelle, C_BaseHLCombatWeapon );
+#ifndef RTBR_DLL
+STUB_WEAPON_CLASS( weapon_gauss, WeaponGaussGun, C_BaseHLCombatWeapon );
+#endif
 STUB_WEAPON_CLASS( weapon_cubemap, WeaponCubemap, C_BaseCombatWeapon );
 STUB_WEAPON_CLASS( weapon_alyxgun, WeaponAlyxGun, C_HLSelectFireMachineGun );
 STUB_WEAPON_CLASS( weapon_citizenpackage, WeaponCitizenPackage, C_BaseHLCombatWeapon );
@@ -31,7 +34,7 @@ STUB_WEAPON_CLASS( weapon_pistol, WeaponPistol, C_BaseHLCombatWeapon );
 STUB_WEAPON_CLASS( weapon_shotgun, WeaponShotgun, C_BaseHLCombatWeapon );
 STUB_WEAPON_CLASS( weapon_smg1, WeaponSMG1, C_HLSelectFireMachineGun );
 STUB_WEAPON_CLASS( weapon_357, Weapon357, C_BaseHLCombatWeapon );
-STUB_WEAPON_CLASS( weapon_crossbow, WeaponCrossbow, C_BaseHLCombatWeapon );
+//STUB_WEAPON_CLASS( weapon_crossbow, WeaponCrossbow, C_BaseHLCombatWeapon );
 #ifndef MAPBASE
 STUB_WEAPON_CLASS( weapon_slam, Weapon_SLAM, C_BaseHLCombatWeapon );
 #endif
@@ -48,10 +51,10 @@ STUB_WEAPON_CLASS( weapon_oldmanharpoon, WeaponOldManHarpoon, C_WeaponCitizenPac
 
 #ifdef RTBR_DLL
 STUB_WEAPON_CLASS( weapon_akm, WeaponAKM, C_HLSelectFireMachineGun );
-STUB_WEAPON_CLASS( weapon_cguard, WeaponCGuard, C_BaseHLCombatWeapon );
 STUB_WEAPON_CLASS( weapon_extinguisher, WeaponExtinguisher, C_HLSelectFireMachineGun );
-STUB_WEAPON_CLASS( weapon_smg2, WeaponSMG2, C_HLSelectFireMachineGun );
-STUB_WEAPON_CLASS( weapon_immolator, WeaponImmolator, C_BaseHLCombatWeapon );
+//STUB_WEAPON_CLASS( weapon_immolator, WeaponImmolator, C_BaseHLCombatWeapon );
+//STUB_WEAPON_CLASS( weapon_gauss, WeaponGauss, C_BaseHLCombatWeapon );
+STUB_WEAPON_CLASS( weapon_cguard, WeaponCGuard, C_BaseHLCombatWeapon );
 #endif
 
 /*

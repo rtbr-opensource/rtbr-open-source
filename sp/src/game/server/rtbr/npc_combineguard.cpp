@@ -11,29 +11,29 @@
 
 
 #include "cbase.h"
-#include "AI_Task.h"
-#include "AI_Default.h"
-#include "AI_Schedule.h"
-#include "AI_Hull.h"
-#include "AI_Motor.h"
-#include "AI_Memory.h"
+#include "ai_task.h"
+#include "ai_default.h"
+#include "ai_schedule.h"
+#include "ai_hull.h"
+#include "ai_motor.h"
+#include "ai_memory.h"
 #include "npc_combine.h"
 #include "physics.h"
 #include "bitstring.h"
 #include "activitylist.h"
 #include "game.h"
-#include "NPCEvent.h"
-#include "Player.h"
-#include "EntityList.h"
-#include "AI_Interactions.h"
+#include "npcevent.h"
+#include "player.h"
+#include "entitylist.h"
+#include "ai_interactions.h"
 #include "soundent.h"
-#include "Gib.h"
+#include "gib.h"
 #include "shake.h"
 #include "ammodef.h"
 #include "Sprite.h"
 #include "explode.h"
 #include "grenade_homer.h"
-#include "AI_BaseNPC.h"
+#include "ai_basenpc.h"
 #include "soundenvelope.h"
 #include "IEffects.h"
 #include "vstdlib/random.h"
@@ -674,18 +674,18 @@ bool CNPC_CombineGuard::AimGunAt( CBaseEntity *pEntity, float flInterval )
 	QAngle localEnemyAngles;
 	VectorAngles( localEnemyPosition, localEnemyAngles );
 	
-	localEnemyAngles.x = UTIL_AngleDiff( localEnemyAngles.x, 0 );	
+	localEnemyAngles.z = UTIL_AngleDiff( localEnemyAngles.z, 0 );	
 	localEnemyAngles.y = UTIL_AngleDiff( localEnemyAngles.y, 0 );
 
 	float targetYaw = m_aimYaw + localEnemyAngles.y;
-	float targetPitch = m_aimPitch + localEnemyAngles.x;
+	float targetPitch = m_aimPitch + localEnemyAngles.z;
 	
 	QAngle unitAngles = localEnemyAngles;
-	float angleDiff = sqrt( localEnemyAngles.y * localEnemyAngles.y + localEnemyAngles.x * localEnemyAngles.x );
+	float angleDiff = sqrt( localEnemyAngles.y * localEnemyAngles.y + localEnemyAngles.z * localEnemyAngles.z );
 	const float aimSpeed = 1;
 
 	float yawSpeed = fabsf(aimSpeed*flInterval*localEnemyAngles.y);
-	float pitchSpeed = fabsf(aimSpeed*flInterval*localEnemyAngles.x);
+	float pitchSpeed = fabsf(aimSpeed*flInterval*localEnemyAngles.z);
 
 	yawSpeed = max(yawSpeed,15);
 	pitchSpeed = max(pitchSpeed,15);

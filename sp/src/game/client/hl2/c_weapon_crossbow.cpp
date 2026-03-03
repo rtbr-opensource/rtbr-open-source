@@ -10,10 +10,9 @@
 #include "fx.h"
 #include "c_te_effect_dispatch.h"
 #include "beamdraw.h"
-
-CLIENTEFFECT_REGISTER_BEGIN( PrecacheEffectCrossbow )
-CLIENTEFFECT_MATERIAL( "effects/muzzleflash1" )
-CLIENTEFFECT_REGISTER_END()
+#include "c_basehlcombatweapon.h"
+#include "c_weapon__stubs.h"
+#include "particles_new.h"
 
 //
 // Crossbow bolt
@@ -24,7 +23,7 @@ class C_CrossbowBolt : public C_BaseCombatCharacter
 	DECLARE_CLASS( C_CrossbowBolt, C_BaseCombatCharacter );
 	DECLARE_CLIENTCLASS();
 public:
-
+	
 	C_CrossbowBolt( void );
 
 	virtual RenderGroup_t GetRenderGroup( void )
@@ -33,10 +32,10 @@ public:
 		return RENDER_GROUP_TWOPASS;
 	}
 
+	virtual void	Precache( void );
 	virtual void	ClientThink( void );
 
 	virtual void	OnDataChanged( DataUpdateType_t updateType );
-	virtual int		DrawModel( int flags );
 
 private:
 
@@ -44,9 +43,14 @@ private:
 
 	Vector	m_vecLastOrigin;
 	bool	m_bUpdated;
+	int		m_iElectric;
+	bool	m_bStruckSomething;
+	CNewParticleEffect *m_hTrail;
 };
 
 IMPLEMENT_CLIENTCLASS_DT( C_CrossbowBolt, DT_CrossbowBolt, CCrossbowBolt )
+	RecvPropInt( RECVINFO( m_iElectric ) ),
+	RecvPropBool(RECVINFO(m_bStruckSomething)),
 END_RECV_TABLE()
 
 //-----------------------------------------------------------------------------
@@ -54,6 +58,12 @@ END_RECV_TABLE()
 //-----------------------------------------------------------------------------
 C_CrossbowBolt::C_CrossbowBolt( void )
 {
+	m_hTrail = NULL;
+}
+
+void C_CrossbowBolt::Precache( void ){
+	PrecacheParticleSystem( "weapon_steambow_bolt_trail" );
+	BaseClass::Precache();
 }
 
 //-----------------------------------------------------------------------------
@@ -64,68 +74,15 @@ void C_CrossbowBolt::OnDataChanged( DataUpdateType_t updateType )
 {
 	BaseClass::OnDataChanged( updateType );
 
-	if (updateType == DATA_UPDATE_CREATED)
+	if ( updateType == DATA_UPDATE_CREATED )
 	{
 		m_bUpdated = false;
 		m_vecLastOrigin = GetAbsOrigin();
 		SetNextClientThink( CLIENT_THINK_ALWAYS );
-	}
-}
-
-//-----------------------------------------------------------------------------
-// Purpose: 
-// Input  : flags - 
-// Output : int
-//-----------------------------------------------------------------------------
-int C_CrossbowBolt::DrawModel( int flags )
-{
-	// See if we're drawing the motion blur
-	if (flags & STUDIO_TRANSPARENCY)
-	{
-		float		color[3];
-		IMaterial	*pBlurMaterial = materials->FindMaterial( "effects/muzzleflash1", NULL, false );
-
-		Vector	vecDir = GetAbsOrigin() - m_vecLastOrigin;
-		float	speed = VectorNormalize( vecDir );
-
-		speed = clamp( speed, 0, 32 );
-
-		if (speed > 0)
-		{
-			float	stepSize = MIN( (speed * 0.5f), 4.0f );
-
-			Vector	spawnPos = GetAbsOrigin() + (vecDir * 24.0f);
-			Vector	spawnStep = -vecDir * stepSize;
-
-			CMatRenderContextPtr pRenderContext( materials );
-			pRenderContext->Bind( pBlurMaterial );
-
-			float	alpha;
-
-			// Draw the motion blurred trail
-			for (int i = 0; i < 20; i++)
-			{
-				spawnPos += spawnStep;
-
-				alpha = RemapValClamped( i, 5, 11, 0.25f, 0.05f );
-
-				color[0] = color[1] = color[2] = alpha;
-
-				DrawHalo( pBlurMaterial, spawnPos, 3.0f, color );
-			}
+		if ( m_iElectric != -1 ){
+			m_hTrail = ParticleProp()->Create( "weapon_steambow_bolt_trail", PATTACH_ABSORIGIN_FOLLOW );
 		}
-
-		if (gpGlobals->frametime > 0.0f && !m_bUpdated)
-		{
-			m_bUpdated = true;
-			m_vecLastOrigin = GetAbsOrigin();
-		}
-
-		return 1;
 	}
-
-	// Draw the normal portion
-	return BaseClass::DrawModel( flags );
 }
 
 //-----------------------------------------------------------------------------
@@ -134,6 +91,11 @@ int C_CrossbowBolt::DrawModel( int flags )
 void C_CrossbowBolt::ClientThink( void )
 {
 	m_bUpdated = false;
+	if ( m_bStruckSomething && m_iElectric != -1 ){
+		ParticleProp()->StopParticlesNamed( "weapon_steambow_bolt_trail" );
+		ParticleProp()->StopEmission( m_hTrail );
+		m_hTrail = NULL;
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -142,18 +104,144 @@ void C_CrossbowBolt::ClientThink( void )
 //-----------------------------------------------------------------------------
 void CrosshairLoadCallback( const CEffectData &data )
 {
-	IClientRenderable *pRenderable = data.GetRenderable();
-	if (!pRenderable)
+	IClientRenderable *pRenderable = data.GetRenderable( );
+	if ( !pRenderable )
 		return;
-
+	
 	Vector	position;
 	QAngle	angles;
 
 	// If we found the attachment, emit sparks there
-	if (pRenderable->GetAttachment( data.m_nAttachmentIndex, position, angles ))
+	if ( pRenderable->GetAttachment( data.m_nAttachmentIndex, position, angles ) )
 	{
 		FX_ElectricSpark( position, 1.0f, 1.0f, NULL );
 	}
 }
 
 DECLARE_CLIENT_EFFECT( "CrossbowLoad", CrosshairLoadCallback );
+
+class C_WeaponCrossbow : public C_BaseHLCombatWeapon
+{
+	DECLARE_CLASS( C_CrossbowBolt, C_BaseHLCombatWeapon );
+	DECLARE_CLIENTCLASS();
+	DECLARE_PREDICTABLE();
+	DECLARE_DATADESC();
+public:
+
+	C_WeaponCrossbow( void );
+	
+	virtual void	Precache( void );
+	virtual void	ClientThink( void );
+	virtual void	OnDataChanged( DataUpdateType_t updateType );
+
+	void EnableScope();
+	void DisableScope();
+
+private:
+
+	bool	m_bCharging;
+	float	m_flChargeStartTime;
+	bool	m_bInZoom;
+
+	CNewParticleEffect *m_hCharge1;
+	CNewParticleEffect *m_hCharge2;
+	CNewParticleEffect *m_hCharge3;
+};
+
+STUB_WEAPON_CLASS_IMPLEMENT( weapon_crossbow, C_WeaponCrossbow );
+
+IMPLEMENT_CLIENTCLASS_DT( C_WeaponCrossbow, DT_WeaponCrossbow, CWeaponCrossbow )
+	RecvPropBool( RECVINFO( m_bCharging ) ),
+	RecvPropFloat(RECVINFO(m_flChargeStartTime)),
+	RecvPropBool(RECVINFO(m_bInZoom)),
+END_RECV_TABLE()
+
+BEGIN_DATADESC( C_WeaponCrossbow )
+DEFINE_FIELD( m_bCharging, FIELD_BOOLEAN ),
+DEFINE_FIELD(m_flChargeStartTime, FIELD_FLOAT),
+END_DATADESC()
+
+C_WeaponCrossbow::C_WeaponCrossbow()
+{
+	m_hCharge1 = NULL;
+	m_hCharge2 = NULL;
+	m_hCharge3 = NULL;
+}
+
+void C_WeaponCrossbow::Precache( void )
+{
+	PrecacheParticleSystem( "weapon_steambow_charge" );
+	BaseClass::Precache();
+}
+
+void C_WeaponCrossbow::ClientThink( void )
+{
+	BaseClass::ClientThink();
+}
+
+void C_WeaponCrossbow::OnDataChanged( DataUpdateType_t updateType )
+{
+	CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
+	if (!pOwner)
+		return;
+
+	if (pOwner->GetActiveWeapon() != this)
+	{
+		ParticleProp()->StopEmissionAndDestroyImmediately( m_hCharge1 );
+		m_hCharge1 = NULL;
+		ParticleProp()->StopEmissionAndDestroyImmediately( m_hCharge2 );
+		m_hCharge2 = NULL;
+		ParticleProp()->StopEmissionAndDestroyImmediately( m_hCharge3 );
+		m_hCharge3 = NULL;
+	}
+
+	if (!m_bCharging) {
+		if (m_hCharge1) {
+			ParticleProp()->StopEmission( m_hCharge1 );
+			m_hCharge1 = NULL;
+		}
+		if (m_hCharge2) {
+			ParticleProp()->StopEmission( m_hCharge2 );
+			m_hCharge2 = NULL;
+		}
+		if (m_hCharge3) {
+			ParticleProp()->StopEmission( m_hCharge3 );
+			m_hCharge3 = NULL;
+		}
+	}
+	else if (pOwner) {
+		float flElapsedTime = gpGlobals->curtime - m_flChargeStartTime;
+
+		if (!m_hCharge1 && m_bCharging && flElapsedTime >= 0.667f){
+			m_hCharge1 = ParticleProp()->Create( "weapon_steambow_charge", PATTACH_ABSORIGIN_FOLLOW );
+			ParticleProp()->AddControlPoint( m_hCharge1, 0, pOwner->GetViewModel(), PATTACH_POINT_FOLLOW, "battery_1" );
+		}
+		else if (!m_hCharge2 && m_bCharging && flElapsedTime >= 1.333f) {
+			m_hCharge2 = ParticleProp()->Create( "weapon_steambow_charge", PATTACH_ABSORIGIN_FOLLOW );
+			ParticleProp()->AddControlPoint( m_hCharge2, 0, pOwner->GetViewModel(), PATTACH_POINT_FOLLOW, "battery_2" );
+		}
+		else if (!m_hCharge3 && m_bCharging && flElapsedTime >= 2.0f) {
+			m_hCharge3 = ParticleProp()->Create( "weapon_steambow_charge", PATTACH_ABSORIGIN_FOLLOW );
+			ParticleProp()->AddControlPoint( m_hCharge3, 0, pOwner->GetViewModel(), PATTACH_POINT_FOLLOW, "battery_3" );
+		}
+	}
+
+	if (m_bInZoom) {
+		EnableScope();
+	}
+	else {
+		DisableScope();
+	}
+
+	BaseClass::OnDataChanged( updateType );
+}
+
+void C_WeaponCrossbow::EnableScope( void ){
+	C_BasePlayer* pPlayer = C_BasePlayer::GetLocalPlayer();
+	pPlayer->SetFX( SFX_CROSSBOW, true );
+}
+
+void C_WeaponCrossbow::DisableScope( void ){
+	C_BasePlayer* pPlayer = C_BasePlayer::GetLocalPlayer();
+	pPlayer->SetFX( SFX_CROSSBOW, false );
+}

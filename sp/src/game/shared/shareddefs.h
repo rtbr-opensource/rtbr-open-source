@@ -244,7 +244,9 @@ enum CastVote
 
 #define MAX_PLACE_NAME_LENGTH		18
 
-#define MAX_FOV						90
+#define VIEW_NEARZ					4
+#define MIN_FOV						75
+#define MAX_FOV						105
 
 //===================================================================================================================
 // Team Defines
@@ -537,6 +539,7 @@ typedef enum
 	USE_ON = 1,
 	USE_SET = 2,
 	USE_TOGGLE = 3,
+	USE_AMMO = 4 // gauss ammograb
 } USE_TYPE;
 
 // basic team colors
@@ -1078,5 +1081,12 @@ enum
 	COMMENTARY_TYPE_SCENE,		// Play a VCD file
 };
 #endif
+
+// radius damage flags
+enum
+{
+	RD_NOFALLOFF = 1 << 0,
+	RD_STUNNPC = 1 << 1,
+};
 
 #endif // SHAREDDEFS_H

@@ -1,14 +1,11 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Definition for client-side advisor.
+// Purpose: Definition for client-side cremator.
 //
 //=====================================================================================//
 
-
-
 #include "cbase.h"
 #include "npc_cremator_shared.h"
-
 #include "particles_simple.h"
 #include "particles_attractor.h"
 #include "clienteffectprecachesystem.h"
@@ -28,8 +25,12 @@ class C_NPC_Cremator : public C_AI_BaseNPC
 	DECLARE_CLIENTCLASS();
 
 public:
+	
+	void	Spawn( void );
+	void	Precache( void );
 	// Server to client message received
 	virtual void	ReceiveMessage(int classID, bf_read& msg);
+	virtual void	OnDataChanged( DataUpdateType_t updateType );
 
 private:
 
@@ -39,11 +40,32 @@ private:
 	void StartTankFX();
 	void StopTankFX();
 
+	void UpdateImmolatorFlame();
+
+	Vector m_vMuzzlePosition;
+	Vector m_vAiming;
+
+	CNewParticleEffect* m_hMuzzle;
+	CNewParticleEffect* m_hFlame;
 };
 
-IMPLEMENT_CLIENTCLASS_DT(C_NPC_Cremator, DT_NPC_Cremator, CNPC_Cremator)
-
+IMPLEMENT_CLIENTCLASS_DT( C_NPC_Cremator, DT_NPC_Cremator, CNPC_Cremator )
+RecvPropVector( RECVINFO( m_vMuzzlePosition ) ),
+RecvPropVector( RECVINFO( m_vAiming ) ),
 END_RECV_TABLE()
+
+void C_NPC_Cremator::Spawn()
+{
+	Precache();
+	BaseClass::Spawn();
+}
+
+void C_NPC_Cremator::Precache( void )
+{
+	PrecacheParticleSystem( "weapon_immolator_muzzle_TP" );
+	PrecacheParticleSystem( "weapon_immolator_flame_TP" );
+	BaseClass::Precache();
+}
 
 // Server to client message received
 void C_NPC_Cremator::ReceiveMessage(int classID, bf_read& msg)
@@ -67,7 +89,6 @@ void C_NPC_Cremator::ReceiveMessage(int classID, bf_read& msg)
 	case CREMATOR_MSG_STOP_IMMO:
 	{
 		StopImmoFX();
-
 	}
 	break;
 
@@ -92,22 +113,30 @@ void C_NPC_Cremator::ReceiveMessage(int classID, bf_read& msg)
 	}
 }
 
+void C_NPC_Cremator::OnDataChanged( DataUpdateType_t updateType )
+{
+	if (m_hMuzzle && m_hFlame)
+		UpdateImmolatorFlame();
+	BaseClass::OnDataChanged(updateType);
+}
+
 //-----------------------------------------------------------------------------
 // Create muzzle FX
 //-----------------------------------------------------------------------------
 void C_NPC_Cremator::StartImmoFX()
 {
-
-	if (ParticleProp()->FindEffect("immo_beam_muzzle02") == 0) {
+	if (m_hMuzzle && m_hFlame) {
 		return;
 	}
 
-	CNewParticleEffect* pEffect = ParticleProp()->Create("immo_beam_muzzle02", PATTACH_ABSORIGIN_FOLLOW);
+	m_hMuzzle = ParticleProp()->Create("weapon_immolator_muzzle_TP", PATTACH_ABSORIGIN_FOLLOW);
+	m_hFlame = ParticleProp()->Create( "weapon_immolator_flame_TP", PATTACH_CUSTOMORIGIN, 0, m_vMuzzlePosition);
 
-	Assert(pEffect);
-	if (!pEffect) return;
+	Assert( m_hMuzzle && m_hFlame );
+	if ( !m_hMuzzle || !m_hFlame ) return;
 
-	ParticleProp()->AddControlPoint(pEffect, 0, this, PATTACH_POINT_FOLLOW, "1");
+	ParticleProp()->AddControlPoint(m_hMuzzle, 0, this, PATTACH_POINT_FOLLOW, "1");
+	UpdateImmolatorFlame();
 }
 
 
@@ -116,8 +145,10 @@ void C_NPC_Cremator::StartImmoFX()
 //-----------------------------------------------------------------------------
 void C_NPC_Cremator::StopImmoFX()
 {
-
-	ParticleProp()->StopParticlesNamed("immo_beam_muzzle02");
+	ParticleProp()->StopEmission( m_hMuzzle );
+	ParticleProp()->StopEmission( m_hFlame );
+	m_hMuzzle = NULL;
+	m_hFlame = NULL;
 }
 
 //-----------------------------------------------------------------------------
@@ -126,7 +157,7 @@ void C_NPC_Cremator::StopImmoFX()
 void C_NPC_Cremator::StartTankFX()
 {
 
-	if (ParticleProp()->FindEffect("npc_cremator_tankjet") == 0) {
+	if (ParticleProp()->FindEffect("npc_cremator_tankjet") >= 0) {
 		return;
 	}
 
@@ -144,6 +175,18 @@ void C_NPC_Cremator::StartTankFX()
 //-----------------------------------------------------------------------------
 void C_NPC_Cremator::StopTankFX()
 {
-
 	ParticleProp()->StopParticlesNamed("npc_cremator_tankjet");
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Update the immolator's flame stream particle effect.
+//-----------------------------------------------------------------------------
+void C_NPC_Cremator::UpdateImmolatorFlame()
+{
+	m_hFlame->SetControlPoint( 0, m_vMuzzlePosition );
+	QAngle angAiming;
+	VectorAngles( m_vAiming, angAiming );
+	Quaternion qAiming;
+	AngleQuaternion( angAiming, qAiming );
+	m_hFlame->SetControlPointOrientation( 0, qAiming );
 }

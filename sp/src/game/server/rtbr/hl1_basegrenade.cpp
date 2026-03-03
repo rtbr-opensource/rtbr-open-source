@@ -11,7 +11,7 @@
 #include "shake.h"
 #include "engine/IEngineSound.h"
 #include "soundent.h"
-#include "EntityList.h"
+#include "entitylist.h"
 #include "hl1_basegrenade.h"
 
 

@@ -11,12 +11,12 @@
 #include "ai_default.h"
 #include "ai_node.h"
 #include "ai_route.h"
-#include "AI_Navigator.h"
-#include "AI_Motor.h"
+#include "ai_navigator.h"
+#include "ai_motor.h"
 #include "ai_squad.h"
-#include "AI_TacticalServices.h"
+#include "ai_tacticalservices.h"
 #include "soundent.h"
-#include "EntityList.h"
+#include "entitylist.h"
 #include "game.h"
 #include "activitylist.h"
 #include "hl2_shareddefs.h"
@@ -40,12 +40,15 @@
 ConVar	sk_houndeye_health("sk_houndeye_health", "0");
 ConVar	sk_houndeye_dmg_blast("sk_houndeye_dmg_blast", "0");
 
+ConVar	sk_houndeyealpha_health("sk_houndeyealpha_health", "200");
+ConVar	sk_houndeyealpha_dmg_blast("sk_houndeyealpha_dmg_blast", "20");
+
 //=========================================================
 // Interactions
 //=========================================================
-int	g_interactionHoundeyeGroupAttack = 0;
-int	g_interactionHoundeyeGroupRetreat = 0;
-int	g_interactionHoundeyeGroupRalley = 0;
+int g_interactionHoundeyeGroupAttack = 0;
+int g_interactionHoundeyeGroupRetreat = 0;
+int g_interactionHoundeyeGroupRalley = 0;
 
 //=========================================================
 // Specialized Tasks 
@@ -72,6 +75,7 @@ enum Houndeye_Conds
 	COND_HOUND_GROUP_RETREAT,
 	COND_HOUND_GROUP_RALLEY,
 };
+#define		bits_MEMORY_HOUND_GROUP_RETREATING		bits_MEMORY_CUSTOM1
 
 //=========================================================
 // Specialized Shedules
@@ -405,7 +409,16 @@ void CNPC_Houndeye::Spawn()
 {
 	Precache();
 
-	SetModel("models/houndeye.mdl");
+	if (m_bIsAlpha)
+	{
+		SetModel("models/houndeye_alpha.mdl");
+		m_iHealth = sk_houndeyealpha_health.GetFloat();
+	}
+	else {
+		SetModel("models/houndeye.mdl");
+		m_iHealth = sk_houndeye_health.GetFloat();
+	}
+
 	SetHullType(HULL_MEDIUM);
 	SetHullSizeNormal();
 
@@ -413,7 +426,6 @@ void CNPC_Houndeye::Spawn()
 	AddSolidFlags(FSOLID_NOT_STANDABLE);
 	SetMoveType(MOVETYPE_STEP);
 	SetBloodColor(BLOOD_COLOR_YELLOW);
-	m_iHealth = sk_houndeye_health.GetFloat();
 	m_flFieldOfView = 0.5;// indicates the width of this monster's forward view cone ( as a dotproduct result )
 	m_NPCState = NPC_STATE_NONE;
 	m_fAsleep = false; // everyone spawns awake
@@ -439,7 +451,9 @@ void CNPC_Houndeye::Spawn()
 //=========================================================
 void CNPC_Houndeye::Precache()
 {
-	PrecacheModel("models/houndeye.mdl");
+	// We're just gonna precache both models here, they'll both most likely be used anyways.
+	PrecacheModel( "models/houndeye.mdl" );
+	PrecacheModel( "models/houndeye_alpha.mdl" );
 
 	PrecacheScriptSound("NPC_Houndeye.Anger1");
 	PrecacheScriptSound("NPC_Houndeye.Anger2");
@@ -456,7 +470,7 @@ void CNPC_Houndeye::Precache()
 	PrecacheScriptSound("NPC_Houndeye.GroupAttack");
 	PrecacheScriptSound("NPC_Houndeye.GroupFollow");
 
-	PrecacheParticleSystem("npc_houndeye");
+	PrecacheParticleSystem("npc_houndeye_shockwave");
 
 	UTIL_PrecacheOther("grenade_energy");
 	BaseClass::Precache();
@@ -503,6 +517,14 @@ void CNPC_Houndeye::WarmUpSound(void)
 void CNPC_Houndeye::WarnSound(void)
 {
 	EmitSound("NPC_Houndeye.Warn");
+}
+
+//=========================================================
+// ThumpSound 
+//=========================================================
+void CNPC_Houndeye::ThumpSound(void)
+{
+	EmitSound("NPC_Houndeye.SonicAttack");
 }
 
 //=========================================================
@@ -584,6 +606,14 @@ void CNPC_Houndeye::WriteBeamColor(void)
 	WRITE_BYTE(bBlue);
 }
 
+void CNPC_Houndeye::GatherConditions()
+{
+	BaseClass::GatherConditions();
+
+	if (HasMemory(bits_MEMORY_HOUND_GROUP_RETREATING))
+		SetCondition(COND_HOUND_GROUP_RETREAT);
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: Plays the engine sound.
 //-----------------------------------------------------------------------------
@@ -645,12 +675,35 @@ void CNPC_Houndeye::NPCThink(void)
 //------------------------------------------------------------------------------
 int CNPC_Houndeye::OnTakeDamage_Alive(const CTakeDamageInfo &info)
 {
-	if (m_pSquad && random->RandomInt(0, 10) == 10)
+	if (m_pSquad)
 	{
-		EmitSound("NPC_Houndeye.Retreat");
-		m_flSoundWaitTime = gpGlobals->curtime + 1.0;
+		if (random->RandomInt( 0, 10 ) == 10 && !IsCurSchedule( SCHED_HOUND_RANGE_ATTACK1 ))
+		{
+			AISquadIter_t iter;
+			CAI_BaseNPC* pSquadMember = m_pSquad->GetFirstMember(&iter);
 
-		m_pSquad->BroadcastInteraction(g_interactionHoundeyeGroupRetreat, NULL, this);
+			bool bSquadHasAlpha = false;
+			while (pSquadMember)
+			{
+				CNPC_Houndeye* pHoundeye = dynamic_cast<CNPC_Houndeye*>(pSquadMember);
+
+				if (pHoundeye->IsAlpha())
+				{
+					bSquadHasAlpha = true;
+					break;
+				}
+
+				pSquadMember = m_pSquad->GetNextMember(&iter);
+			}
+
+			if (!bSquadHasAlpha)
+			{
+				EmitSound("NPC_Houndeye.Retreat");
+				m_flSoundWaitTime = gpGlobals->curtime + 1.0;
+
+				m_pSquad->BroadcastInteraction(g_interactionHoundeyeGroupRetreat, NULL, this);
+			}
+		}
 	}
 
 	return BaseClass::OnTakeDamage_Alive(info);
@@ -666,11 +719,6 @@ void CNPC_Houndeye::Event_Killed(const CTakeDamageInfo &info)
 	EmitSound("NPC_Houndeye.Retreat");
 	m_flSoundWaitTime = gpGlobals->curtime + 1.0;
 
-	if (m_pSquad)
-	{
-		m_pSquad->BroadcastInteraction(g_interactionHoundeyeGroupRetreat, NULL, this);
-	}
-
 	BaseClass::Event_Killed(info);
 }
 
@@ -679,7 +727,16 @@ void CNPC_Houndeye::Event_Killed(const CTakeDamageInfo &info)
 //=========================================================
 void CNPC_Houndeye::SonicAttack(void)
 {
-	EmitSound("NPC_Houndeye.SonicAttack");
+	ThumpSound();
+	DevMsg("Houndeye: ");
+	if (GetSquad())
+	{
+		DevMsg(GetSquad()->GetName());
+		DevMsg("\n");
+	}
+	else {
+		DevMsg("lol no squad lol\n");
+	}
 
 	if (m_hEnergyWave.Get())
 	{
@@ -767,7 +824,8 @@ void CNPC_Houndeye::SonicAttack(void)
 			// ------------------------------
 			if (pEntity->m_takedamage != DAMAGE_NO)
 			{
-				CTakeDamageInfo info(this, this, flDamageAdjuster * sk_houndeye_dmg_blast.GetFloat(), DMG_SONIC | DMG_ALWAYSGIB);
+				float flDmg = (m_bIsAlpha ? sk_houndeyealpha_dmg_blast.GetFloat() : sk_houndeye_dmg_blast.GetFloat());
+				CTakeDamageInfo info(this, this, flDamageAdjuster * flDmg, DMG_SONIC | DMG_ALWAYSGIB);
 				CalculateExplosiveDamageForce(&info, (pEntity->GetAbsOrigin() - GetAbsOrigin()), pEntity->GetAbsOrigin());
 
 				pEntity->TakeDamage(info);
@@ -1056,6 +1114,12 @@ bool CNPC_Houndeye::IsAnyoneInSquadAttacking(void)
 //=========================================================
 int CNPC_Houndeye::SelectSchedule(void)
 {
+	if ( GetEFlags() & EFL_IS_BEING_LIFTED_BY_BARNACLE )
+	{
+		// If we're being lifted by a barnacle, don't attack!
+		return SCHED_IDLE_STAND;
+	}
+
 	switch (m_NPCState)
 	{
 	case NPC_STATE_IDLE:
@@ -1101,7 +1165,7 @@ int CNPC_Houndeye::SelectSchedule(void)
 		}
 
 		// If a group retread was requested 
-		if (HasCondition(COND_HOUND_GROUP_RETREAT))
+		if (HasCondition(COND_HOUND_GROUP_RETREAT) && !IsAlpha())
 		{
 			return SCHED_HOUND_GROUP_RETREAT;
 		}
@@ -1192,8 +1256,12 @@ bool CNPC_Houndeye::HandleInteraction(int interactionType, void *data, CBaseComb
 	}
 	else if (interactionType == g_interactionHoundeyeGroupRetreat)
 	{
-		SetCondition(COND_HOUND_GROUP_RETREAT);
-		return true;
+		if (!IsAlpha())
+		{
+			Remember(bits_MEMORY_HOUND_GROUP_RETREATING);
+			SetCondition(COND_HOUND_GROUP_RETREAT);
+			return true;
+		}
 	}
 	else if (interactionType == g_interactionHoundeyeGroupRalley)
 	{
@@ -1203,7 +1271,7 @@ bool CNPC_Houndeye::HandleInteraction(int interactionType, void *data, CBaseComb
 		return true;
 	}
 
-	return false;
+	return BaseClass::HandleInteraction(interactionType, data, sourceEnt);
 }
 
 

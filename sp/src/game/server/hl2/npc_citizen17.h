@@ -53,7 +53,8 @@ enum CitizenType_t
 	CT_REBEL,
 	CT_UNIQUE,
 	CT_INDUSTRIAL,
-	CT_METROCOP
+	CT_METROCOP,
+	CT_WASTELAND
 };
 
 //-----------------------------------------------------------------------------

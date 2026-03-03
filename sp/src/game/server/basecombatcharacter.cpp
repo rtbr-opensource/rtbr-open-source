@@ -48,6 +48,10 @@
 #include "hl2_gamerules.h"
 #endif
 
+#ifdef RTBR_DLL
+#include "rtbr_shareddefs.h"
+#endif
+
 #ifdef PORTAL
 	#include "portal_util_shared.h"
 	#include "prop_portal_shared.h"
@@ -79,6 +83,12 @@ ConVar ai_use_visibility_cache( "ai_use_visibility_cache", "1" );
 #define ShouldUseVisibilityCache() true
 #endif
 #endif
+
+extern ConVar sk_plr_max_dmg_stunstick;
+extern ConVar sk_plr_dmg_crossbow;
+extern ConVar sk_crossbow_elec_radius_dmg_scale;
+extern ConVar sk_plr_dmg_gauss;
+extern ConVar sk_plr_max_dmg_gauss;
 
 BEGIN_DATADESC( CBaseCombatCharacter )
 
@@ -175,6 +185,7 @@ BEGIN_ENT_SCRIPTDESC( CBaseCombatCharacter, CBaseFlex, "The base class shared by
 	DEFINE_SCRIPTFUNC_NAMED( ScriptRelationType, "GetRelationship", "Get a character's relationship to a specific entity." )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptRelationPriority, "GetRelationPriority", "Get a character's relationship priority for a specific entity." )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptSetRelationship, "SetRelationship", "Set a character's relationship with a specific entity." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetClassRelationship, "SetClassRelationship", "Set a character's relationship with a specific Classify() class." )
 
 	DEFINE_SCRIPTFUNC_NAMED( ScriptGetVehicleEntity, "GetVehicleEntity", "Get the entity for a character's current vehicle if they're in one." )
 
@@ -191,6 +202,15 @@ BEGIN_ENT_SCRIPTDESC( CBaseCombatCharacter, CBaseFlex, "The base class shared by
 	DEFINE_SCRIPTFUNC( HeadDirection3D, "Get the head's 3D direction." )
 	DEFINE_SCRIPTFUNC( EyeDirection2D, "Get the eyes' 2D direction." )
 	DEFINE_SCRIPTFUNC( EyeDirection3D, "Get the eyes' 3D direction." )
+
+	DEFINE_SCRIPTFUNC( LastHitGroup, "Get the last hitgroup." )
+
+#ifdef GLOWS_ENABLE
+	DEFINE_SCRIPTFUNC( AddGlowEffect, "" )
+	DEFINE_SCRIPTFUNC( RemoveGlowEffect, "" )
+	DEFINE_SCRIPTFUNC( IsGlowEffectActive, "" )
+	DEFINE_SCRIPTFUNC( SetGlowColor, "" )
+#endif
 
 	// 
 	// Hooks
@@ -290,6 +310,8 @@ END_SEND_TABLE();
 IMPLEMENT_SERVERCLASS_ST(CBaseCombatCharacter, DT_BaseCombatCharacter)
 #ifdef GLOWS_ENABLE
 	SendPropBool( SENDINFO( m_bGlowEnabled ) ),
+	SendPropVector( SENDINFO( m_GlowColor ), 8, 0, 0, 1 ),
+	SendPropFloat( SENDINFO( m_GlowAlpha ) ),
 #endif // GLOWS_ENABLE
 	// Data that only gets sent to the local player.
 	SendPropDataTable( "bcc_localdata", 0, &REFERENCE_SEND_TABLE(DT_BCCLocalPlayerExclusive), SendProxy_SendBaseCombatCharacterLocalDataTable ),
@@ -875,6 +897,8 @@ CBaseCombatCharacter::CBaseCombatCharacter( void )
 
 #ifdef GLOWS_ENABLE
 	m_bGlowEnabled.Set( false );
+	m_GlowColor.GetForModify().Init( 0.76f, 0.76f, 0.76f );
+	m_GlowAlpha.Set(1.0f);
 #endif // GLOWS_ENABLE
 }
 
@@ -1264,6 +1288,11 @@ bool CTraceFilterMelee::ShouldHitEntity( IHandleEntity *pHandleEntity, int conte
 		if ( pEntity->m_takedamage == DAMAGE_NO )
 			return false;
 
+#ifdef MAPBASE // Moved from CheckTraceHullAttack()
+		if( m_pPassEnt && !pEntity->CanBeHitByMeleeAttack( const_cast<CBaseEntity*>(EntityFromEntityHandle( m_pPassEnt ) ) ) )
+			return false;
+#endif
+
 		// FIXME: Do not translate this to the driver because the driver only accepts damage from the vehicle
 		// Translate the vehicle into its driver for damage
 		/*
@@ -1311,6 +1340,10 @@ bool CTraceFilterMelee::ShouldHitEntity( IHandleEntity *pHandleEntity, int conte
 		}
 		else
 		{
+#ifdef MAPBASE
+			// Do not override an existing hit entity
+			if (!m_pHit)
+#endif
 			m_pHit = pEntity;
 
 			// Make sure if the player is holding this, he drops it
@@ -1386,11 +1419,13 @@ CBaseEntity *CBaseCombatCharacter::CheckTraceHullAttack( const Vector &vStart, c
 		pEntity = traceFilter.m_pHit;
 	}
 
+#ifndef MAPBASE // Moved to CTraceFilterMelee
 	if( pEntity && !pEntity->CanBeHitByMeleeAttack(this) )
 	{
 		// If we touched something, but it shouldn't be hit, return nothing.
 		pEntity = NULL;
 	}
+#endif
 
 	return pEntity;
 
@@ -1596,6 +1631,15 @@ void CBaseCombatCharacter::FixupBurningServerRagdoll( CBaseEntity *pRagdoll )
 	}
 }
 
+inline bool CBaseCombatCharacter::ShouldFadeServerRagdolls() const
+{
+#ifdef MAPBASE
+	return IsNPC() ? HasSpawnFlags( SF_NPC_FADE_CORPSE ) : true;
+#else
+	return true;
+#endif
+}
+
 bool CBaseCombatCharacter::BecomeRagdollBoogie( CBaseEntity *pKiller, const Vector &forceVector, float duration, int flags )
 {
 	Assert( CanBecomeRagdoll() );
@@ -1604,7 +1648,7 @@ bool CBaseCombatCharacter::BecomeRagdollBoogie( CBaseEntity *pKiller, const Vect
 
 	info.SetDamageForce( forceVector );
 
-	CBaseEntity *pRagdoll = CreateServerRagdoll( this, 0, info, COLLISION_GROUP_INTERACTIVE_DEBRIS, true );
+	CBaseEntity *pRagdoll = CreateServerRagdoll( this, 0, info, COLLISION_GROUP_INTERACTIVE_DEBRIS, ShouldFadeServerRagdolls() );
 
 	pRagdoll->SetCollisionBounds( CollisionProp()->OBBMins(), CollisionProp()->OBBMaxs() );
 
@@ -1627,7 +1671,7 @@ CBaseEntity *CBaseCombatCharacter::BecomeRagdollBoogie( CBaseEntity *pKiller, co
 
 	info.SetDamageForce( forceVector );
 
-	CBaseEntity *pRagdoll = CreateServerRagdoll( this, 0, info, COLLISION_GROUP_INTERACTIVE_DEBRIS, true );
+	CBaseEntity *pRagdoll = CreateServerRagdoll( this, 0, info, COLLISION_GROUP_INTERACTIVE_DEBRIS, ShouldFadeServerRagdolls() );
 
 	pRagdoll->SetCollisionBounds( CollisionProp()->OBBMins(), CollisionProp()->OBBMaxs() );
 
@@ -1676,7 +1720,7 @@ bool CBaseCombatCharacter::BecomeRagdoll( const CTakeDamageInfo &info, const Vec
 #endif
 		// in single player create ragdolls on the server when the player hits someone
 		// with their vehicle - for more dramatic death/collisions
-		CBaseEntity *pRagdoll = CreateServerRagdoll( this, m_nForceBone, info2, COLLISION_GROUP_INTERACTIVE_DEBRIS, true );
+		CBaseEntity *pRagdoll = CreateServerRagdoll( this, m_nForceBone, info2, COLLISION_GROUP_INTERACTIVE_DEBRIS, ShouldFadeServerRagdolls() );
 		FixupBurningServerRagdoll( pRagdoll );
 		RemoveDeferred();
 		return true;
@@ -1690,7 +1734,7 @@ bool CBaseCombatCharacter::BecomeRagdoll( const CTakeDamageInfo &info, const Vec
 	// Burning corpses are server-side in episodic, if we're in darkness mode
 	if ( IsOnFire() && HL2GameRules()->IsAlyxInDarknessMode() )
 	{
-		CBaseEntity *pRagdoll = CreateServerRagdoll( this, m_nForceBone, newinfo, COLLISION_GROUP_DEBRIS );
+		CBaseEntity *pRagdoll = CreateServerRagdoll( this, m_nForceBone, newinfo, COLLISION_GROUP_DEBRIS, ShouldFadeServerRagdolls() );
 		FixupBurningServerRagdoll( pRagdoll );
 		RemoveDeferred();
 		return true;
@@ -1711,7 +1755,7 @@ bool CBaseCombatCharacter::BecomeRagdoll( const CTakeDamageInfo &info, const Vec
 			return false;
 
 		//FIXME: This is fairly leafy to be here, but time is short!
-		CBaseEntity *pRagdoll = CreateServerRagdoll( this, m_nForceBone, newinfo, COLLISION_GROUP_INTERACTIVE_DEBRIS, true );
+		CBaseEntity *pRagdoll = CreateServerRagdoll( this, m_nForceBone, newinfo, COLLISION_GROUP_INTERACTIVE_DEBRIS, ShouldFadeServerRagdolls() );
 		FixupBurningServerRagdoll( pRagdoll );
 		PhysSetEntityGameFlags( pRagdoll, FVPHYSICS_NO_SELF_COLLISIONS );
 		RemoveDeferred();
@@ -1721,7 +1765,7 @@ bool CBaseCombatCharacter::BecomeRagdoll( const CTakeDamageInfo &info, const Vec
 
 	if( hl2_episodic.GetBool() && Classify() == CLASS_PLAYER_ALLY_VITAL )
 	{
-		CreateServerRagdoll( this, m_nForceBone, newinfo, COLLISION_GROUP_INTERACTIVE_DEBRIS, true );
+		CreateServerRagdoll( this, m_nForceBone, newinfo, COLLISION_GROUP_INTERACTIVE_DEBRIS, ShouldFadeServerRagdolls() );
 		RemoveDeferred();
 		return true;
 	}
@@ -1838,16 +1882,59 @@ void CBaseCombatCharacter::Event_Killed( const CTakeDamageInfo &info )
 			}
 		}
 #endif
+#ifdef RTBR_DLL
 		CBasePlayer *pPlayer = ToBasePlayer( info.GetAttacker() );
-		if ( pPlayer != NULL && CanBecomeServerRagdoll() && CanBoogie() && ( info.GetDamageType() & DMG_CLUB ) && (info.GetDamageType() & DMG_SHOCK ) ){
-			// create ragdoll boogie
-			float maxStunDamage = g_pGameRules->AdjustPlayerDamageInflicted( 83 ); // change if we ever change weapon_stunstick max charge damage
-			Vector colour = Vector( 1, 0.655, 0.35 ); // stunstick orange, thanks randomcatdude
-			float boogieTime = ( info.GetDamage() / maxStunDamage ) * 4.0f + 1.0f; // 1-5 sec. of boogie, dependent on charge damage
-			BecomeRagdollBoogie( pPlayer, forceVector, boogieTime, SF_RAGDOLL_BOOGIE_ELECTRICAL_LOW, &colour );
-			RemoveDeferred();
+		bool bHasBoogied = false;
+
+		// Boogie if we got hit with a charged attack
+		if ( pPlayer != NULL && CanBecomeServerRagdoll() && CanBoogie() ){
+			// Bludgeon weaponry doesn't properly set its inflictor when it hits, so we need to check the damage type for stunstick charge attacks.
+			if ((info.GetDamageType() & DMG_STUNSTICK) == DMG_STUNSTICK)
+			{
+				Vector colour = Vector( 1, 0.655, 0.35 ); // stunstick orange, thanks randomcatdude
+				float maxDamage = g_pGameRules->AdjustPlayerDamageInflicted( sk_plr_max_dmg_stunstick.GetFloat() );
+				float boogieTime = 1.0f + (info.GetDamage() / maxDamage) * 4.0f; // 1-5 sec. of boogie
+				BecomeRagdollBoogie( pPlayer, forceVector, boogieTime, SF_RAGDOLL_BOOGIE_ELECTRICAL_LOW, &colour );
+				RemoveDeferred();
+				bHasBoogied = true;
+			}
+			else if (FClassnameIs( info.GetInflictor(), "crossbow_bolt" ) && info.GetDamageType() & DMG_SHOCK)
+			{
+				Vector colour = Vector( 0.19, 0.46, 0.93 ); // crossbow blue
+
+				float maxDamage = g_pGameRules->AdjustPlayerDamageInflicted( sk_plr_dmg_crossbow.GetFloat() * sk_crossbow_elec_radius_dmg_scale.GetFloat() * 3 );
+				float minDamage = maxDamage / 3;
+				float boogieTime = 3.0f + ((info.GetDamage() - minDamage) / (maxDamage - minDamage)) * 4.0f; // 3-7 sec. of boogie
+
+				int iFlags = SF_RAGDOLL_BOOGIE_ELECTRICAL_LOW;
+				if (boogieTime >= 5.0f)
+					iFlags = SF_RAGDOLL_BOOGIE_ELECTRICAL; // level 2 charge or greater
+
+				BecomeRagdollBoogie( pPlayer, forceVector, boogieTime, iFlags, &colour );
+				RemoveDeferred();
+				bHasBoogied = true;
+			}
+			else if ((info.GetDamageType() & DMG_CHARGEDGAUSS) == DMG_CHARGEDGAUSS)
+			{
+				Vector colour = Vector( 1, 0.72, 0.19 ); // gauss yellow
+				float maxDamage = g_pGameRules->AdjustPlayerDamageInflicted( sk_plr_dmg_gauss.GetFloat() + sk_plr_max_dmg_gauss.GetFloat() );
+				float minDamage = g_pGameRules->AdjustPlayerDamageInflicted( sk_plr_dmg_gauss.GetFloat() );
+				float boogieTime = 2.0f + ((info.GetDamage() - minDamage) / (maxDamage - minDamage)) * 8.0f; // 2-10 sec. of boogie
+
+				int iFlags = SF_RAGDOLL_BOOGIE_ELECTRICAL_LOW;
+				if (boogieTime >= 5.0f)
+					iFlags = SF_RAGDOLL_BOOGIE_ELECTRICAL; // 6 points of charge or greater
+
+				BecomeRagdollBoogie( pPlayer, forceVector, boogieTime, SF_RAGDOLL_BOOGIE_ELECTRICAL, &colour );
+				RemoveDeferred();
+				bHasBoogied = true;
+			}
 		}
-		else if ( !bRagdollCreated )
+
+		if ( !bRagdollCreated && (info.GetDamageType() & DMG_REMOVENORAGDOLL) == 0 && !bHasBoogied )
+#else
+		if (!bRagdollCreated && (info.GetDamageType() & DMG_REMOVENORAGDOLL) == 0)
+#endif
 		{
 			BecomeRagdoll( info, forceVector );
 		}
@@ -3248,6 +3335,16 @@ void CBaseCombatCharacter::SetDefaultRelationship(Class_T nClass, Class_T nClass
 
 #ifdef MAPBASE
 //-----------------------------------------------------------------------------
+// Purpose: Determine whether or not default relationships are loaded
+// Input  :
+// Output :
+//-----------------------------------------------------------------------------
+bool CBaseCombatCharacter::DefaultRelationshipsLoaded()
+{
+	return m_DefaultRelationship != NULL;
+}
+
+//-----------------------------------------------------------------------------
 // Purpose: Fetch the default (ignore ai_relationship changes) relationship
 // Input  :
 // Output :
@@ -3446,13 +3543,13 @@ void CBaseCombatCharacter::AddRelationship( const char *pszRelationship, CBaseEn
 		bool bFoundEntity = false;
 
 		// Try to get pointer to an entity of this name
-		CBaseEntity *entity = gEntList.FindEntityByName( NULL, entityString );
+		CBaseEntity *entity = gEntList.FindEntityByName( NULL, entityString, this, pActivator );
 		while( entity )
 		{
 			// make sure you catch all entities of this name.
 			bFoundEntity = true;
 			AddEntityRelationship(entity, disposition, priority );
-			entity = gEntList.FindEntityByName( entity, entityString );
+			entity = gEntList.FindEntityByName( entity, entityString, this, pActivator );
 		}
 
 		if( !bFoundEntity )
@@ -3474,7 +3571,7 @@ void CBaseCombatCharacter::AddRelationship( const char *pszRelationship, CBaseEn
 				}
 				else
 				{
-#ifdef MAPBASE // I know the extra #ifdef is pointless, but it's there so you know this is new
+					// NEW: Classify class relationships
 					if (!Q_strnicmp(entityString, "CLASS_", 5))
 					{
 						// Go through all of the classes and find which one this is
@@ -3495,8 +3592,7 @@ void CBaseCombatCharacter::AddRelationship( const char *pszRelationship, CBaseEn
 					}
 					
 					if (!bFoundEntity)
-#endif
-					DevWarning( "Couldn't set relationship to unknown entity or class (%s)!\n", entityString );
+						DevWarning( "Couldn't set relationship to unknown entity or class (%s)!\n", entityString );
 				}
 			}
 		}
@@ -3602,7 +3698,7 @@ CBaseEntity *CBaseCombatCharacter::Weapon_FindUsable( const Vector &range )
 	else if (hl2_episodic.GetBool() && !GetActiveWeapon())
 	{
 		// Unarmed citizens are conservative in their weapon finding...in Episode One
-		if (Classify() != CLASS_PLAYER_ALLY_VITAL && Q_strncmp(STRING(gpGlobals->mapname), "ep1_", 4))
+		if (Classify() != CLASS_PLAYER_ALLY_VITAL && Q_strncmp(STRING(gpGlobals->mapname), "ep1_", 4) == 0)
 			bConservative = true;
 	}
 #endif
@@ -4008,13 +4104,13 @@ void CBaseCombatCharacter::VPhysicsShadowCollision( int index, gamevcollisioneve
 // Input  :
 // Output :
 //-----------------------------------------------------------------------------	
-void RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore )
+void RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore, int iFlags /* = 0 */ )
 {
 	// NOTE: I did this this way so I wouldn't have to change a whole bunch of
 	// code unnecessarily. We need TF2 specific rules for RadiusDamage, so I moved
 	// the implementation of radius damage into gamerules. All existing code calls
 	// this method, which calls the game rules method
-	g_pGameRules->RadiusDamage( info, vecSrc, flRadius, iClassIgnore, pEntityIgnore );
+	g_pGameRules->RadiusDamage( info, vecSrc, flRadius, iClassIgnore, pEntityIgnore, iFlags );
 
 	// Let the world know if this was an explosion.
 	if( info.GetDamageType() & DMG_BLAST )
@@ -4085,6 +4181,12 @@ void CBaseCombatCharacter::RemoveGlowEffect( void )
 bool CBaseCombatCharacter::IsGlowEffectActive( void )
 {
 	return m_bGlowEnabled;
+}
+
+void CBaseCombatCharacter::SetGlowColor( float red, float green, float blue, float alpha )
+{
+	m_GlowColor.GetForModify().Init( red, green, blue );
+	m_GlowAlpha.Set( alpha );
 }
 #endif // GLOWS_ENABLE
 
@@ -4661,6 +4763,13 @@ int CBaseCombatCharacter::ScriptRelationPriority( HSCRIPT pTarget )
 void CBaseCombatCharacter::ScriptSetRelationship( HSCRIPT pTarget, int disposition, int priority )
 {
 	AddEntityRelationship( ToEnt( pTarget ), (Disposition_t)disposition, priority );
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::ScriptSetClassRelationship( int classify, int disposition, int priority )
+{
+	AddClassRelationship( (Class_T)classify, (Disposition_t)disposition, priority);
 }
 
 //-----------------------------------------------------------------------------

@@ -1532,35 +1532,32 @@ float C_BaseAnimating::ClampCycle( float flCycle, bool isLooping )
 //-----------------------------------------------------------------------------
 const Vector& C_BaseAnimating::ScriptGetAttachmentOrigin( int iAttachment )
 {	
-
 	static Vector absOrigin;
-	static QAngle qa;
+	QAngle qa;
 
 	C_BaseAnimating::GetAttachment( iAttachment, absOrigin, qa );
 
 	return absOrigin;
 }
 
-const Vector& C_BaseAnimating::ScriptGetAttachmentAngles( int iAttachment )
+const QAngle& C_BaseAnimating::ScriptGetAttachmentAngles( int iAttachment )
 {	
-
-	static Vector absOrigin;
-	static Vector absAngles;
 	static QAngle qa;
+	Vector absOrigin;
 
 	C_BaseAnimating::GetAttachment( iAttachment, absOrigin, qa );
-	absAngles.x = qa.x;
-	absAngles.y = qa.y;
-	absAngles.z = qa.z;
-	return absAngles;
+	return qa;
 }
 
-HSCRIPT C_BaseAnimating::ScriptGetAttachmentMatrix( int iAttachment )
+HSCRIPT_RC C_BaseAnimating::ScriptGetAttachmentMatrix( int iAttachment )
 {	
-	static matrix3x4_t matrix;
+	matrix3x4_t *matrix = new matrix3x4_t;
 
-	C_BaseAnimating::GetAttachment( iAttachment, matrix );
-	return g_pScriptVM->RegisterInstance( &matrix );
+	if ( C_BaseAnimating::GetAttachment( iAttachment, *matrix ) )
+		return g_pScriptVM->RegisterInstance( matrix, true );
+
+	delete matrix;
+	return NULL;
 }
 
 void C_BaseAnimating::ScriptGetBoneTransform( int iBone, HSCRIPT hTransform )
@@ -3933,7 +3930,11 @@ void C_BaseAnimating::DispatchMagThrow( const char *options )
 	{
 		if (Q_stricmp(token, "OICW") == 0)
 		{
-			pModel = "models/weapons/oicw/m_oicw.mdl";
+			pModel = "models/weapons/OICW/m_oicw.mdl";
+		}
+		else if (Q_stricmp(token, "OICW_Grenade") == 0)
+		{
+			pModel = "models/weapons/OICW/m_oicw_grenade.mdl";
 		}
 		else if (Q_stricmp(token, "AKM") == 0)
 		{
@@ -3946,6 +3947,10 @@ void C_BaseAnimating::DispatchMagThrow( const char *options )
 		else if (Q_stricmp(token, "MP5K") == 0)
 		{
 			pModel = "models/weapons/mp5k/m_mp5k.mdl";
+		}
+		else if (Q_stricmp(token, "HMG") == 0)
+		{
+			pModel = "models/weapons/hmg/m_hmg.mdl";
 		}
 		else if (Q_stricmp(token, "PISTOL") == 0)
 		{
@@ -3996,7 +4001,7 @@ void C_BaseAnimating::DispatchMagThrow( const char *options )
 
 	C_Gib *pGib = C_Gib::CreateClientsideGib(pModel, origin, velocity, impulse, 20.f);
 
-	if(pGib)
+	if (pGib)
 		pGib->SetBodygroup(pGib->FindBodygroupByName("bullet"), 1);
 }
 
@@ -4124,6 +4129,92 @@ void C_BaseAnimating::FireEvent( const Vector& origin, const QAngle& angles, int
 			ParticleProp()->Create( szParticleEffect, (ParticleAttachment_t)iAttachType, iAttachment );
 		}
 		break;
+
+#ifdef MAPBASE // From Alien Swarm SDK
+	case AE_CL_STOP_PARTICLE_EFFECT:
+		{
+			char token[256];
+			char szParticleEffect[256];
+
+			// Get the particle effect name
+			const char *p = options;
+			p = nexttoken(token, p, ' ', sizeof(token));
+			if ( token ) 
+			{
+				Q_strncpy( szParticleEffect, token, sizeof(szParticleEffect) );
+			}
+
+			// Get the attachment point index
+			p = nexttoken(token, p, ' ', sizeof(token));
+			bool bStopInstantly = ( token && !Q_stricmp( token, "instantly" ) );
+
+			ParticleProp()->StopParticlesNamed( szParticleEffect, bStopInstantly );
+		}
+		break;
+	
+	case AE_CL_ADD_PARTICLE_EFFECT_CP:
+		{
+			int iControlPoint = 1;
+			int iAttachment = -1;
+			int iAttachType = PATTACH_ABSORIGIN_FOLLOW;
+			int iEffectIndex = -1;
+			char token[256];
+			char szParticleEffect[256];
+
+			// Get the particle effect name
+			const char *p = options;
+			p = nexttoken(token, p, ' ', sizeof(token));
+			if ( token ) 
+			{
+				Q_strncpy( szParticleEffect, token, sizeof(szParticleEffect) );
+			}
+
+			// Get the control point number
+			p = nexttoken(token, p, ' ', sizeof(token));
+			if ( token ) 
+			{
+				iControlPoint = atoi( token );
+			}
+
+			// Get the attachment type
+			p = nexttoken(token, p, ' ', sizeof(token));
+			if ( token ) 
+			{
+				iAttachType = GetAttachTypeFromString( token );
+				if ( iAttachType == -1 )
+				{
+					Warning("Invalid attach type specified for particle effect anim event. Trying to spawn effect '%s' with attach type of '%s'\n", szParticleEffect, token );
+					return;
+				}
+			}
+
+			// Get the attachment point index
+			p = nexttoken(token, p, ' ', sizeof(token));
+			if ( token )
+			{
+				iAttachment = atoi(token);
+
+				// See if we can find any attachment points matching the name
+				if ( token[0] != '0' && iAttachment == 0 )
+				{
+					iAttachment = LookupAttachment( token );
+					if ( iAttachment == -1 )
+					{
+						Warning("Failed to find attachment point specified for particle effect anim event. Trying to spawn effect '%s' on attachment named '%s'\n", szParticleEffect, token );
+						return;
+					}
+				}
+			}
+			iEffectIndex = ParticleProp()->FindEffect( szParticleEffect );
+			if ( iEffectIndex == -1 )
+			{
+				Warning("Failed to find specified particle effect. Trying to add CP to '%s' on attachment named '%s'\n", szParticleEffect, token );
+				return;
+			}
+			ParticleProp()->AddControlPoint( iEffectIndex, iControlPoint, this, (ParticleAttachment_t)iAttachType, iAttachment );	
+		}
+		break;
+#endif
 
 	case AE_CL_PLAYSOUND:
 		{
@@ -4379,6 +4470,22 @@ void C_BaseAnimating::FireEvent( const Vector& origin, const QAngle& angles, int
 			}
 		}
 		break;
+
+#ifdef MAPBASE
+	case AE_VSCRIPT_RUN:
+		{
+			if (!RunScript( options ))
+				Warning( "%s failed to run AE_VSCRIPT_RUN on client with \"%s\"\n", GetDebugName(), options );
+		}
+		break;
+		
+	case AE_VSCRIPT_RUN_FILE:
+		{
+			if (!RunScriptFile( options ))
+				Warning( "%s failed to run AE_VSCRIPT_RUN_FILE on client with \"%s\"\n", GetDebugName(), options );
+		}
+		break;
+#endif
 
 	default:
 		break;

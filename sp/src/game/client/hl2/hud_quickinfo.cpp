@@ -14,6 +14,7 @@
 #include "vgui_controls/Controls.h"
 #include "vgui_controls/Panel.h"
 #include "vgui/ISurface.h"
+#include "../hud_crosshair.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -179,6 +180,9 @@ bool CHUDQuickInfo::ShouldDraw( void )
 	if ( !crosshair.GetBool() && !IsX360() )
 		return false;
 
+	if (!hud_quickinfo.GetBool())
+		return false;
+
 	return ( CHudElement::ShouldDraw() && !engine->IsDrawingLoadingImage() );
 }
 
@@ -241,8 +245,14 @@ void CHUDQuickInfo::Paint()
 	if (!icon_c || !icon_rb || !icon_lb)
 		return;
 
-	int		xCenter = (ScreenWidth() / 2) - icon_c->Width() / 2;
-	int		yCenter = (ScreenHeight() / 2) - icon_c->Height() / 2;
+	float		fX, fY;
+	bool bBehindCamera = false;
+
+	CHudCrosshair::GetDrawPosition( &fX, &fY, &bBehindCamera );
+
+	int		xCenter = (int)fX - icon_lb->Width() / 2;
+	int		yCenter = (int)fY - icon_lb->Height() / 2;
+
 	//int		scalar;
 	float	scalar = 1.0f; //138.0f/255.0f;
 
@@ -327,7 +337,7 @@ void CHUDQuickInfo::Paint()
 	//Update our health
 	if (m_healthFade > 0.0f)
 	{
-		DrawWarning(xCenter - 10, yCenter - 5, icon_lb, m_healthFade);
+		DrawWarning( xCenter - icon_lb->Width(), yCenter, icon_lb, m_healthFade );
 	}
 	else
 	{
@@ -347,13 +357,13 @@ void CHUDQuickInfo::Paint()
 		int width = icon_lb->Width();
 		int height = icon_lb->Height();
 
-		gHUD.DrawIconProgressBar(xCenter - 10, yCenter - 5, width, height, icon_lb, (1.0f - healthPerc), healthColor, CHud::HUDPB_VERTICAL);
+		gHUD.DrawIconProgressBar( xCenter - icon_lb->Width(), yCenter, width, height, icon_lb, (1.0f - healthPerc), healthColor, CHud::HUDPB_VERTICAL );
 	}
 
 	//Update our ammo
 	if (m_ammoFade > 0.0f)
 	{
-		DrawWarning(xCenter + icon_rb->Width() - 6, yCenter - 5, icon_rb, m_ammoFade);
+		DrawWarning( xCenter + icon_lb->Width(), yCenter, icon_rb, m_ammoFade );
 	}
 	else
 	{
@@ -384,7 +394,7 @@ void CHUDQuickInfo::Paint()
 		int width = icon_rb->Width();
 		int height = icon_rb->Height();
 
-		gHUD.DrawIconProgressBar( xCenter + icon_rb->Width() - 6, yCenter - 5, width, height, icon_rb, ammoPerc, ammoColor, CHud::HUDPB_VERTICAL );
+		gHUD.DrawIconProgressBar( xCenter + icon_lb->Width(), yCenter, width, height, icon_rb, ammoPerc, ammoColor, CHud::HUDPB_VERTICAL );
 	}
 }
 

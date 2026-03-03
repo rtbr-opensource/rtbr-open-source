@@ -44,7 +44,8 @@ extern int AE_ZOMBIE_POUND;
 #define ZOMBIE_BLOOD_BITE			3
 
 #ifdef MAPBASE
-#define SF_ZOMBIE_NO_TORSO ( 1 << 15 )
+	#define SF_ZOMBIE_NO_TORSO ( 1 << 15 )
+	#define SF_ZOMBIE_NO_HEADCRAB_SPAWN ( 1 << 16 )
 #endif
 	
 
@@ -141,7 +142,14 @@ public:
 	}
 
 	int MeleeAttack1Conditions ( float flDot, float flDist );
-	virtual float GetClawAttackRange() const { return ZOMBIE_MELEE_REACH; }
+	virtual float GetClawAttackRange() const 
+	{ 
+#ifdef MAPBASE
+		return m_flMeleeReach; 
+#else
+		return ZOMBIE_MELEE_REACH;
+#endif
+	}
 
 	// No range attacks
 	int RangeAttack1Conditions ( float flDot, float flDist ) { return( 0 ); }
@@ -150,6 +158,8 @@ public:
 	void TraceAttack( const CTakeDamageInfo &info, const Vector &vecDir, trace_t *ptr, CDmgAccumulator *pAccumulator );
 	int OnTakeDamage_Alive( const CTakeDamageInfo &info );
 	virtual float	GetReactionDelay( CBaseEntity *pEnemy ) { return 0.0; }
+
+	bool CanFlinch( void );
 
 	virtual int SelectSchedule ( void );
 	virtual int	SelectFailSchedule( int failedSchedule, int failedTask, AI_TaskFailureCode_t taskFailCode );
@@ -186,9 +196,10 @@ public:
 	// Headcrab releasing/breaking apart
 	void RemoveHead( void );
 	virtual void SetZombieModel( void ) { };
+	virtual void SetModel( const char *szModelName );
 	virtual void BecomeTorso( const Vector &vecTorsoForce, const Vector &vecLegsForce );
 	virtual bool CanBecomeLiveTorso() { return false; }
-	virtual bool HeadcrabFits( CBaseAnimating *pCrab );
+	virtual bool HeadcrabFits( CBaseAnimating *pCrab, const Vector *vecOrigin = NULL );
 	void ReleaseHeadcrab( const Vector &vecOrigin, const Vector &vecVelocity, bool fRemoveHead, bool fRagdollBody, bool fRagdollCrab = false );
 	void SetHeadcrabSpawnLocation( int iCrabAttachment, CBaseAnimating *pCrab );
 
@@ -253,6 +264,12 @@ protected:
 	bool	m_fIsHeadless;		// is this zombie headless
 
 	float	m_flNextFlinch;
+
+#ifdef MAPBASE
+	float m_flMeleeReach;
+	float m_flMaxDistToSwat;
+	int m_iMaxObjMassToSwat;
+#endif
 
 	bool m_bHeadShot;			// Used to determine the survival of our crab beyond our death.
 

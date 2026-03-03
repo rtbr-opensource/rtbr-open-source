@@ -113,6 +113,9 @@ BEGIN_DATADESC( CAI_ScriptedSequence )
 	DEFINE_INPUTFUNC( FIELD_VOID, "MoveToPosition", InputMoveToPosition ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "BeginSequence", InputBeginSequence ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "CancelSequence", InputCancelSequence ),
+#ifdef MAPBASE
+	DEFINE_INPUTFUNC( FIELD_VOID, "StopActionLoop", InputStopActionLoop ),
+#endif
 
 	DEFINE_KEYFIELD( m_iPlayerDeathBehavior, FIELD_INTEGER, "onplayerdeath" ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "ScriptPlayerDeath", InputScriptPlayerDeath ),
@@ -381,6 +384,14 @@ void CAI_ScriptedSequence::InputSetTarget( inputdata_t &inputdata )
 	m_hActivator = inputdata.pActivator;
 	m_iszEntity = AllocPooledString(inputdata.value.String());
 	m_hTargetEnt = NULL;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CAI_ScriptedSequence::InputStopActionLoop( inputdata_t &inputdata )
+{
+	StopActionLoop( false );
 }
 #endif
 
@@ -1396,11 +1407,31 @@ void CAI_ScriptedSequence::ModifyScriptedAutoMovement( Vector *vecNewPos )
 			}
 		}
 
+		VMatrix matInteractionPosition = m_matInteractionPosition;
+
+#ifdef MAPBASE
+		// Account for our own sequence movement
+		pAnimating = m_hTargetEnt->GetBaseAnimating();
+		if (pAnimating)
+		{
+			Vector vecDeltaPos;
+			QAngle angDeltaAngles;
+
+			pAnimating->GetSequenceMovement( pAnimating->GetSequence(), 0.0f, pAnimating->GetCycle(), vecDeltaPos, angDeltaAngles );
+			if (!vecDeltaPos.IsZero())
+			{
+				VMatrix matLocalMovement;
+				matLocalMovement.SetupMatrixOrgAngles( vecDeltaPos, angDeltaAngles );
+				MatrixMultiply( m_matInteractionPosition, matLocalMovement, matInteractionPosition );
+			}
+		}
+#endif
+
 		// We've been asked to maintain a specific position relative to the other NPC
 		// we're interacting with. Lerp towards the relative position.
  		VMatrix matMeToWorld, matLocalToWorld;
 		matMeToWorld.SetupMatrixOrgAngles( vecRelativeOrigin, angRelativeAngles );
-		MatrixMultiply( matMeToWorld, m_matInteractionPosition, matLocalToWorld );
+		MatrixMultiply( matMeToWorld, matInteractionPosition, matLocalToWorld );
 
 		// Get the desired NPC position in worldspace
 		Vector vecOrigin;

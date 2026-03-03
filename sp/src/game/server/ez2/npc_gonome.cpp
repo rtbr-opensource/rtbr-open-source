@@ -13,29 +13,16 @@
 
 #include "cbase.h"
 #include "game.h"
-#include "AI_Default.h"
-#include "AI_Schedule.h"
-#include "AI_Hull.h"
-#include "AI_Route.h"
-#include "AI_Hint.h"
-#include "AI_Navigator.h"
-#include "AI_Senses.h"
-#include "NPCEvent.h"
+#include "ai_route.h"
+#include "ai_hint.h"
 #include "animation.h"
 #include "npc_gonome.h"
-#include "gib.h"
 #include "soundent.h"
-#include "ndebugoverlay.h"
-#include "vstdlib/random.h"
-#include "engine/IEngineSound.h"
 //#include "hl1_grenade_spit.h"
 #include "util.h"
 #include "shake.h"
 #include "movevars_shared.h"
 #include "decals.h"
-#include "hl2_shareddefs.h"
-#include "hl2_gamerules.h"
-#include "ammodef.h"
 
 #include "player.h"
 #include "ai_network.h"
@@ -74,8 +61,8 @@
 #define	GONOME_ATTACK_FORCE 200 // force of melee attacks
 #define MAX_SPIT_DISTANCE		1024 // Maximum range of range attack 1 - was 784, adjusting to 1024
 
-ConVar sk_zombie_assassin_health("sk_zombie_assassin_health", "1000");
-ConVar sk_zombie_assassin_boss_health("sk_zombie_assassin_boss_health", "2000");
+ConVar sk_zombie_assassin_health("sk_zombie_assassin_health", "0");
+ConVar sk_zombie_assassin_boss_health("sk_zombie_assassin_boss_health", "0");
 ConVar sk_zombie_assassin_dmg_bite("sk_zombie_assassin_dmg_bite", "25");
 ConVar sk_zombie_assassin_dmg_whip("sk_zombie_assassin_dmg_whip", "35");
 ConVar sk_zombie_assassin_dmg_spit("sk_zombie_assassin_dmg_spit", "15");

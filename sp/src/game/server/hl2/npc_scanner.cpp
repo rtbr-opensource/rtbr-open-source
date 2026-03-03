@@ -612,6 +612,8 @@ void CNPC_CScanner::Precache(void)
 		PrecacheScriptSound( "NPC_CScanner.DeployMine" );
 
 		PrecacheScriptSound( "NPC_CScanner.FlyLoop" );
+
+		PrecacheParticleSystem( "npc_scanner_death" );
 	}
 
 	// Sprites

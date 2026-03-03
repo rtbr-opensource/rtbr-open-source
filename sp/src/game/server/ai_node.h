@@ -82,8 +82,9 @@ enum NodeInfoBits_e
 	//bits_TINY_CENTERED_HULL		11
 	//bits_LARGE_HULL				12
 	//bits_LARGE_CENTERED_HULL		13
+	//bits_SMALL_HULL				14
 
-	bits_DONT_DROP				=	( 1 << 14 ),
+	bits_DONT_DROP				=	( 1 << 15 ),
 	
 	/****** NOTE: will need to change node graph save/load code if exceed 16 bits here ******/
 

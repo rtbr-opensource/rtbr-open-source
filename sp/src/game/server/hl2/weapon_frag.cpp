@@ -19,9 +19,6 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-#define GRENADE_TIMER	3.0f //Seconds
-#define GRENADE_BLIP_TIMER 1.0f // seconds
-
 #define GRENADE_PAUSED_NO			0
 #define GRENADE_PAUSED_PRIMARY		1
 #define GRENADE_PAUSED_SECONDARY	2
@@ -58,7 +55,7 @@ public:
 	bool	Deploy( void );
 
 	int		CapabilitiesGet( void ) { return bits_CAP_WEAPON_RANGE_ATTACK1; }
-	float	SelectOptimalGrenadeTimer(void);
+	//float	SelectOptimalGrenadeTimer(void);
 
 	bool	Reload( void );
 
@@ -76,7 +73,7 @@ private:
 	int		m_AttackPaused;
 	bool	m_fDrawbackFinished;
 	float	m_flDrawbackTime;
-	float	m_fNextBlip;
+	float	m_flNextBlip;
 
 	DECLARE_ACTTABLE();
 
@@ -89,7 +86,7 @@ BEGIN_DATADESC( CWeaponFrag )
 	DEFINE_FIELD( m_AttackPaused, FIELD_INTEGER ),
 	DEFINE_FIELD( m_fDrawbackFinished, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_flDrawbackTime, FIELD_FLOAT),
-	DEFINE_FIELD(m_fNextBlip, FIELD_FLOAT),
+	DEFINE_FIELD(m_flNextBlip, FIELD_FLOAT),
 END_DATADESC()
 
 acttable_t	CWeaponFrag::m_acttable[] = 
@@ -193,7 +190,7 @@ void CWeaponFrag::Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatChar
 			pOwner->m_Local.m_flGrenadeStart = gpGlobals->curtime;
 			m_flDrawbackTime = gpGlobals->curtime;
 			EmitSound( "Grenade.Blip" );
-			m_fNextBlip = m_flDrawbackTime + GRENADE_BLIP_TIMER;
+			m_flNextBlip = m_flDrawbackTime + FRAG_GRENADE_BLIP_FREQUENCY;
 			break;
 
 		case EVENT_WEAPON_THROW:
@@ -367,14 +364,14 @@ void CWeaponFrag::ItemPostFrame( void )
 		// blip with same blip timer system as a thrown grenade, i.e. start slow, go fast
 		if (GetElapsedCookTime() <= GRENADE_TIMER)
 		{
-			if ( gpGlobals->curtime >= m_fNextBlip )
+			if ( gpGlobals->curtime >= m_flNextBlip )
 			{
 				EmitSound("Grenade.Blip");
 				if ( GetElapsedCookTime() > FRAG_GRENADE_WARN_TIME ){
-					m_fNextBlip += FRAG_GRENADE_BLIP_FAST_FREQUENCY;
+					m_flNextBlip += FRAG_GRENADE_BLIP_FAST_FREQUENCY;
 				}
 				else{
-					m_fNextBlip += FRAG_GRENADE_BLIP_FREQUENCY;
+					m_flNextBlip += FRAG_GRENADE_BLIP_FREQUENCY;
 				}
 			}
 		}
@@ -463,7 +460,7 @@ void CWeaponFrag::ThrowGrenade( CBasePlayer *pPlayer )
 	Vector vecThrow;
 	pPlayer->GetVelocity( &vecThrow, NULL );
 	vecThrow += vForward * 1200;
-	Fraggrenade_Create( vecSrc, vec3_angle, vecThrow, AngularImpulse( 600, random->RandomInt( -1200, 1200 ), 0 ), pPlayer, GRENADE_TIMER - GetElapsedCookTime(), false, m_flDrawbackTime );
+	Fraggrenade_Create( vecSrc, vec3_angle, vecThrow, AngularImpulse( 600, random->RandomInt( -1200, 1200 ), 0 ), pPlayer, GRENADE_TIMER - GetElapsedCookTime(), false );
 
 	m_bRedraw = true;
 
@@ -493,7 +490,7 @@ void CWeaponFrag::LobGrenade( CBasePlayer *pPlayer )
 	Vector vecThrow;
 	pPlayer->GetVelocity( &vecThrow, NULL );
 	vecThrow += vForward * 350 + Vector( 0, 0, 50 );
-	Fraggrenade_Create( vecSrc, vec3_angle, vecThrow, AngularImpulse( 200, random->RandomInt( -600, 600 ), 0 ), pPlayer, GRENADE_TIMER - GetElapsedCookTime(), false, m_flDrawbackTime );
+	Fraggrenade_Create( vecSrc, vec3_angle, vecThrow, AngularImpulse( 200, random->RandomInt( -600, 600 ), 0 ), pPlayer, GRENADE_TIMER - GetElapsedCookTime(), false );
 
 	WeaponSound( WPN_DOUBLE );
 
@@ -541,7 +538,7 @@ void CWeaponFrag::RollGrenade( CBasePlayer *pPlayer )
 	QAngle orientation(0,pPlayer->GetLocalAngles().y,-90);
 	// roll it
 	AngularImpulse rotSpeed(0,0,720);
-	Fraggrenade_Create( vecSrc, orientation, vecThrow, rotSpeed, pPlayer, GRENADE_TIMER - GetElapsedCookTime(), false, m_flDrawbackTime );
+	Fraggrenade_Create( vecSrc, orientation, vecThrow, rotSpeed, pPlayer, GRENADE_TIMER - GetElapsedCookTime(), false );
 
 	WeaponSound( SPECIAL1 );
 
@@ -558,14 +555,13 @@ void CWeaponFrag::RollGrenade( CBasePlayer *pPlayer )
 //
 // unused until i work out how best to integrate this with the sound system, if i ever do
 //
-float CWeaponFrag::SelectOptimalGrenadeTimer(void){
-	if (m_flDrawbackTime - gpGlobals->curtime >= -0.5f){
-		return GRENADE_TIMER; // 1/2 second grace period for maximum frag timer
-	}
-	else{
-		return MAX(MIN(m_flDrawbackTime + GRENADE_TIMER - gpGlobals->curtime + 0.125f, GRENADE_TIMER), 0.01f);	// otherwise just clamp the timer to [0.01, 3] sec.	
-																												// extra 0.125 seconds under the hood so the player doesn't take damage if they release
-																												// just before hitting the red zone
-	}
-}
-
+//float CWeaponFrag::SelectOptimalGrenadeTimer(void){
+//	if (m_flDrawbackTime - gpGlobals->curtime >= -0.5f){
+//		return GRENADE_TIMER; // 1/2 second grace period for maximum frag timer
+//	}
+//	else{
+//		return MAX(MIN(m_flDrawbackTime + GRENADE_TIMER - gpGlobals->curtime + 0.125f, GRENADE_TIMER), 0.01f);	// otherwise just clamp the timer to [0.01, 3] sec.	
+//																												// extra 0.125 seconds under the hood so the player doesn't take damage if they release
+//																												// just before hitting the red zone
+//	}
+//}

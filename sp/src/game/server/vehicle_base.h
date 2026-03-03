@@ -244,6 +244,8 @@ public:
 	
 	virtual bool		PassengerShouldReceiveDamage( CTakeDamageInfo &info ) { return true; }
 
+	bool				IsBoosting( void ) { return m_VehiclePhysics.IsBoosting(); }
+
 	// If this is a vehicle, returns the vehicle interface
 	virtual IServerVehicle *GetServerVehicle() { return m_pServerVehicle; }
 

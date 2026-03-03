@@ -44,6 +44,7 @@ public:
 	virtual void UpdateOnRemove();
 
 	void	SetSize( float size ) { m_flSize = size; }
+	void	SetDamageScale( float flDamageScale ) { m_flDamageScale = flDamageScale; }
 
 	DECLARE_DATADESC();
 
@@ -64,6 +65,8 @@ protected:
 
 	CNetworkVar( float, m_flLifetime );
 	bool	m_bPlayingSound;
+
+	float m_flDamageScale;
 };
 
 #endif // ENTITYFLAME_H

@@ -50,29 +50,35 @@ class CNPC_Cremator : public CAI_BaseNPC
 	DECLARE_SERVERCLASS();
 
 public:
-	void	Precache(void);
-	void	Spawn(void);
-	void ImmoBeam(int side);
-	int SelectSchedule(void);
-	void	IdleSound(void);
-	void	PrescheduleThink(void);
-	void Event_Killed(const CTakeDamageInfo &info);
-	virtual int OnTakeDamage_Alive(const CTakeDamageInfo& info);
-	void Explode();
-	void Write_Message(int message);
-	int TranslateSchedule(int scheduleType);
-	Class_T Classify(void);
-	int RangeAttack1Conditions(float flDot, float flDist);
-	void HandleAnimEvent(animevent_t *pEvent);
-	virtual float        InnateRange1MinRange(void) { return 128; }
-	float MaxYawSpeed(void) { return 14; };
-	virtual float        InnateRange1MaxRange(void) { return 512; }
-	virtual int			MeleeAttack1Conditions(float flDot, float flDist);
-	void BuildScheduleTestBits(void);
+	void			Precache(void);
+	void			Spawn(void);
+	void			ImmoBeam(int side);
+	int				SelectSchedule(void);
+	void			IdleSound(void);
+	void			PrescheduleThink(void);
+	void			TraceAttack(const CTakeDamageInfo& info, const Vector& vecDir, trace_t* ptr, CDmgAccumulator* pAccumulator);
+	void			Event_Killed(const CTakeDamageInfo &info);
+	virtual int		OnTakeDamage_Alive(const CTakeDamageInfo& info);
+	void			Explode();
+	void			Write_Message(int message);
+	int				TranslateSchedule(int scheduleType);
+	Class_T			Classify(void);
+	int				RangeAttack1Conditions(float flDot, float flDist);
+	void			HandleAnimEvent(animevent_t *pEvent);
+	virtual float   InnateRange1MinRange(void) { return 128; }
+	float			MaxYawSpeed(void) { return 14; };
+	virtual float   InnateRange1MaxRange(void) { return 512; }
+	virtual int		MeleeAttack1Conditions(float flDot, float flDist);
+	void			BuildScheduleTestBits(void);
 	EHANDLE m_hDead;
 
 	int m_iEventType = 0;
 
+	int m_iUpdateCounter;
+	float m_fLastUpdateTime;
+
+	CNetworkVar( Vector, m_vMuzzlePosition );
+	CNetworkVar( Vector, m_vAiming );
 
 	// This is a dummy field. In order to provide save/restore
 	// code in this file, we must have at least one field
@@ -89,6 +95,10 @@ LINK_ENTITY_TO_CLASS(npc_cremator, CNPC_Cremator);
 BEGIN_DATADESC(CNPC_Cremator)
 DEFINE_FIELD(m_hDead, FIELD_EHANDLE),
 DEFINE_FIELD(m_iEventType, FIELD_INTEGER),
+DEFINE_FIELD(m_vMuzzlePosition, FIELD_VECTOR),
+DEFINE_FIELD(m_vAiming, FIELD_VECTOR),
+DEFINE_FIELD(m_iUpdateCounter, FIELD_INTEGER),
+DEFINE_FIELD(m_fLastUpdateTime, FIELD_FLOAT),
 END_DATADESC()
 
 enum

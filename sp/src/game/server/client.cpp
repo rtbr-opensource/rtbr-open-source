@@ -1028,10 +1028,50 @@ static ConCommand bugswap("bug_swap", CC_Player_BugBaitSwap, "Automatically swap
 //------------------------------------------------------------------------------
 void CC_Player_Use( const CCommand &args )
 {
-	CBasePlayer *pPlayer = ToBasePlayer( UTIL_GetCommandClient() ); 
+	CBasePlayer *pPlayer = ToBasePlayer( UTIL_GetCommandClient() );
+	char *strWeaponArg = (char *)args[1];
+
+	// handle weapons which have swap concommands built in already
+	if (!Q_stricmp( strWeaponArg, "weapon_bugbait" ))
+	{
+		CC_Player_BugBaitSwap();
+		return;
+	}
+	if (!Q_stricmp( strWeaponArg, "weapon_physcannon" ))
+	{
+		CC_Player_PhysSwap();
+		return;
+	}
+
 	if ( pPlayer)
 	{
-		pPlayer->SelectItem((char *)args[1]);
+		if (!Q_stricmp( strWeaponArg, "weapon_hmg" ))
+		{
+			if (!pPlayer->Weapon_OwnsThisType( "weapon_hmg" ) && pPlayer->Weapon_OwnsThisType( "weapon_hmg2" ))
+			{
+				// The player will never have both the HMG and HMG2 at once, so to ease player experience,
+				// we switch to/from the HMG2 if we don't have the HMG but have the HMG2.
+				strWeaponArg = "weapon_hmg2";
+			}
+		}
+		CBaseCombatWeapon *pWeapon = pPlayer->GetActiveWeapon();
+
+		if (pWeapon)
+		{
+			// Tell the client to stop selecting weapons
+			engine->ClientCommand( UTIL_GetCommandClient()->edict(), "cancelselect" );
+
+			const char *strWeaponName = pWeapon->GetName();
+			if (!Q_stricmp( strWeaponName, strWeaponArg ))
+			{
+				pPlayer->SelectLastItem();
+			}
+			else
+			{
+				pPlayer->SelectItem( strWeaponArg );
+			}
+		}
+
 	}
 }
 static ConCommand use("use", CC_Player_Use, "Use a particular weapon\t\nArguments: <weapon_name>");

@@ -31,7 +31,7 @@ ConVar	fire_extinguisher_explode_strength( "fire_extinguisher_explode_strength",
 
 extern short	g_sModelIndexFireball;	// (in combatweapon.cpp) holds the index for the smoke cloud
 
-class CWeaponExtinguisher: public CHLSelectFireMachineGun
+class CWeaponExtinguisher : public CHLSelectFireMachineGun
 {
 	DECLARE_DATADESC();
 public:
@@ -49,14 +49,14 @@ public:
 	void	Equip( CBaseCombatCharacter *pOwner );
 
 protected:
-	
+
 	void	StartJet( void );
 	void	StopJet( void );
 
-	CExtinguisherJet	*m_pJet;
+	CExtinguisherJet *m_pJet;
 };
 
-IMPLEMENT_SERVERCLASS_ST(CWeaponExtinguisher, DT_WeaponExtinguisher)
+IMPLEMENT_SERVERCLASS_ST( CWeaponExtinguisher, DT_WeaponExtinguisher )
 END_SEND_TABLE()
 
 LINK_ENTITY_TO_CLASS( weapon_extinguisher, CWeaponExtinguisher );
@@ -67,14 +67,14 @@ PRECACHE_WEAPON_REGISTER( weapon_extinguisher );
 //---------------------------------------------------------
 BEGIN_DATADESC( CWeaponExtinguisher )
 
-	DEFINE_FIELD( m_pJet,	FIELD_CLASSPTR ),
+DEFINE_FIELD( m_pJet, FIELD_CLASSPTR ),
 
 END_DATADESC()
 
 
 CWeaponExtinguisher::CWeaponExtinguisher( void )
 {
-	m_pJet		= NULL;
+	m_pJet = NULL;
 }
 
 //-----------------------------------------------------------------------------
@@ -96,8 +96,8 @@ void CWeaponExtinguisher::Spawn( void )
 {
 	BaseClass::Spawn();
 
-	m_takedamage	= DAMAGE_YES;
-	m_iHealth		= 25;//FIXME: Define
+	m_takedamage = DAMAGE_YES;
+	m_iHealth = 25;//FIXME: Define
 }
 
 //-----------------------------------------------------------------------------
@@ -108,7 +108,7 @@ void CWeaponExtinguisher::Equip( CBaseCombatCharacter *pOwner )
 {
 	BaseClass::Equip( pOwner );
 
-	m_takedamage	= DAMAGE_NO;
+	m_takedamage = DAMAGE_NO;
 }
 
 //-----------------------------------------------------------------------------
@@ -121,18 +121,18 @@ void CWeaponExtinguisher::Equip( CBaseCombatCharacter *pOwner )
 void CWeaponExtinguisher::Event_Killed( const CTakeDamageInfo &info )
 {
 	//TODO: Use a real effect
-	if ( AR2Explosion *pExplosion = AR2Explosion::CreateAR2Explosion( GetAbsOrigin() ) )
+	if (AR2Explosion *pExplosion = AR2Explosion::CreateAR2Explosion( GetAbsOrigin() ))
 	{
 		pExplosion->SetLifetime( 10 );
-	}		
+	}
 
 	//TODO: Use a real effect
 	CPASFilter filter( GetAbsOrigin() );
 
 	te->Explosion( filter, 0.0,
-		&GetAbsOrigin(), 
+		&GetAbsOrigin(),
 		g_sModelIndexFireball,
-		2.0, 
+		2.0,
 		15,
 		TE_EXPLFLAG_NONE,
 		250,
@@ -151,18 +151,18 @@ void CWeaponExtinguisher::Event_Killed( const CTakeDamageInfo &info )
 void CWeaponExtinguisher::StartJet( void )
 {
 	//See if the jet needs to be created
-	if ( m_pJet == NULL )
+	if (m_pJet == NULL)
 	{
-		m_pJet = (CExtinguisherJet *) CreateEntityByName( "env_extinguisherjet" );
+		m_pJet = (CExtinguisherJet *)CreateEntityByName( "env_extinguisherjet" );
 
-		if ( m_pJet == NULL )
+		if (m_pJet == NULL)
 		{
 			Msg( "Unable to create jet for weapon_extinguisher!\n" );
 			return;
 		}
 
 		//Setup the jet
-		m_pJet->m_bEmit	= false;
+		m_pJet->m_bEmit = false;
 		UTIL_SetOrigin( m_pJet, GetAbsOrigin() );
 		m_pJet->SetParent( this );
 
@@ -172,7 +172,7 @@ void CWeaponExtinguisher::StartJet( void )
 	}
 
 	//Turn the jet on
-	if ( m_pJet != NULL )
+	if (m_pJet != NULL)
 	{
 		m_pJet->TurnOn();
 	}
@@ -184,7 +184,7 @@ void CWeaponExtinguisher::StartJet( void )
 void CWeaponExtinguisher::StopJet( void )
 {
 	//Turn the jet off
-	if ( m_pJet != NULL )
+	if (m_pJet != NULL)
 	{
 		m_pJet->TurnOff();
 	}
@@ -194,31 +194,31 @@ void CWeaponExtinguisher::StopJet( void )
 // Purpose: 
 //-----------------------------------------------------------------------------
 void CWeaponExtinguisher::ItemPostFrame( void )
-{	
+{
 	CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
 
-	if ( pOwner == NULL )
+	if (pOwner == NULL)
 		return;
 
 	//Only shoot if we have ammo
-	if ( pOwner->GetAmmoCount( m_iPrimaryAmmoType ) <= 0 )
+	if (pOwner->GetAmmoCount( m_iSecondaryAmmoType ) <= 0)
 	{
 		StopJet();
 		return;
 	}
-	
+
 	//See if we should try and extinguish fires
-	if ( pOwner->m_nButtons & IN_ATTACK )
+	if (pOwner->m_nButtons & IN_ATTACK)
 	{
 		//Drain ammo
-		if ( m_flNextPrimaryAttack < gpGlobals->curtime  )
+		if (m_flNextPrimaryAttack < gpGlobals->curtime)
 		{
-			pOwner->RemoveAmmo( 1, m_iPrimaryAmmoType );
+			pOwner->RemoveAmmo( 1, m_iSecondaryAmmoType );
 			m_flNextPrimaryAttack = gpGlobals->curtime + EXTINGUISHER_AMMO_RATE;
 		}
 
 		//If we're just run out...
-		if ( pOwner->GetAmmoCount( m_iPrimaryAmmoType ) <= 0 )
+		if (pOwner->GetAmmoCount( m_iSecondaryAmmoType ) <= 0)
 		{
 			StopJet();
 			return;
@@ -231,22 +231,22 @@ void CWeaponExtinguisher::ItemPostFrame( void )
 		Vector	vForward, vRight, vUp;
 
 		pOwner->EyeVectors( &vForward, &vRight, &vUp );
-		
-		vMuzzlePos	= pOwner->Weapon_ShootPosition( );
-		
+
+		vMuzzlePos = pOwner->Weapon_ShootPosition();
+
 		//FIXME: Need to get the exact same muzzle point!
 
 		//FIXME: This needs to be adjusted so the server collision matches the visuals on the client
-		vMuzzlePos	+= vForward * 15.0f;
-		vMuzzlePos	+= vRight * 6.0f;
-		vMuzzlePos	+= vUp * -4.0f;
+		vMuzzlePos += vForward * 15.0f;
+		vMuzzlePos += vRight * 6.0f;
+		vMuzzlePos += vUp * -4.0f;
 
 		QAngle aTmp;
 		VectorAngles( vForward, aTmp );
 		aTmp[PITCH] += 10;
 		AngleVectors( aTmp, &vForward );
 
-		vTestPos	= vMuzzlePos + ( vForward * fire_extinguisher_distance.GetInt() );
+		vTestPos = vMuzzlePos + (vForward * fire_extinguisher_distance.GetInt());
 
 		trace_t	tr;
 		UTIL_TraceLine( vMuzzlePos, vTestPos, MASK_SHOT, this, COLLISION_GROUP_NONE, &tr );
@@ -255,15 +255,15 @@ void CWeaponExtinguisher::ItemPostFrame( void )
 		FireSystem_ExtinguishInRadius( tr.endpos, fire_extinguisher_radius.GetInt(), fire_extinguisher_strength.GetFloat() );
 
 		//Debug visualization
-		if ( fire_extinguisher_debug.GetInt() )
+		if (fire_extinguisher_debug.GetInt())
 		{
 			int	radius = fire_extinguisher_radius.GetInt();
 
 			NDebugOverlay::Line( vMuzzlePos, tr.endpos, 0, 0, 128, false, 0.0f );
-			
-			NDebugOverlay::Box( vMuzzlePos, Vector(-1, -1, -1), Vector(1, 1, 1), 0, 0, 128, false, 0.0f );
-			NDebugOverlay::Box( tr.endpos, Vector(-2, -2, -2), Vector(2, 2, 2), 0, 0, 128, false, 0.0f );
-			NDebugOverlay::Box( tr.endpos, Vector(-radius, -radius, -radius), Vector(radius, radius, radius), 0, 0, 255, false, 0.0f );
+
+			NDebugOverlay::Box( vMuzzlePos, Vector( -1, -1, -1 ), Vector( 1, 1, 1 ), 0, 0, 128, false, 0.0f );
+			NDebugOverlay::Box( tr.endpos, Vector( -2, -2, -2 ), Vector( 2, 2, 2 ), 0, 0, 128, false, 0.0f );
+			NDebugOverlay::Box( tr.endpos, Vector( -radius, -radius, -radius ), Vector( radius, radius, radius ), 0, 0, 255, false, 0.0f );
 		}
 	}
 	else
@@ -284,7 +284,7 @@ public:
 	virtual int	ObjectCaps( void ) { return (BaseClass::ObjectCaps() | FCAP_CONTINUOUS_USE) & ~FCAP_ACROSS_TRANSITION; }
 
 protected:
-	float	m_flNextCharge; 
+	float	m_flNextCharge;
 	bool	m_bSoundOn;
 
 	void	TurnOff( void );
@@ -296,10 +296,10 @@ LINK_ENTITY_TO_CLASS( func_extinguishercharger, CExtinguisherCharger );
 
 BEGIN_DATADESC( CExtinguisherCharger )
 
-	DEFINE_FIELD( m_flNextCharge, FIELD_TIME),
-	DEFINE_FIELD( m_bSoundOn, FIELD_BOOLEAN ),
+DEFINE_FIELD( m_flNextCharge, FIELD_TIME ),
+DEFINE_FIELD( m_bSoundOn, FIELD_BOOLEAN ),
 
-	DEFINE_FUNCTION( TurnOff ),
+DEFINE_FUNCTION( TurnOff ),
 
 END_DATADESC()
 
@@ -339,27 +339,27 @@ bool CExtinguisherCharger::CreateVPhysics()
 void CExtinguisherCharger::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
 {
 	// Make sure that we have a caller
-	if ( pActivator == NULL )
+	if (pActivator == NULL)
 		return;
-	
+
 	// If it's not a player, ignore
-	if ( pActivator->IsPlayer() == false )
+	if (pActivator->IsPlayer() == false)
 		return;
 
 	// Turn our sound on, if it's not already
-	if ( m_bSoundOn == false )
+	if (m_bSoundOn == false)
 	{
 		EmitSound( "ExtinguisherCharger.Use" );
 		m_bSoundOn = true;
 	}
 
 	SetNextThink( gpGlobals->curtime + 0.25 );
-	
+
 	SetThink( &CExtinguisherCharger::TurnOff );
 
-	CBasePlayer	*pPlayer = ToBasePlayer( pActivator );
+	CBasePlayer *pPlayer = ToBasePlayer( pActivator );
 
-	if ( pPlayer )
+	if (pPlayer)
 	{
 		//FIXME: Need a way to do this silently
 		pPlayer->GiveAmmo( 1, "extinguisher" );
@@ -372,7 +372,7 @@ void CExtinguisherCharger::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, U
 void CExtinguisherCharger::TurnOff( void )
 {
 	//Turn the sound off
-	if ( m_bSoundOn )
+	if (m_bSoundOn)
 	{
 		StopSound( "ExtinguisherCharger.Use" );
 		m_bSoundOn = false;

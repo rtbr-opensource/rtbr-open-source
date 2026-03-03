@@ -33,7 +33,7 @@
 #include "tier0/memdbgon.h"
 
 #if defined(CSTRIKE_DLL) || defined (MAPBASE)
-	ConVar cl_righthand( "cl_righthand", "1", FCVAR_HIDDEN, "Use right-handed view models." );
+	ConVar cl_righthand( "cl_righthand", "1", FCVAR_ARCHIVE, "Use right-handed view models." );
 #endif
 
 #ifdef TF_CLIENT_DLL

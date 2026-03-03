@@ -30,6 +30,7 @@
 #include "props.h"
 #include "particle_parse.h"
 #include "ai_tacticalservices.h"
+#include "rtbr_shareddefs.h"
 
 #ifdef HL2_EPISODIC
 #include "grenade_spit.h"
@@ -366,7 +367,20 @@ void CNPC_Antlion::Spawn(void)
 
 	BaseClass::Spawn();
 
+#ifdef RTBR_DLL
+	if ( !IsWorker() )
+	{
+		// Workers don't get randomized skin
+		m_nSkin = random->RandomInt(0, ANTLION_SKIN_COUNT - 1);
+	}
+	else
+	{
+		// Bit backwards that we have to do this, but the worker's skin won't set otherwise.
+		SetSkin( m_nSkin );
+	}
+#else
 	m_nSkin = random->RandomInt(0, ANTLION_SKIN_COUNT - 1);
+#endif
 
 #if defined(MAPBASE) && defined(HL2_EPISODIC)
 	// Implement dynamic interactions here since we can't recompile the model
@@ -378,13 +392,14 @@ void CNPC_Antlion::Spawn(void)
 
 		sInteraction01.vecRelativeOrigin = Vector(224, 0, 0);
 		sInteraction01.angRelativeAngles = QAngle(0, 180, 0);
-		//sInteraction01.iFlags |= SCNPC_FLAG_TEST_OTHER_ANGLES;
+		sInteraction01.iFlags |= SCNPC_FLAG_TEST_OTHER_ANGLES;
 		sInteraction01.iFlags |= SCNPC_FLAG_TEST_END_POSITION;
 		sInteraction01.vecRelativeEndPos = Vector(312, -10, 0);
 		sInteraction01.iTriggerMethod = SNPCINT_AUTOMATIC_IN_COMBAT;
 		sInteraction01.flDelay = 15.0f;
 		sInteraction01.iFlags |= SCNPC_FLAG_MAPBASE_ADDITION;
 		sInteraction01.flDistSqr = (8 * 8);
+		sInteraction01.flMaxAngleDiff = 180.0f; // Initiate from any angle
 
 
 		ScriptedNPCInteraction_t sInteraction02;
@@ -393,11 +408,12 @@ void CNPC_Antlion::Spawn(void)
 
 		sInteraction02.vecRelativeOrigin = Vector(64, 0, 0);
 		sInteraction02.angRelativeAngles = QAngle(0, 180, 0);
-		//sInteraction01.iFlags |= SCNPC_FLAG_TEST_OTHER_ANGLES;
+		sInteraction02.iFlags |= SCNPC_FLAG_TEST_OTHER_ANGLES;
 		sInteraction02.iTriggerMethod = SNPCINT_AUTOMATIC_IN_COMBAT;
 		sInteraction02.flDelay = 7.5f;
 		sInteraction02.iFlags |= SCNPC_FLAG_MAPBASE_ADDITION;
 		sInteraction02.flDistSqr = (8 * 8);
+		sInteraction02.flMaxAngleDiff = 180.0f; // Initiate from any angle
 
 
 		AddScriptedNPCInteraction(&sInteraction01);
@@ -424,6 +440,8 @@ void CNPC_Antlion::Activate(void)
 				AddEntityRelationship(pPlayer, D_LI, 99);
 			}
 		}
+		// NOTE: This shouldn't break any existing collision as HL2COLLISION_GROUP_ANTLION isn't used anywhere as far as I can tell
+		SetCollisionGroup( RTBRCOLLISION_GROUP_FRIENDANTLION );
 	}
 
 	BaseClass::Activate();
@@ -467,20 +485,20 @@ void CNPC_Antlion::Precache(void)
 #ifdef HL2_EPISODIC
 	if (IsWorker())
 	{
-		PrecacheModel(ANTLION_WORKER_MODEL);
-		PropBreakablePrecacheAll(MAKE_STRING(ANTLION_WORKER_MODEL));
-		UTIL_PrecacheOther("grenade_spit");
-		PrecacheParticleSystem("blood_impact_antlion_worker_01");
-		PrecacheParticleSystem("antlion_gib_02");
-		PrecacheParticleSystem("blood_impact_yellow_01");
+		PrecacheModel( DefaultOrCustomModel( ANTLION_WORKER_MODEL ) );
+		PropBreakablePrecacheAll( MAKE_STRING( DefaultOrCustomModel( ANTLION_WORKER_MODEL ) ) );
+		UTIL_PrecacheOther( "grenade_spit" );
+		PrecacheParticleSystem( "blood_impact_antlion_worker_01" );
+		PrecacheParticleSystem( "antlion_gib_02" );
+		PrecacheParticleSystem( "blood_impact_yellow_01" );
 	}
 	else
 #endif // HL2_EPISODIC
 	{
-		PrecacheModel(ANTLION_MODEL);
-		PropBreakablePrecacheAll(MAKE_STRING(ANTLION_MODEL));
-		PrecacheParticleSystem("blood_impact_antlion_01");
-		PrecacheParticleSystem("AntlionGib");
+		PrecacheModel( DefaultOrCustomModel( ANTLION_MODEL ) );
+		PropBreakablePrecacheAll( MAKE_STRING( DefaultOrCustomModel( ANTLION_MODEL ) ) );
+		PrecacheParticleSystem( "blood_impact_antlion_01" );
+		PrecacheParticleSystem( "AntlionGib" );
 	}
 
 	for (int i = 0; i < NUM_ANTLION_GIBS_UNIQUE; ++i)
@@ -2663,6 +2681,18 @@ int CNPC_Antlion::OnTakeDamage_Alive(const CTakeDamageInfo &info)
 					newInfo.SetDamage(GetHealth());
 				}
 			}
+		}
+	}
+
+	//flip if we are on fire
+	if (newInfo.GetDamageType() & (DMG_BURN))
+	{
+		// Don't do this if we're in an interaction
+		if (!IsRunningDynamicInteraction())
+		{
+			newInfo.ScaleDamage(2.0f);
+			PainSound(newInfo);
+			SetCondition(COND_ANTLION_FLIPPED);
 		}
 	}
 

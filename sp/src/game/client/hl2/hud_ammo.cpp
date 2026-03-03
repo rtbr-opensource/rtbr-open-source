@@ -363,10 +363,10 @@ class CHudSecondaryAmmo : public CHudBitmapNumericDisplay, public CHudElement
 	DECLARE_CLASS_SIMPLE(CHudSecondaryAmmo, CHudBitmapNumericDisplay);
 
 public:
+	int m_iAmmo2;
 	CHudSecondaryAmmo( const char *pElementName ) : BaseClass( NULL, "HudAmmoSecondary" ), CHudElement( pElementName )
 	{
 		m_iAmmo = -1;
-
 		SetHiddenBits( HIDEHUD_HEALTH | HIDEHUD_WEAPONSELECTION | HIDEHUD_PLAYERDEAD | HIDEHUD_NEEDSUIT );
 	}
 
@@ -383,17 +383,18 @@ public:
 			//SetLabelText(L"ALT");
 		}
 #endif // HL2MP
+		m_iAmmo2 = -1; 
 	}
 
 	void VidInit( void )
 	{
 	}
 
-	void SetAmmo( int ammo )
+	void SetAmmo( int ammo, bool bEmptyOnZero = true )
 	{
 		if (ammo != m_iAmmo)
 		{
-			if (ammo == 0)
+			if (ammo == 0 && bEmptyOnZero)
 			{
 				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoSecondaryEmpty");
 			}
@@ -413,11 +414,37 @@ public:
 		SetDisplayValue( ammo );
 	}
 
+	void SetAmmo2( int ammo2 )
+	{
+		if (ammo2 != m_iAmmo2)
+		{
+			/*if (ammo2 == 0)
+			{
+				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "AmmoSecondaryEmpty" );
+			}*/
+			//else if (ammo2 < m_iAmmo2)
+			//{
+			//	// ammo has decreased
+			//	g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "AmmoSecondaryDecreased" );
+			//}
+			//else
+			//{
+			//	// ammunition has increased
+			//	g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "AmmoSecondaryIncreased" );
+			//}
+
+			m_iAmmo2 = ammo2;
+		}
+
+		SetSecondaryValue( ammo2 );
+	}
+
 	void Reset()
 	{
 		// hud reset, update ammo state
 		BaseClass::Reset();
 		m_iAmmo = 0;
+		m_iAmmo2 = 0;
 		m_hCurrentActiveWeapon = NULL;
 		//SetAlpha( 0 );
 		UpdateAmmoState();
@@ -456,6 +483,7 @@ protected:
 			m_hCurrentActiveWeapon = NULL;
 			SetPaintEnabled(false);
 			SetPaintBackgroundEnabled(false);
+			m_flBlur = 0.0f;
 			return;
 		}
 		else
@@ -476,7 +504,23 @@ protected:
 		{
 			SetHalfSize(true);
 			SetNumZeros(2);
-			SetAmmo(player->GetAmmoCount(wpn->GetSecondaryAmmoType()));
+			if (wpn->UsesClipsForAmmo2())
+			{
+				// stupid hack to swap the secondary clip + secondary reserve, because reserve on top of clip looks better than the other way around
+				SetAmmo( wpn->Clip2() , wpn->UsesClipsForAmmo2() );
+				SetAmmo2( player->GetAmmoCount( wpn->GetSecondaryAmmoType() ) );
+				SetShouldDisplaySecondaryValue( true );
+			}
+			else
+			{
+				SetAmmo( player->GetAmmoCount( wpn->GetSecondaryAmmoType() ), !wpn->UsesClipsForAmmo2() );
+				SetShouldDisplaySecondaryValue( false );
+			}
+				
+		}
+		else if (player && wpn && !wpn->UsesSecondaryAmmo())
+		{
+			m_flBlur = 0.0f; // reset blur since it stays the same if you switch to a different weapon and back, keeping it forever blurred
 		}
 
 		if ( m_hCurrentActiveWeapon != wpn )

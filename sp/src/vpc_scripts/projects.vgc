@@ -18,8 +18,6 @@ $Project "client"
 	"game\client\client_hl2.vpc"		[($WIN32||$X360||$POSIX) && $HL2]
 	"game\client\client_episodic.vpc"	[($WIN32||$X360||$POSIX) && $EPISODIC]
 	"game\client\client_rtbr.vpc" [$RTBR]
-	"game\client\client_rtbr_release.vpc" [$RTBR_RELEASE]
-	"game\client\client_rtbr_playtest.vpc" [$RTBR_PLAYTEST]
 }
 
 $Project "fgdlib"
@@ -32,8 +30,6 @@ $Project "game_shader_dx9"
 	"materialsystem\stdshaders\game_shader_dx9_hl2.vpc" [$HL2]
 	"materialsystem\stdshaders\game_shader_dx9_episodic.vpc"  [$EPISODIC]
 	"materialsystem\stdshaders\game_shader_dx9_rtbr.vpc" [$RTBR]
-	"materialsystem\stdshaders\game_shader_dx9_rtbr.vpc" [$RTBR_RELEASE]
-	"materialsystem\stdshaders\game_shader_dx9_rtbr.vpc" [$RTBR_PLAYTEST]
 }
 
 $Project "glview"
@@ -51,8 +47,6 @@ $Project "server"
 	"game\server\server_hl2.vpc"		[($WIN32||$X360||$POSIX) && $HL2]
 	"game\server\server_episodic.vpc"	[($WIN32||$X360||$POSIX) && $EPISODIC]
 	"game\server\server_rtbr.vpc" [$RTBR]
-	"game\server\server_rtbr_release.vpc" [$RTBR_RELEASE]
-	"game\server\server_rtbr_playtest.vpc" [$RTBR_PLAYTEST]
 }
 
 $Project "responserules"

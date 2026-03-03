@@ -9,6 +9,7 @@
 #include "hl2_gamerules.h"
 #include "ammodef.h"
 #include "hl2_shareddefs.h"
+#include "rtbr_shareddefs.h"
 
 #ifdef CLIENT_DLL
 
@@ -377,8 +378,7 @@ ConVar	sk_npc_dmg_357			( "sk_npc_dmg_357", "0", FCVAR_REPLICATED );
 ConVar	sk_max_357				( "sk_max_357", "0", FCVAR_REPLICATED );
 
 ConVar	sk_max_immo_rounds		("sk_max_immo_rounds", "0");
-ConVar	sk_plr_dmg_immo("sk_plr_dmg_immo", "0");
-ConVar	sk_npc_dmg_immo("sk_npc_dmg_immo", "0");
+//ConVar	sk_plr_dmg_immo			("sk_plr_dmg_immo", "0"); Unused. See weapon_immolator.cpp
 
 ConVar	sk_plr_dmg_crossbow		( "sk_plr_dmg_crossbow", "0", FCVAR_REPLICATED );
 ConVar	sk_npc_dmg_crossbow		( "sk_npc_dmg_crossbow", "0", FCVAR_REPLICATED );
@@ -390,11 +390,16 @@ ConVar	sk_dmg_sniper_penetrate_npc( "sk_dmg_sniper_penetrate_npc","0", FCVAR_REP
 ConVar	sk_plr_dmg_airboat		( "sk_plr_dmg_airboat", "0", FCVAR_REPLICATED );
 ConVar	sk_npc_dmg_airboat		( "sk_npc_dmg_airboat", "0", FCVAR_REPLICATED );
 
+ConVar	sk_max_gauss_round		( "sk_max_gauss_round", "0", FCVAR_REPLICATED );
+
 // Gunship & Dropship cannons
 ConVar	sk_npc_dmg_gunship			( "sk_npc_dmg_gunship", "0", FCVAR_REPLICATED );
 ConVar	sk_npc_dmg_gunship_to_plr	( "sk_npc_dmg_gunship_to_plr", "0", FCVAR_REPLICATED );
 
 #ifdef RTBR_DLL
+ConVar	sk_plr_dmg_gauss		( "sk_plr_dmg_gauss", "0", FCVAR_REPLICATED );
+ConVar	sk_plr_max_dmg_gauss	( "sk_plr_max_dmg_gauss", "0", FCVAR_REPLICATED );
+
 ConVar	sk_plr_dmg_oicw			( "sk_plr_dmg_oicw", "0", FCVAR_REPLICATED );
 ConVar	sk_npc_dmg_oicw			( "sk_npc_dmg_oicw", "0", FCVAR_REPLICATED );
 ConVar	sk_max_oicw_rounds		( "sk_max_oicw_rounds", "0", FCVAR_REPLICATED );
@@ -403,9 +408,9 @@ ConVar	sk_plr_dmg_akm			( "sk_plr_dmg_akm", "0", FCVAR_REPLICATED );
 ConVar	sk_npc_dmg_akm			( "sk_npc_dmg_akm", "0", FCVAR_REPLICATED );
 ConVar	sk_max_akm_round		( "sk_max_akm_rounds", "0", FCVAR_REPLICATED );
 
-ConVar	sk_plr_dmg_mp5k			( "sk_plr_dmg_mp5k", "0", FCVAR_REPLICATED );
-ConVar	sk_npc_dmg_mp5k			( "sk_npc_dmg_mp5k", "0", FCVAR_REPLICATED );
-ConVar	sk_max_mp5k_rounds		( "sk_max_mp5k_rounds", "0", FCVAR_REPLICATED );
+ConVar	sk_plr_dmg_hmg			( "sk_plr_dmg_hmg", "0", FCVAR_REPLICATED );
+ConVar	sk_npc_dmg_hmg			( "sk_npc_dmg_hmg", "0", FCVAR_REPLICATED );
+ConVar	sk_max_hmg_rounds		( "sk_max_hmg_rounds", "0", FCVAR_REPLICATED );
 
 ConVar	sk_plr_dmg_annabelle	("sk_plr_dmg_annabelle", "0", FCVAR_REPLICATED);
 ConVar	sk_npc_dmg_annabelle	("sk_npc_dmg_annabelle", "0", FCVAR_REPLICATED);
@@ -634,6 +639,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ANTLION,			CLASS_FLARE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ANTLION,			CLASS_HEADCRAB,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ANTLION,			CLASS_HOUNDEYE,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ANTLION,			CLASS_BIRTHER,			D_LI, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ANTLION,			CLASS_MANHACK,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ANTLION,			CLASS_METROPOLICE,		D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ANTLION,			CLASS_MILITARY,			D_HT, 0);
@@ -649,6 +655,42 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ANTLION,			CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ANTLION,			CLASS_HACKED_ROLLERMINE,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ANTLION,			CLASS_ALIEN_FLORA,		D_NU, 0);		
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ANTLION,			CLASS_PROTOZOAN,		D_NU, 0);
+
+		// ------------------------------------------------------------
+		//	> CLASS_BIRTHER
+		// ------------------------------------------------------------
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_NONE,				D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_PLAYER,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_BARNACLE,			D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_BULLSEYE,			D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_BULLSQUID,		D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_CITIZEN_PASSIVE,  D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_CITIZEN_REBEL,	D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_COMBINE,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_COMBINE_GUNSHIP,  D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_COMBINE_HUNTER,	D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_CONSCRIPT,		D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_FLARE,			D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_HEADCRAB,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_HOUNDEYE,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_BIRTHER,			D_LI, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_MANHACK,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_METROPOLICE,		D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_MILITARY,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_MISSILE,			D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_SCANNER,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_STALKER,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_VORTIGAUNT,		D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_ZOMBIE,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_PROTOSNIPER,		D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_ANTLION,			D_LI, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_EARTH_FAUNA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_PLAYER_ALLY,		D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_HACKED_ROLLERMINE,D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BIRTHER,			CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_BARNACLE
@@ -671,6 +713,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BARNACLE,			CLASS_FLARE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BARNACLE,			CLASS_HEADCRAB,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BARNACLE,			CLASS_HOUNDEYE,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BARNACLE,			CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BARNACLE,			CLASS_MANHACK,			D_FR, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BARNACLE,			CLASS_METROPOLICE,		D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BARNACLE,			CLASS_MILITARY,			D_HT, 0);
@@ -685,6 +728,43 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BARNACLE,			CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BARNACLE,			CLASS_HACKED_ROLLERMINE,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship( CLASS_BARNACLE,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BARNACLE,			CLASS_PROTOZOAN,		D_NU, 0);
+
+		// ------------------------------------------------------------
+		//	> CLASS_SAND_BARNACLE
+		// ------------------------------------------------------------
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_NONE,				D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_PLAYER,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_BARNACLE,			D_LI, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_BULLSEYE,			D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_SAND_BARNACLE,	D_LI, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_BULLSQUID,		D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_CITIZEN_PASSIVE,	D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_CITIZEN_REBEL,	D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_COMBINE,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_COMBINE_GUNSHIP,	D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_COMBINE_HUNTER,	D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_CONSCRIPT,		D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_FLARE,			D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_HEADCRAB,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_HOUNDEYE,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_BIRTHER,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_MANHACK,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_METROPOLICE,		D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_MILITARY,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_MISSILE,			D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_SCANNER,			D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_STALKER,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_VORTIGAUNT,		D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_ZOMBIE,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_PROTOSNIPER,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_EARTH_FAUNA,		D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_PLAYER_ALLY,		D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_HACKED_ROLLERMINE,D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SAND_BARNACLE,			CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_BULLSEYE
@@ -692,6 +772,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSEYE,			CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSEYE,			CLASS_PLAYER,			D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSEYE,			CLASS_ANTLION,			D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSEYE,			CLASS_BIRTHER,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSEYE,			CLASS_BARNACLE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSEYE,			CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSEYE,			CLASS_BULLSQUID,		D_NU, 0);
@@ -718,6 +799,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSEYE,			CLASS_PLAYER_ALLY_VITAL,D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSEYE,			CLASS_HACKED_ROLLERMINE,D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSEYE,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSEYE,			CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_BULLSQUID
@@ -726,6 +808,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSQUID,			CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSQUID,			CLASS_PLAYER,			D_HT, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSQUID,			CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSQUID,			CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSQUID,			CLASS_BARNACLE,			D_FR, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSQUID,			CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSQUID,			CLASS_BULLSQUID,		D_NU, 0);
@@ -753,12 +836,14 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSQUID,			CLASS_HACKED_ROLLERMINE,D_HT, 0);
 		
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSQUID,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_BULLSQUID,			CLASS_PROTOZOAN,		D_NU, 0);
 		// ------------------------------------------------------------
 		//	> CLASS_CITIZEN_PASSIVE
 		// ------------------------------------------------------------
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_PASSIVE,	CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_PASSIVE,	CLASS_PLAYER,			D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_PASSIVE,	CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_PASSIVE, CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_PASSIVE,	CLASS_BARNACLE,			D_FR, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_PASSIVE,	CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_PASSIVE,	CLASS_BULLSQUID,		D_FR, 0);
@@ -785,6 +870,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_PASSIVE,	CLASS_PLAYER_ALLY_VITAL,D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_PASSIVE,	CLASS_HACKED_ROLLERMINE,D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_PASSIVE,	CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_PASSIVE,	CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_CITIZEN_REBEL
@@ -792,6 +878,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_REBEL,		CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_REBEL,		CLASS_PLAYER,			D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_REBEL,		CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_REBEL,		CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_REBEL,		CLASS_BARNACLE,			D_FR, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_REBEL,		CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_REBEL,		CLASS_BULLSQUID,		D_FR, 0);
@@ -818,6 +905,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_REBEL,		CLASS_PLAYER_ALLY_VITAL,D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_REBEL,		CLASS_HACKED_ROLLERMINE,D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_REBEL,		CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CITIZEN_REBEL,		CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_COMBINE
@@ -825,6 +913,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE,			CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE,			CLASS_PLAYER,			D_HT, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE,			CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE,			CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE,			CLASS_BARNACLE,			D_FR, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE,			CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE,			CLASS_BULLSQUID,		D_HT, 0);
@@ -851,6 +940,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE,			CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE,			CLASS_HACKED_ROLLERMINE,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE,			CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_COMBINE_GUNSHIP
@@ -858,6 +948,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_GUNSHIP,		CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_GUNSHIP,		CLASS_PLAYER,			D_HT, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_GUNSHIP,		CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_GUNSHIP,		CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_GUNSHIP,		CLASS_BARNACLE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_GUNSHIP,		CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_GUNSHIP,		CLASS_BULLSQUID,		D_HT, 0);
@@ -884,6 +975,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_GUNSHIP,		CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_GUNSHIP,		CLASS_HACKED_ROLLERMINE,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_GUNSHIP,		CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_GUNSHIP,		CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_COMBINE_HUNTER
@@ -891,6 +983,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_HUNTER,		CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_HUNTER,		CLASS_PLAYER,			D_HT, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_HUNTER,		CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_HUNTER,		CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_HUNTER,		CLASS_BARNACLE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_HUNTER,		CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_HUNTER,		CLASS_BULLSQUID,		D_HT, 0);
@@ -917,6 +1010,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_HUNTER,		CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_HUNTER,		CLASS_HACKED_ROLLERMINE,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_HUNTER,		CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_COMBINE_HUNTER,		CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_CONSCRIPT
@@ -924,6 +1018,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CONSCRIPT,			CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CONSCRIPT,			CLASS_PLAYER,			D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CONSCRIPT,			CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CONSCRIPT,			CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CONSCRIPT,			CLASS_BARNACLE,			D_FR, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CONSCRIPT,			CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CONSCRIPT,			CLASS_BULLSQUID,		D_HT, 0);
@@ -951,12 +1046,14 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CONSCRIPT,			CLASS_HACKED_ROLLERMINE,D_NU, 0);
 		
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CONSCRIPT,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_CONSCRIPT,			CLASS_PROTOZOAN,		D_NU, 0);
 		// ------------------------------------------------------------
 		//	> CLASS_FLARE
 		// ------------------------------------------------------------
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_FLARE,			CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_FLARE,			CLASS_PLAYER,			D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_FLARE,			CLASS_ANTLION,			D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_FLARE,			CLASS_BIRTHER,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_FLARE,			CLASS_BARNACLE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_FLARE,			CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_FLARE,			CLASS_BULLSQUID,		D_NU, 0);
@@ -984,6 +1081,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_FLARE,			CLASS_PLAYER_ALLY_VITAL,D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_FLARE,			CLASS_HACKED_ROLLERMINE,D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_FLARE,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_FLARE,			CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_HEADCRAB
@@ -991,6 +1089,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HEADCRAB,			CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HEADCRAB,			CLASS_PLAYER,			D_HT, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HEADCRAB,			CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HEADCRAB,			CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HEADCRAB,			CLASS_BARNACLE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HEADCRAB,			CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HEADCRAB,			CLASS_BULLSQUID,		D_FR, 0);
@@ -1017,6 +1116,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HEADCRAB,			CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HEADCRAB,			CLASS_HACKED_ROLLERMINE,D_FR, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HEADCRAB,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HEADCRAB,			CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_HOUNDEYE
@@ -1025,6 +1125,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HOUNDEYE,			CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HOUNDEYE,			CLASS_PLAYER,			D_HT, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HOUNDEYE,			CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HOUNDEYE,			CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HOUNDEYE,			CLASS_BARNACLE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HOUNDEYE,			CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HOUNDEYE,			CLASS_BULLSQUID,		D_FR, 0);
@@ -1050,7 +1151,8 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HOUNDEYE,			CLASS_PLAYER_ALLY,		D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HOUNDEYE,			CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HOUNDEYE,			CLASS_HACKED_ROLLERMINE,D_HT, 0);
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_HOUNDEYE,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HOUNDEYE,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HOUNDEYE,			CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_MANHACK
@@ -1058,6 +1160,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MANHACK,			CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MANHACK,			CLASS_PLAYER,			D_HT, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MANHACK,			CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MANHACK,			CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MANHACK,			CLASS_BARNACLE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MANHACK,			CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MANHACK,			CLASS_BULLSQUID,		D_HT, 0);
@@ -1084,6 +1187,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MANHACK,			CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MANHACK,			CLASS_HACKED_ROLLERMINE,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MANHACK,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MANHACK,			CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_METROPOLICE
@@ -1091,6 +1195,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_METROPOLICE,		CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_METROPOLICE,		CLASS_PLAYER,			D_HT, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_METROPOLICE,		CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_METROPOLICE,		CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_METROPOLICE,		CLASS_BARNACLE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_METROPOLICE,		CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_METROPOLICE,		CLASS_BULLSQUID,		D_HT, 0);
@@ -1117,6 +1222,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_METROPOLICE,		CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_METROPOLICE,		CLASS_HACKED_ROLLERMINE,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_METROPOLICE,		CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_METROPOLICE,		CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_MILITARY
@@ -1124,6 +1230,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MILITARY,			CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MILITARY,			CLASS_PLAYER,			D_HT, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MILITARY,			CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MILITARY,			CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MILITARY,			CLASS_BARNACLE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MILITARY,			CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MILITARY,			CLASS_BULLSQUID,		D_HT, 0);
@@ -1150,6 +1257,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MILITARY,			CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MILITARY,			CLASS_HACKED_ROLLERMINE,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MILITARY,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MILITARY,			CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_MISSILE
@@ -1157,6 +1265,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MISSILE,			CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MISSILE,			CLASS_PLAYER,			D_HT, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MISSILE,			CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MISSILE,			CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MISSILE,			CLASS_BARNACLE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MISSILE,			CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MISSILE,			CLASS_BULLSQUID,		D_HT, 0);
@@ -1183,6 +1292,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MISSILE,			CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MISSILE,			CLASS_HACKED_ROLLERMINE,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MISSILE,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_MISSILE,			CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_NONE
@@ -1190,6 +1300,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_NONE,				CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_NONE,				CLASS_PLAYER,			D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_NONE,				CLASS_ANTLION,			D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_NONE,				CLASS_BIRTHER,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_NONE,				CLASS_BARNACLE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_NONE,				CLASS_BULLSEYE,			D_NU, 0);	
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_NONE,				CLASS_BULLSQUID,		D_NU, 0);
@@ -1215,6 +1326,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_NONE,				CLASS_PLAYER_ALLY_VITAL,D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_NONE,				CLASS_HACKED_ROLLERMINE,D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship( CLASS_NONE,				CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_NONE,				CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_PLAYER
@@ -1222,6 +1334,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER,			CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER,			CLASS_PLAYER,			D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER,			CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER,			CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER,			CLASS_BARNACLE,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER,			CLASS_BULLSEYE,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER,			CLASS_BULLSQUID,		D_HT, 0);
@@ -1247,7 +1360,8 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER,			CLASS_PLAYER_ALLY,		D_LI, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER,			CLASS_PLAYER_ALLY_VITAL,D_LI, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER,			CLASS_HACKED_ROLLERMINE,D_LI, 0);
-		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER,			CLASS_ALIEN_FLORA,		D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER,			CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_PLAYER_ALLY
@@ -1255,6 +1369,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY,			CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY,			CLASS_PLAYER,			D_LI, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY,			CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY,			CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY,			CLASS_BARNACLE,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY,			CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY,			CLASS_BULLSQUID,		D_HT, 0);
@@ -1281,6 +1396,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY,			CLASS_PLAYER_ALLY_VITAL,D_LI, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY,			CLASS_HACKED_ROLLERMINE,D_LI, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY,			CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_PLAYER_ALLY_VITAL
@@ -1288,6 +1404,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY_VITAL,	CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY_VITAL,	CLASS_PLAYER,			D_LI, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY_VITAL,	CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY_VITAL,	CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY_VITAL,	CLASS_BARNACLE,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY_VITAL,	CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY_VITAL,	CLASS_BULLSQUID,		D_HT, 0);
@@ -1314,6 +1431,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY_VITAL,	CLASS_PLAYER_ALLY_VITAL,D_LI, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY_VITAL,	CLASS_HACKED_ROLLERMINE,D_LI, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY_VITAL,	CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PLAYER_ALLY_VITAL,	CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_SCANNER
@@ -1321,6 +1439,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SCANNER,			CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SCANNER,			CLASS_PLAYER,			D_HT, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SCANNER,			CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SCANNER,			CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SCANNER,			CLASS_BARNACLE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SCANNER,			CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SCANNER,			CLASS_BULLSQUID,		D_NU, 0);
@@ -1347,6 +1466,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SCANNER,			CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SCANNER,			CLASS_HACKED_ROLLERMINE,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SCANNER,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_SCANNER,			CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_STALKER
@@ -1354,6 +1474,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_STALKER,			CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_STALKER,			CLASS_PLAYER,			D_HT, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_STALKER,			CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_STALKER,			CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_STALKER,			CLASS_BARNACLE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_STALKER,			CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_STALKER,			CLASS_BULLSQUID,		D_HT, 0);
@@ -1380,6 +1501,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_STALKER,			CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_STALKER,			CLASS_HACKED_ROLLERMINE,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_STALKER,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_STALKER,			CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_VORTIGAUNT
@@ -1387,6 +1509,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_VORTIGAUNT,		CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_VORTIGAUNT,		CLASS_PLAYER,			D_LI, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_VORTIGAUNT,		CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_VORTIGAUNT,		CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_VORTIGAUNT,		CLASS_BARNACLE,			D_FR, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_VORTIGAUNT,		CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_VORTIGAUNT,		CLASS_BULLSQUID,		D_HT, 0);
@@ -1413,6 +1536,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_VORTIGAUNT,		CLASS_PLAYER_ALLY_VITAL,D_LI, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_VORTIGAUNT,		CLASS_HACKED_ROLLERMINE,D_LI, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_VORTIGAUNT,		CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_VORTIGAUNT,		CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_ZOMBIE
@@ -1420,6 +1544,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ZOMBIE,			CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ZOMBIE,			CLASS_PLAYER,			D_HT, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ZOMBIE,			CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ZOMBIE,			CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ZOMBIE,			CLASS_BARNACLE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ZOMBIE,			CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ZOMBIE,			CLASS_BULLSQUID,		D_HT, 0);
@@ -1446,6 +1571,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ZOMBIE,			CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ZOMBIE,			CLASS_HACKED_ROLLERMINE,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ZOMBIE,			CLASS_ALIEN_FLORA,		D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ZOMBIE,			CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//	> CLASS_PROTOSNIPER
@@ -1453,6 +1579,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOSNIPER,			CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOSNIPER,			CLASS_PLAYER,			D_HT, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOSNIPER,			CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOSNIPER,			CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOSNIPER,			CLASS_BARNACLE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOSNIPER,			CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOSNIPER,			CLASS_BULLSQUID,		D_NU, 0);
@@ -1479,6 +1606,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOSNIPER,			CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOSNIPER,			CLASS_HACKED_ROLLERMINE,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOSNIPER,			CLASS_ALIEN_FLORA,		D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOSNIPER,			CLASS_PROTOZOAN,		D_NU, 0);
 		// ------------------------------------------------------------
 		//	> CLASS_EARTH_FAUNA
 		//
@@ -1488,6 +1616,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_EARTH_FAUNA,			CLASS_NONE,				D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_EARTH_FAUNA,			CLASS_PLAYER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_EARTH_FAUNA,			CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_EARTH_FAUNA,			CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_EARTH_FAUNA,			CLASS_BARNACLE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_EARTH_FAUNA,			CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_EARTH_FAUNA,			CLASS_BULLSQUID,		D_HT, 0);
@@ -1514,12 +1643,14 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_EARTH_FAUNA,			CLASS_PLAYER_ALLY_VITAL,D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_EARTH_FAUNA,			CLASS_HACKED_ROLLERMINE,D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship( CLASS_EARTH_FAUNA,		CLASS_ALIEN_FLORA,		D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_EARTH_FAUNA,			CLASS_PROTOZOAN,		D_NU, 0);
 		// ------------------------------------------------------------
 		//	> CLASS_HACKED_ROLLERMINE
 		// ------------------------------------------------------------
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HACKED_ROLLERMINE,			CLASS_NONE,				D_NU, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HACKED_ROLLERMINE,			CLASS_PLAYER,			D_LI, 0);			
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HACKED_ROLLERMINE,			CLASS_ANTLION,			D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HACKED_ROLLERMINE,			CLASS_BIRTHER,			D_HT, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HACKED_ROLLERMINE,			CLASS_BARNACLE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HACKED_ROLLERMINE,			CLASS_BULLSEYE,			D_NU, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HACKED_ROLLERMINE,			CLASS_BULLSQUID,		D_HT, 0);
@@ -1546,6 +1677,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HACKED_ROLLERMINE,			CLASS_PLAYER_ALLY_VITAL,D_LI, 0);
 		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HACKED_ROLLERMINE,			CLASS_HACKED_ROLLERMINE,D_LI, 0);
 		CBaseCombatCharacter::SetDefaultRelationship( CLASS_HACKED_ROLLERMINE,			CLASS_ALIEN_FLORA,		D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_HACKED_ROLLERMINE,			CLASS_PROTOZOAN,		D_NU, 0);
 
 		// ------------------------------------------------------------
 		//    > CLASS_ALIEN_FLORA
@@ -1553,39 +1685,75 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 		// Hates pretty much everything equally except other Xen flora
 		// and prey animals.
 		// ------------------------------------------------------------    
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_NONE, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_PLAYER, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_ANTLION, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_BARNACLE, D_NU, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_BULLSEYE, D_NU, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_BULLSQUID, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_CITIZEN_PASSIVE, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_CITIZEN_REBEL, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_COMBINE, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_COMBINE_GUNSHIP, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_COMBINE_HUNTER, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_CONSCRIPT, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_FLARE, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_HEADCRAB, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_HOUNDEYE, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_MANHACK, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_METROPOLICE, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_MILITARY, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_MISSILE, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_SCANNER, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_STALKER, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_VORTIGAUNT, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_ZOMBIE, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_PROTOSNIPER, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_EARTH_FAUNA, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_PLAYER_ALLY, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_PLAYER_ALLY_VITAL, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_HACKED_ROLLERMINE, D_NU, 0 );
-#ifdef EZ
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_ALIEN_PREDATOR, D_HT, 0 );
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_ALIEN_PREY, D_NU, 0 );
-#endif
-		CBaseCombatCharacter::SetDefaultRelationship( CLASS_ALIEN_FLORA, CLASS_ALIEN_FLORA, D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_NONE, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_PLAYER, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_ANTLION, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_BIRTHER, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_BARNACLE, D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_BULLSEYE, D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_BULLSQUID, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_CITIZEN_PASSIVE, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_CITIZEN_REBEL, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_COMBINE, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_COMBINE_GUNSHIP, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_COMBINE_HUNTER, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_CONSCRIPT, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_FLARE, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_HEADCRAB, D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_HOUNDEYE, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_MANHACK, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_METROPOLICE, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_MILITARY, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_MISSILE, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_SCANNER, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_STALKER, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_VORTIGAUNT, D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_ZOMBIE, D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_PROTOSNIPER, D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_EARTH_FAUNA, D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_PLAYER_ALLY, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_PLAYER_ALLY_VITAL, D_HT, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_HACKED_ROLLERMINE, D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_ALIEN_FLORA, CLASS_PROTOZOAN, D_NU, 0);
+
+		// ------------------------------------------------------------
+		//    > CLASS_PROTOZOAN
+		//
+		// Doesnt take note of most enemies, and most enemies dont take note of it
+		// only notices player and allies
+		// in this context, D_HT refers to NPCs it will approach and heal
+		// ------------------------------------------------------------    
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_NONE,					D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_PLAYER,				D_HT, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_ANTLION,				D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_BIRTHER,				D_NU, 0);
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_BARNACLE,				D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_BULLSEYE,				D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_BULLSQUID,			D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_CITIZEN_PASSIVE,		D_HT, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_CITIZEN_REBEL,		D_HT, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_COMBINE,				D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_COMBINE_GUNSHIP,		D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_COMBINE_HUNTER,		D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_CONSCRIPT,			D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_FLARE,				D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_HEADCRAB,				D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_HOUNDEYE,				D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_MANHACK,				D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_METROPOLICE,			D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_MILITARY,				D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_MISSILE,				D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_SCANNER,				D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_STALKER,				D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_VORTIGAUNT,			D_HT, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_ZOMBIE,				D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_PROTOSNIPER,			D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_EARTH_FAUNA,			D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_PLAYER_ALLY,			D_HT, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_PLAYER_ALLY_VITAL,	D_HT, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_HACKED_ROLLERMINE,	D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_ALIEN_FLORA,			D_NU, 0 );
+		CBaseCombatCharacter::SetDefaultRelationship(CLASS_PROTOZOAN,		CLASS_PROTOZOAN,			D_NU, 0 );
 	}
 
 
@@ -1605,6 +1773,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 			case CLASS_PLAYER_ALLY_VITAL:	return "CLASS_PLAYER_ALLY_VITAL";
 #endif
 			case CLASS_ANTLION:			return "CLASS_ANTLION";
+			case CLASS_BIRTHER:			return "CLASS_BIRTHER";
 			case CLASS_BARNACLE:		return "CLASS_BARNACLE";
 			case CLASS_BULLSEYE:		return "CLASS_BULLSEYE";
 			case CLASS_BULLSQUID:		return "CLASS_BULLSQUID";	
@@ -1873,6 +2042,9 @@ bool CHalfLife2::ShouldCollide( int collisionGroup0, int collisionGroup1 )
 	if (collisionGroup0 == HL2COLLISION_GROUP_HOUNDEYE && collisionGroup1 == HL2COLLISION_GROUP_HOUNDEYE )
 		return false;
 
+	if (collisionGroup0 == HL2COLLISION_GROUP_ANTLION_ROLLERGRUB && collisionGroup1 == HL2COLLISION_GROUP_ANTLION_ROLLERGRUB)
+		return false;
+
 	if (collisionGroup0 == HL2COLLISION_GROUP_HOMING_MISSILE && collisionGroup1 == HL2COLLISION_GROUP_HOMING_MISSILE )
 		return false;
 
@@ -1911,6 +2083,18 @@ bool CHalfLife2::ShouldCollide( int collisionGroup0, int collisionGroup1 )
 
 	// Spit doesn't touch other spit
 	if ( collisionGroup0 == HL2COLLISION_GROUP_SPIT && collisionGroup1 == HL2COLLISION_GROUP_SPIT )
+		return false;
+
+	// players don't collide with friendly antlions
+	if (collisionGroup1 == RTBRCOLLISION_GROUP_FRIENDANTLION && collisionGroup0 == COLLISION_GROUP_PLAYER)
+		return false;
+
+	// ... neither does alyx
+	if (collisionGroup1 == RTBRCOLLISION_GROUP_FRIENDANTLION && collisionGroup0 == RTBRCOLLISION_GROUP_ALYXFRIENDANTLION)
+		return false;
+
+	// vehicles do not collide with sand barnacles
+	if ((collisionGroup1 == COLLISION_GROUP_VEHICLE && collisionGroup0 == RTBRCOLLISION_GROUP_SANDBARNACLE) || (collisionGroup0 == COLLISION_GROUP_VEHICLE && collisionGroup1 == RTBRCOLLISION_GROUP_SANDBARNACLE))
 		return false;
 
 	return BaseClass::ShouldCollide( collisionGroup0, collisionGroup1 ); 
@@ -2228,6 +2412,7 @@ CAmmoDef *GetAmmoDef()
 		def.AddAmmoType("Gravity",			DMG_CLUB,					TRACER_NONE,			0,	0, 8, 0, 0 );
 //		def.AddAmmoType("Extinguisher",		DMG_BURN,					TRACER_NONE,			0,	0, 100, 0, 0 );
 		def.AddAmmoType("Battery",			DMG_CLUB,					TRACER_NONE,			NULL, NULL, NULL, 0, 0 );
+		def.AddAmmoType("GaussEnergy",		DMG_SHOCK,					TRACER_NONE,			"sk_jeep_gauss_damage",		"sk_jeep_gauss_damage", "sk_max_gauss_round", BULLET_IMPULSE(700, 2978), 0 ); // hit like a 10kg weight at 400 in/s
 		def.AddAmmoType("CombineCannon",	DMG_BULLET,					TRACER_LINE,			"sk_npc_dmg_gunship_to_plr", "sk_npc_dmg_gunship", NULL, 1.5 * 750 * 12, 0 ); // hit like a 1.5kg weight at 750 ft/s
 		def.AddAmmoType("AirboatGun",		DMG_AIRBOAT,				TRACER_LINE,			"sk_plr_dmg_airboat",		"sk_npc_dmg_airboat",		NULL,					BULLET_IMPULSE(700, 2978), 0 );
 		
@@ -2260,10 +2445,11 @@ CAmmoDef *GetAmmoDef()
 
 #ifdef RTBR_DLL
 		def.AddAmmoType("AKM", DMG_BULLET, TRACER_LINE_AND_WHIZ, "sk_plr_dmg_akm", "sk_npc_dmg_akm", "sk_max_akm_rounds", BULLET_IMPULSE(122, 730.3), 0);
-		def.AddAmmoType( "Extinguisher", DMG_BURN, TRACER_NONE, 0, 0, 100, 0, 0 );
-		def.AddAmmoType( "MP5K", DMG_BULLET, TRACER_LINE_AND_WHIZ, "sk_plr_dmg_mp5k", "sk_npc_dmg_mp5k", "sk_max_mp5k_rounds", BULLET_IMPULSE( 124, 1150 ), 0 );
 		def.AddAmmoType( "OICW", DMG_BULLET, TRACER_LINE_AND_WHIZ, "sk_plr_dmg_oicw", "sk_npc_dmg_oicw", "sk_max_oicw_rounds", BULLET_IMPULSE( 62, 961 ), 0 );
-		def.AddAmmoType( "Immolator", DMG_PLASMA, TRACER_BEAM, "sk_plr_dmg_immo", "sk_npc_dmg_immo", "sk_max_immo_rounds", 0, 0); // TODO: Tweak this definition
+		def.AddAmmoType( "HMG", DMG_BULLET, TRACER_LINE_AND_WHIZ, "sk_plr_dmg_hmg", "sk_npc_dmg_hmg", "sk_max_hmg_rounds", BULLET_IMPULSE( 122, 730.3 ), 0 );
+		def.AddAmmoType( "SniperRound", DMG_BULLET, TRACER_LINE_AND_WHIZ, 0, 0, 12, BULLET_IMPULSE( 700, 2978 ), 0 );
+		def.AddAmmoType( "Immolator", DMG_PLASMA, TRACER_BEAM, 0, 0, "sk_max_immo_rounds", 0, 0);
+		def.AddAmmoType( "Gauss", DMG_SHOCK, TRACER_NONE, "sk_plr_dmg_gauss", "sk_plr_dmg_gauss", "sk_max_gauss_round", BULLET_IMPULSE( 700, 2978 ), 0 ); // hit like a 10kg weight at 400 in/s
 		def.AddAmmoType( "FlareRound", DMG_BURN, TRACER_NONE, "sk_plr_dmg_flare_round", "sk_npc_dmg_flare_round", "sk_max_flare_round", 0, 0 );
 		def.AddAmmoType( "Annabelle", DMG_BULLET, TRACER_LINE_AND_WHIZ, "sk_plr_dmg_annabelle", "sk_npc_dmg_annabelle", "sk_max_annabelle_rounds", BULLET_IMPULSE( 300, 2069 ), 0 );
 #endif

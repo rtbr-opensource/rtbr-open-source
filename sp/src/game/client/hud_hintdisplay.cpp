@@ -354,6 +354,7 @@ public:
 	void Init();
 	void Reset();
 	void MsgFunc_KeyHintText( bf_read &msg );
+	void MsgFunc_DimKeyHintText( bf_read &msg );
 	bool ShouldDraw();
 
 	bool SetHintText( const char *text );
@@ -376,6 +377,7 @@ private:
 
 DECLARE_HUDELEMENT( CHudHintKeyDisplay );
 DECLARE_HUD_MESSAGE( CHudHintKeyDisplay, KeyHintText );
+DECLARE_HUD_MESSAGE( CHudHintKeyDisplay, DimKeyHintText );
 
 //-----------------------------------------------------------------------------
 // Purpose: Constructor
@@ -394,6 +396,7 @@ CHudHintKeyDisplay::CHudHintKeyDisplay( const char *pElementName ) : BaseClass(N
 void CHudHintKeyDisplay::Init()
 {
 	HOOK_HUD_MESSAGE( CHudHintKeyDisplay, KeyHintText );
+	HOOK_HUD_MESSAGE( CHudHintKeyDisplay, DimKeyHintText );
 }
 
 //-----------------------------------------------------------------------------
@@ -817,5 +820,34 @@ void CHudHintKeyDisplay::MsgFunc_KeyHintText( bf_read &msg )
 	{
 		// it's being cleared, hide the panel
 		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "KeyHintMessageHide" ); 
+	}
+}
+
+void CHudHintKeyDisplay::MsgFunc_DimKeyHintText( bf_read &msg )
+{
+	// how many strings do we receive ?
+	int count = msg.ReadByte();
+
+	// here we expect only one string
+	if ( count != 1 )
+	{
+		DevMsg( "CDimHudHintKeyDisplay::MsgFunc_DimKeyHintText: string count != 1.\n" );
+		return;
+	}
+
+	// read the string
+	char szString[2048];
+	msg.ReadString( szString, sizeof( szString ) );
+
+	// make it visible
+	if ( SetHintText( szString ) )
+	{
+		SetVisible( true );
+		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "DimKeyHintMessageShow" );
+	}
+	else
+	{
+		// it's being cleared, hide the panel
+		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "KeyHintMessageHide" );
 	}
 }

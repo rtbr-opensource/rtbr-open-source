@@ -18,7 +18,6 @@
 
 #define	MAX_AR2_NO_COLLIDE_TIME 0.2
 
-class SmokeTrail;
 class CWeaponAR2;
 
 class CGrenadeAR2 : public CBaseGrenade
@@ -26,7 +25,6 @@ class CGrenadeAR2 : public CBaseGrenade
 public:
 	DECLARE_CLASS( CGrenadeAR2, CBaseGrenade );
 
-	CHandle< SmokeTrail > m_hSmokeTrail;
 	float				 m_fSpawnTime;
 	float				m_fDangerRadius;
 
@@ -40,6 +38,7 @@ public:
 	Vector		GenerateRandomCircle(Vector originalpos);
 	void		Event_Killed( const CTakeDamageInfo &info );
 	void		IgniteOtherIfAllowed(CBaseEntity * pOther);
+	bool		PassesDamageFilter( const CTakeDamageInfo &info );
 
 public:
 	void EXPORT				Detonate(void);

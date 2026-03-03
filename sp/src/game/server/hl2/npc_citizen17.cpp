@@ -311,6 +311,8 @@ static const char *g_ppszModelLocs[] =
 	"Group04",
 	"Group05",
 	"Group06",
+	"Group07",
+	"Group08",
 };
 
 
@@ -418,7 +420,6 @@ ScriptHook_t	CNPC_Citizen::g_Hook_SelectModel;
 
 BEGIN_ENT_SCRIPTDESC( CNPC_Citizen, CAI_BaseActor, "npc_citizen from Half-Life 2" )
 
-	DEFINE_SCRIPTFUNC( IsMedic, "Returns true if this citizen is a medic." )
 	DEFINE_SCRIPTFUNC( IsAmmoResupplier, "Returns true if this citizen is an ammo resupplier." )
 	DEFINE_SCRIPTFUNC( CanHeal, "Returns true if this citizen is a medic or ammo resupplier currently able to heal/give ammo." )
 
@@ -695,8 +696,9 @@ void CNPC_Citizen::SelectModel()
 		PrecacheAllOfType( CT_DOWNTRODDEN );
 		PrecacheAllOfType( CT_REFUGEE );
 		PrecacheAllOfType( CT_REBEL );
-		PrecacheAllOfType(CT_INDUSTRIAL);
-		PrecacheAllOfType(CT_METROCOP);
+		PrecacheAllOfType( CT_INDUSTRIAL );
+		PrecacheAllOfType( CT_METROCOP );
+		PrecacheAllOfType( CT_WASTELAND );
 	}
 
 	const char *pszModelName = NULL;
@@ -848,6 +850,9 @@ void CNPC_Citizen::SelectModel()
 					}
 				}
 
+				// Models selected this way must be unique to avoid conflicts in save/restore
+				m_Type = CT_UNIQUE;
+
 				// Just set the model right here
 				SetModelName( AllocPooledString( returnValue.m_pszString ) );
 				return;
@@ -965,6 +970,9 @@ void CNPC_Citizen::SelectExpressionType()
 		break;
 	case CT_METROCOP:
 		m_ExpressionType = (CitizenExpressionTypes_t)RandomInt(CIT_EXP_ANGRY, CIT_EXP_NORMAL);
+		break;
+	case CT_WASTELAND:
+		m_ExpressionType = (CitizenExpressionTypes_t)RandomInt(CIT_EXP_SCARED, CIT_EXP_NORMAL);
 		break;
 
 	case CT_DEFAULT:

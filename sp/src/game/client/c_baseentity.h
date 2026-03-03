@@ -289,6 +289,11 @@ public:
 	HSCRIPT					GetScriptOwnerEntity();
 	virtual void			SetScriptOwnerEntity(HSCRIPT pOwner);
 
+#ifdef MAPBASE_VSCRIPT
+	HSCRIPT					ScriptGetGroundEntity();
+	void					ScriptSetGroundEntity( HSCRIPT hGroundEnt );
+#endif
+
 	HSCRIPT GetScriptInstance();
 
 	HSCRIPT			m_hScriptInstance;
@@ -1202,6 +1207,8 @@ public:
 	HSCRIPT ScriptEntityToWorldTransform( void );
 
 	HSCRIPT ScriptGetPhysicsObject( void );
+	void ScriptPhysicsInitNormal( int nSolidType, int nSolidFlags, bool createAsleep );
+	void ScriptPhysicsDestroyObject() { VPhysicsDestroyObject(); }
 
 	void ScriptSetParent( HSCRIPT hParent, const char *szAttachment );
 	HSCRIPT ScriptGetMoveParent( void );

@@ -77,6 +77,7 @@ public:
 	bool m_bStunChargeActive;
 
 	CNewParticleEffect *m_hStunstickParticle;
+	CNewParticleEffect *m_hStunstickSwing;
 
 	CWeaponStunStick(const CWeaponStunStick &);
 
@@ -103,7 +104,7 @@ private:
 	void	DrawEffects(void);
 	bool	InSwing(void);
 
-	bool	m_bSwungLastFrame;
+	bool	m_bSwinging;
 
 #define	FADE_DURATION	0.25f
 

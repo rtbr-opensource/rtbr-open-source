@@ -36,12 +36,18 @@ public:
 	~C_PropJeep();
 
 public:
+	virtual void Precache( void );
+	virtual void Spawn( void );
 
 	void UpdateViewAngles( C_BasePlayer *pLocalPlayer, CUserCmd *pCmd );
 	void DampenEyePosition( Vector &vecVehicleEyePos, QAngle &vecVehicleEyeAngles );
 
 	void OnEnteredVehicle( C_BasePlayer *pPlayer );
 	void Simulate( void );
+
+	void DrawGaussBeams( void );
+
+	virtual void OnExitedVehicle( C_BaseCombatCharacter *pPassenger );
 
 private:
 
@@ -61,6 +67,24 @@ private:
 	float		m_flJeepFOV;
 	CHeadlightEffect *m_pHeadlight;
 	bool		m_bHeadlightIsOn;
+
+	bool		m_bCannonFiring;
+	bool		m_bCannonCharging;
+	bool		m_bChargeEffectsActive;
+
+	float		m_flCannonChargeAmount;
+
+	Vector m_vGaussBeam1; // Main gauss beam start pos
+	Vector m_vGaussBeam2; // Main gauss beam end pos/Reflected gauss beam start pos
+	Vector m_vGaussBeam3; // Reflected gauss beam end pos
+
+	// RTBR Gauss Particles
+	CNewParticleEffect *m_hCapacitorEffect;
+	CNewParticleEffect *m_hCoilEffect;
+	CNewParticleEffect *m_hExhaustEffect;
+
+	CNewParticleEffect *m_hGaussBeam1;
+	CNewParticleEffect *m_hGaussBeam2;
 };
 
 #endif // C_VEHICLE_JEEP_H

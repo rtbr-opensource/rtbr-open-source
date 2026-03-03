@@ -6,7 +6,6 @@
 
 $Macro OUTBINNAME	"client"
 $Macro OUTBINDIR	"$SRCDIR\..\game\$GAMENAME\bin"
-$Macro OUTBINDIR	"$(RTBR_MOD_LOC)\bin" [$WIN32]
 $Macro DEVKITBINDIR	"$GAMENAME\bin"							[$X360]
 // It's important to include $GAMENAME in the generated_proto directory
 // to avoid race conditions when multiple games are in one solution.

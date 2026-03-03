@@ -15,13 +15,13 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-ConVar sk_bullsquid_health( "sk_bullsquid_health", "100" );
-ConVar sk_bullsquid_dmg_bite( "sk_bullsquid_dmg_bite", "15" );
-ConVar sk_bullsquid_dmg_whip( "sk_bullsquid_dmg_whip", "25" );
+ConVar sk_bullsquid_health( "sk_bullsquid_health", "0" );
+ConVar sk_bullsquid_dmg_bite( "sk_bullsquid_dmg_bite", "0" );
+ConVar sk_bullsquid_dmg_whip( "sk_bullsquid_dmg_whip", "0" );
 ConVar sk_bullsquid_spit_arc_size( "sk_bullsquid_spit_arc_size", "3");
 ConVar sk_bullsquid_spit_min_wait( "sk_bullsquid_spit_min_wait", "0.5");
 ConVar sk_bullsquid_spit_max_wait( "sk_bullsquid_spit_max_wait", "5");
-ConVar sk_bullsquid_spit_speed( "sk_bullsquid_spit_speed", "600" );
+ConVar sk_bullsquid_spit_speed( "sk_bullsquid_spit_speed", "0" );
 ConVar sk_bullsquid_gestation( "sk_bullsquid_gestation", "15.0" );
 ConVar sk_bullsquid_spawn_time( "sk_bullsquid_spawn_time", "5.0" );
 ConVar sk_bullsquid_monster_infighting( "sk_bullsquid_monster_infighting", "1" );
@@ -30,6 +30,11 @@ ConVar sk_bullsquid_lay_eggs( "sk_bullsquid_lay_eggs", "1" );
 ConVar sk_bullsquid_eatincombat_percent( "sk_bullsquid_eatincombat_percent", "1.0", FCVAR_NONE, "Below what percentage of health should bullsquids eat during combat?" );
 ConVar sk_max_squad_squids( "sk_max_squad_squids", "4" ); // How many squids in a pack before offspring start branching off into their own pack?
 
+// Babysquid convars
+ConVar sk_babysquid_health( "sk_babysquid_health", "0" );
+ConVar sk_babysquid_dmg_bite( "sk_babysquid_dmg_bite", "0" );
+ConVar sk_babysquid_dmg_whip( "sk_babysquid_dmg_whip", "0" );
+
 //=========================================================
 // Interactions
 //=========================================================
@@ -37,6 +42,7 @@ int	g_interactionBullsquidThrow		= 0;
 int	g_interactionBullsquidMonch		= 0;
 
 LINK_ENTITY_TO_CLASS( npc_bullsquid, CNPC_Bullsquid );
+LINK_ENTITY_TO_CLASS(npc_babysquid, CNPC_Bullsquid);
 
 int ACT_SQUID_EXCITED;
 int ACT_SQUID_EAT;
@@ -59,6 +65,10 @@ END_DATADESC()
 //=========================================================
 void CNPC_Bullsquid::Spawn()
 {
+	if (FClassnameIs(this, "npc_babysquid")) {
+		SetIsBaby(true);
+	}
+
 	Precache( );
 
 	// Baby squid do do do-do do-do
@@ -90,7 +100,7 @@ void CNPC_Bullsquid::Spawn()
 	
 	SetRenderColor( 255, 255, 255, 255 );
 	
-	m_iMaxHealth		= sk_bullsquid_health.GetFloat();
+	m_iMaxHealth		= m_bIsBaby ? sk_babysquid_health.GetFloat() : sk_bullsquid_health.GetFloat();
 	m_iHealth			= m_iMaxHealth;
 	m_flFieldOfView		= 0.2;// indicates the width of this monster's forward view cone ( as a dotproduct result )
 	m_NPCState			= NPC_STATE_NONE;
@@ -106,10 +116,6 @@ void CNPC_Bullsquid::Spawn()
 	}
 	else if ( m_bIsBaby )
 	{
-		// Baby squids have 3/4 health
-		m_iMaxHealth = 3 * m_iMaxHealth / 4;
-		m_iHealth = m_iMaxHealth;
-
 		// Baby squids can't spit yet!
 		CapabilitiesRemove( bits_CAP_INNATE_RANGE_ATTACK1 );
 	}
@@ -188,7 +194,9 @@ void CNPC_Bullsquid::Precache()
 		}
 	}*/
 
-	PrecacheModel( STRING( GetModelName() ) );
+
+	PrecacheModel( STRING( m_AdultModelName ) );
+	PrecacheModel( STRING( m_BabyModelName ) );
 
 	m_nSquidSpitSprite = PrecacheModel("sprites/greenspit1.vmt");// client side spittle.
 
@@ -217,18 +225,16 @@ void CNPC_Bullsquid::Precache()
 	PrecacheScriptSound( "NPC_Bullsquid.Bite" );
 	PrecacheScriptSound( "NPC_Bullsquid.Eat" );
 
-	/*
-	PrecacheScriptSound( "NPC_Babysquid.Idle" );
-	PrecacheScriptSound( "NPC_Babysquid.Pain" );
-	PrecacheScriptSound( "NPC_Babysquid.Alert" );
-	PrecacheScriptSound( "NPC_Babysquid.Death" );
-	PrecacheScriptSound( "NPC_Babysquid.Attack1" );
-	PrecacheScriptSound( "NPC_Babysquid.FoundEnemy" );
-	PrecacheScriptSound( "NPC_Babysquid.Growl" );
-	PrecacheScriptSound( "NPC_Babysquid.TailWhip" );
-	PrecacheScriptSound( "NPC_Babysquid.Bite" );
-	PrecacheScriptSound( "NPC_Babysquid.Eat" );
-	*/
+	PrecacheScriptSound( "NPC_BabyBullsquid.Idle" );
+	PrecacheScriptSound( "NPC_BabyBullsquid.Pain" );
+	PrecacheScriptSound( "NPC_BabyBullsquid.Alert" );
+	PrecacheScriptSound( "NPC_BabyBullsquid.Death" );
+	PrecacheScriptSound( "NPC_BabyBullsquid.Attack1" );
+	PrecacheScriptSound( "NPC_BabyBullsquid.FoundEnemy" );
+	PrecacheScriptSound( "NPC_BabyBullsquid.Growl" );
+	PrecacheScriptSound( "NPC_BabyBullsquid.TailWhip" );
+	PrecacheScriptSound( "NPC_BabyBullsquid.Bite" );
+	PrecacheScriptSound( "NPC_BabyBullsquid.Eat" );
 
 	PrecacheScriptSound( "NPC_Antlion.PoisonShoot" );
 	PrecacheScriptSound( "NPC_Antlion.PoisonBall" );
@@ -280,7 +286,17 @@ int CNPC_Bullsquid::RangeAttack1Conditions( float flDot, float flDist )
 		return ( COND_NONE );
 	}
 
-	return(BaseClass::RangeAttack1Conditions( flDot, flDist ));
+	// give a larger range if the enemy cannot be reached for melee
+	float flMaxSpitDistance = ((HasCondition(COND_ENEMY_UNREACHABLE) ? 1536 : m_flDistTooFar));
+	if (flDist <= flMaxSpitDistance)
+	{
+		if (gpGlobals->curtime >= m_flNextSpitTime && (!IsInSquad() || OccupyStrategySlotRange(SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK2)))
+		{
+			return(COND_CAN_RANGE_ATTACK1);
+		}
+	}
+
+	return(COND_NONE);
 }
 
 extern ConVar ai_force_serverside_ragdoll;
@@ -596,7 +612,7 @@ float CNPC_Bullsquid::GetMinSpitWaitTime( void )
 float CNPC_Bullsquid::GetWhipDamage( void )
 {
 	// Multiply the damage value by the scale of the model so that baby squids do less damage
-	return sk_bullsquid_dmg_whip.GetFloat() * GetModelScale() * ( m_bIsBaby ? 0.5f : 1.0f );
+	return m_bIsBaby ? sk_babysquid_dmg_whip.GetFloat() : sk_bullsquid_dmg_whip.GetFloat();
 }
 
 //=========================================================
@@ -605,7 +621,7 @@ float CNPC_Bullsquid::GetWhipDamage( void )
 float CNPC_Bullsquid::GetBiteDamage( void )
 {
 	// Multiply the damage value by the scale of the model so that baby squids do less damage
-	return sk_bullsquid_dmg_bite.GetFloat() * GetModelScale() * ( m_bIsBaby ? 0.5f : 1.0f );
+	return m_bIsBaby ? sk_babysquid_dmg_bite.GetFloat() : sk_bullsquid_dmg_bite.GetFloat();
 }
 
 //=========================================================
@@ -913,7 +929,51 @@ int CNPC_Bullsquid::SelectSchedule( void )
 		return SCHED_PREDATOR_GROW;
 	}
 
+	if (m_NPCState == NPC_STATE_COMBAT)
+	{
+		if (HasCondition(COND_ENEMY_UNREACHABLE))
+		{
+			// theyre unreachable, try to move to somewhere where i can spit
+			if (HasCondition(COND_ENEMY_OCCLUDED))
+				return SCHED_ESTABLISH_LINE_OF_FIRE;
+
+			// theyre unreachable, try spitting at them
+			if (HasCondition(COND_CAN_RANGE_ATTACK1))
+			{
+				m_flNextSpitTime = gpGlobals->curtime + GetMinSpitWaitTime();
+				return SCHED_RANGE_ATTACK1;
+			}
+
+			// theyre unreachable and i cant spit at them, run around like a headless chicken
+			return SCHED_RUN_RANDOM;
+		}
+
+		if (HasCondition(COND_CAN_RANGE_ATTACK1))
+		{
+			m_flNextSpitTime = gpGlobals->curtime + GetMaxSpitWaitTime();
+			return SCHED_RANGE_ATTACK1;
+		}
+	}
+
+	int bossSchedule = SelectBossSchedule();
+	if (bossSchedule != SCHED_NONE)
+		return bossSchedule;
+
+	if (m_bReadyToSpawn && gpGlobals->curtime > m_flNextSpawnTime)
+	{
+		return SCHED_PREDATOR_SPAWN;
+	}
+
 	return BaseClass::SelectSchedule();
+}
+
+int CNPC_Bullsquid::SelectFailSchedule(int failedSchedule, int failedTask, AI_TaskFailureCode_t taskFailCode)
+{
+	// failed to find a valid random node, just move back
+	if (failedSchedule == SCHED_RUN_RANDOM)
+		return SCHED_MOVE_AWAY;
+
+	return BaseClass::SelectFailSchedule(failedSchedule, failedTask, taskFailCode);
 }
 
 int CNPC_Bullsquid::TranslateSchedule( int scheduleType )
@@ -922,6 +982,12 @@ int CNPC_Bullsquid::TranslateSchedule( int scheduleType )
 	if ( scheduleType == SCHED_CHASE_ENEMY && IsSameSpecies( GetEnemy() ) )
 	{
 		return SCHED_ESTABLISH_LINE_OF_FIRE;
+	}
+
+	// i dont want to be a sitting duck, run around like a headless chicken.
+	if ( scheduleType == SCHED_STANDOFF )
+	{
+		return SCHED_RUN_RANDOM;
 	}
 
 	return BaseClass::TranslateSchedule( scheduleType );
@@ -966,6 +1032,8 @@ Activity CNPC_Bullsquid::NPC_TranslateActivity( Activity eNewActivity )
 //-----------------------------------------------------------------------------
 bool CNPC_Bullsquid::ShouldGib( const CTakeDamageInfo &info )
 {
+	return false;
+
 	// If the damage type is "always gib", we better gib!
 	if ( info.GetDamageType() & DMG_ALWAYSGIB )
 		return true;
@@ -993,8 +1061,8 @@ bool CNPC_Bullsquid::CorpseGib( const CTakeDamageInfo &info )
 
 void CNPC_Bullsquid::ExplosionEffect( void )
 {
-	DispatchParticleEffect( "bullsquid_explode", WorldSpaceCenter(), GetAbsAngles() );
-	EmitSound( "NPC_Bullsquid.Explode" );
+	//DispatchParticleEffect( "bullsquid_explode", WorldSpaceCenter(), GetAbsAngles() );
+	//EmitSound( "NPC_Bullsquid.Explode" );
 }
 
 //-----------------------------------------------------------------------------

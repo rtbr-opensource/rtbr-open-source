@@ -93,7 +93,7 @@ DEFINE_FIELD(m_bEffectsEmitting, FIELD_BOOLEAN),
 DEFINE_FIELD(m_bIsHolding, FIELD_BOOLEAN),
 DEFINE_FIELD(m_bEffectsOn, FIELD_BOOLEAN),
 DEFINE_FIELD(m_flScaleFactor, FIELD_FLOAT),
-DEFINE_FIELD(m_vLaunchPos, FIELD_VECTOR),
+//DEFINE_FIELD(m_vLaunchPos, FIELD_VECTOR), disabling this as it causes issues with effects after loading a save
 DEFINE_FIELD(m_bWeaponActive, FIELD_BOOLEAN),
 DEFINE_FIELD(m_flWeaponHoldingStartTime, FIELD_FLOAT),
 DEFINE_FIELD(m_flInterpolatedScaleFactor, FIELD_FLOAT),

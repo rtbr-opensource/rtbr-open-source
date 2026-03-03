@@ -144,6 +144,7 @@ public:
 	Activity SelectDoorBash();
 
 	void Ignite( float flFlameLifetime, bool bNPCOnly = true, float flSize = 0.0f, bool bCalledByLevelDesigner = false );
+	void IgniteGreen( float flFlameLifetime, bool bNPCOnly = true, float flSize = 0.0f, bool bCalledByLevelDesigner = false );
 	void Extinguish();
 	int OnTakeDamage_Alive( const CTakeDamageInfo &inputInfo );
 	bool IsHeavyDamage( const CTakeDamageInfo &info );
@@ -250,7 +251,7 @@ void CZombie::Precache( void )
 {
 	BaseClass::Precache();
 
-	PrecacheModel( "models/zombie/classic.mdl" );
+	PrecacheModel( DefaultOrCustomModel( "models/zombie/classic.mdl" ) );
 	PrecacheModel( "models/zombie/classic_torso.mdl" );
 	PrecacheModel( "models/zombie/classic_legs.mdl" );
 
@@ -515,7 +516,7 @@ void CZombie::SetZombieModel( void )
 	}
 	else
 	{
-		SetModel( "models/zombie/classic.mdl" );
+		SetModel( DefaultOrCustomModel( "models/zombie/classic.mdl" ) );
 		SetHullType( HULL_HUMAN );
 	}
 
@@ -822,6 +823,31 @@ void CZombie::Ignite( float flFlameLifetime, bool bNPCOnly, float flSize, bool b
 			MoanSound( envZombieMoanIgnited, ARRAYSIZE( envZombieMoanIgnited ) );
 
 			if ( m_pMoanSound )
+			{
+				ENVELOPE_CONTROLLER.SoundChangePitch( m_pMoanSound, 120, 1.0 );
+				ENVELOPE_CONTROLLER.SoundChangeVolume( m_pMoanSound, 1, 1.0 );
+			}
+		}
+	}
+}
+
+//---------------------------------------------------------
+// Zombies should scream continuously while burning, so long
+// as they are alive... but NOT IN GERMANY!
+//---------------------------------------------------------
+void CZombie::IgniteGreen( float flFlameLifetime, bool bNPCOnly, float flSize, bool bCalledByLevelDesigner )
+{
+	if (!IsOnFire() && IsAlive())
+	{
+		BaseClass::IgniteGreen( flFlameLifetime, bNPCOnly, flSize, bCalledByLevelDesigner );
+
+		if (!UTIL_IsLowViolence())
+		{
+			RemoveSpawnFlags( SF_NPC_GAG );
+
+			MoanSound( envZombieMoanIgnited, ARRAYSIZE( envZombieMoanIgnited ) );
+
+			if (m_pMoanSound)
 			{
 				ENVELOPE_CONTROLLER.SoundChangePitch( m_pMoanSound, 120, 1.0 );
 				ENVELOPE_CONTROLLER.SoundChangeVolume( m_pMoanSound, 1, 1.0 );

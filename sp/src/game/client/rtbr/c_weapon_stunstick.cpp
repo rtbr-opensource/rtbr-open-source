@@ -1,4 +1,4 @@
-f//========= Copyright Valve Corporation, All rights reserved. ============//
+//========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose:		Stun Stick- beating stick with a zappy end
 //
@@ -48,6 +48,7 @@ BEGIN_NETWORK_TABLE(CWeaponStunStick, DT_WeaponStunStick)
 #ifdef CLIENT_DLL
 RecvPropInt(RECVINFO(m_bActive)),
 RecvPropFloat(RECVINFO(m_flChargeLevel)),
+RecvPropBool(RECVINFO(m_bSwinging)),
 #else
 SendPropInt(SENDINFO(m_bActive), 1, SPROP_UNSIGNED),
 #endif
@@ -91,8 +92,8 @@ CWeaponStunStick::CWeaponStunStick(void)
 	m_bActive = false;
 
 #ifdef CLIENT_DLL
-	m_bSwungLastFrame = false;
 	m_flFadeTime = FADE_DURATION;	// Start off past the fade point
+	m_hStunstickSwing = NULL;
 #endif
 }
 
@@ -114,6 +115,7 @@ void CWeaponStunStick::Precache()
 	PrecacheScriptSound("Weapon_StunStick.Deactivate");
 	PrecacheParticleSystem("weapon_stunstick_impact");
 	PrecacheParticleSystem("weapon_stunstick_charge");
+	PrecacheParticleSystem( "weapon_stunstick_swing" );
 
 	PrecacheModel(STUNSTICK_BEAM_MATERIAL);
 	PrecacheModel("sprites/light_glow02_add.vmt");
@@ -406,24 +408,24 @@ void C_WeaponStunStick::ClientThink(void)
 			el->color.b = 34;
 		}
 	}
-	if (InSwing() == false)
+	if (!m_bSwinging)
 	{
-		if (m_bSwungLastFrame)
-		{
-			// Start fading
-			m_flFadeTime = gpGlobals->curtime;
-			m_bSwungLastFrame = false;
-		}
-
+		m_hStunstickSwing = NULL;
 		return;
 	}
-
-	// Remember if we were swinging last frame
-	m_bSwungLastFrame = InSwing();
+	else{
+		if ( !m_hStunstickSwing ){
+			m_hStunstickSwing = ParticleProp()->Create( "weapon_stunstick_swing", PATTACH_ABSORIGIN_FOLLOW );
+			ParticleProp()->AddControlPoint( m_hStunstickSwing, 0, ToBasePlayer( pOwner )->GetViewModel(), PATTACH_POINT_FOLLOW, "2" );
+			m_hStunstickSwing->SetControlPoint( 1, Vector( m_flChargeLevel, 0, 0 ) );
+		}
+		return;
+	}
 
 	if (IsEffectActive(EF_NODRAW))
 		return;
 
+	/*
 	if (ShouldDrawUsingViewModel())
 	{
 		// Update our effects
@@ -472,6 +474,7 @@ void C_WeaponStunStick::ClientThink(void)
 			beams->CreateBeamEntPoint(beamInfo);
 		}
 	}
+	*/
 }
 
 //-----------------------------------------------------------------------------

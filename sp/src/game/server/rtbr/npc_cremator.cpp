@@ -26,18 +26,22 @@
 
 int AE_CREM_MELEE1;
 
-ConVar	sk_cremator_health("sk_cremator_health", "200");
-ConVar	sk_cremator_dmg_melee("sk_cremator_dmg_melee", "15");
-ConVar	sk_cremator_dmg_melee_force("sk_cremator_melee_force", "450");
-ConVar	sk_cremator_dmg_immo("sk_cremator_dmg_immo", "2"); //Anything higher than this is OP
-ConVar	sk_cremator_max_range("sk_cremator_max_range", "100");
+#define CREMATOR_PLASMABALL_VELOCITY 512
+
+ConVar	sk_cremator_health("sk_cremator_health", "0");
+ConVar	sk_cremator_dmg_melee("sk_cremator_dmg_melee", "0");
+ConVar	sk_cremator_dmg_melee_force("sk_cremator_melee_force", "0");
+ConVar	sk_cremator_dmg_immo("sk_cremator_dmg_immo", "0"); //Anything higher than 2 is OP
+ConVar	sk_cremator_max_range("sk_cremator_max_range", "0");
 ConVar	sk_cremator_immolator_color_r("sk_cremator_immolator_color_r", "0");
 ConVar	sk_cremator_immolator_color_g("sk_cremator_immolator_color_g", "255");
 ConVar	sk_cremator_immolator_color_b("sk_cremator_immolator_color_b", "0");
+ConVar	sk_cremator_buckshot_damage_scale("sk_cremator_buckshot_damage_scale", "0");
 //ConVar	sk_cremator_immolator_beamsprite("sk_cremator_immolator_beamsprite", "sprites/physbeam.vmt");
 
 IMPLEMENT_SERVERCLASS_ST(CNPC_Cremator, DT_NPC_Cremator)
-
+SendPropVector(SENDINFO(m_vMuzzlePosition)),
+SendPropVector(SENDINFO(m_vAiming)),
 END_SEND_TABLE()
 
 //-----------------------------------------------------------------------------
@@ -52,7 +56,6 @@ void CNPC_Cremator::Precache()
 	PrecacheModel("models/cremator.mdl");
 	PrecacheModel("sprites/lgtning.vmt");
 
-	PrecacheParticleSystem("immo_beam_muzzle02");
 	PrecacheParticleSystem("npc_cremator_tankjet");
 	PrecacheParticleSystem("npc_cremator_implosion");
 
@@ -62,7 +65,9 @@ void CNPC_Cremator::Precache()
 	PrecacheScriptSound("NPC_Cremator.Alert");
 	PrecacheScriptSound("Weapon_Immolator.Flame_Start");
 	PrecacheScriptSound("Weapon_Immolator.Flame_Stop");
-	
+	PrecacheScriptSound( "BaseExplosionEffect.Sound" );
+
+	UTIL_PrecacheOther( "cremator_plasma_ball" );
 }
 
 /*void CNPC_Cremator::InitCustomSchedules(void)
@@ -135,6 +140,25 @@ void CNPC_Cremator::PrescheduleThink(void)
 		CPASAttenuationFilter filter4(this);
 		EmitSound(filter4, entindex(), "NPC_Cremator.Alert");
 	}
+
+	// The flame stream particle updates at 40 ticks/sec, but the cremator only fires 20 flames per second. We need to update the flame stream independently of the cremator firing.
+	if ( m_iUpdateCounter == 0 && gpGlobals->curtime > m_fLastUpdateTime + 0.025)
+	{
+		m_iUpdateCounter = 1;
+		m_fLastUpdateTime = gpGlobals->curtime;
+	}
+	else if (gpGlobals->curtime > m_fLastUpdateTime + 0.025)
+	{
+		Vector laserStart;
+		QAngle laserAngle;
+		GetAttachment( LookupAttachment( "1" ), laserStart, laserAngle );
+		Vector muzzlePosition = laserStart;
+		Vector vecAim = GetShootEnemyDir( muzzlePosition );
+		m_vMuzzlePosition = muzzlePosition;
+		m_vAiming = vecAim;
+		m_iUpdateCounter = 0;
+		m_fLastUpdateTime = gpGlobals->curtime;
+	}
 }
 
 
@@ -195,6 +219,30 @@ int CNPC_Cremator::TranslateSchedule(int scheduleType)
 		return BaseClass::TranslateSchedule(scheduleType);
 	}
 }
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CNPC_Cremator::TraceAttack( const CTakeDamageInfo& inputInfo, const Vector& vecDir, trace_t* ptr, CDmgAccumulator* pAccumulator )
+{
+	CTakeDamageInfo info = inputInfo;
+
+	// Cremators have resistances to buckshot.
+	if (info.GetDamageType() & DMG_BUCKSHOT)
+	{
+		float flScale = 1.0;
+
+		flScale = sk_cremator_buckshot_damage_scale.GetFloat();
+
+		if (flScale != 0)
+		{
+			float flDamage = info.GetDamage() * flScale;
+			info.SetDamage( flDamage );
+		}
+	}
+
+	BaseClass::TraceAttack( info, vecDir, ptr, pAccumulator );
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 //
@@ -358,9 +406,13 @@ void CNPC_Cremator::ImmoBeam(int side)
 	pPlasmaBall->SetAbsAngles(laserAngle);
 	pPlasmaBall->Spawn();
 	//pPlasmaBall->SetOwnerEntity(pOwner);
-	pPlasmaBall->SetBaseVelocity((vecAim * 512) + BaseClass::GetLocalVelocity());
+	pPlasmaBall->SetBaseVelocity((vecAim * CREMATOR_PLASMABALL_VELOCITY) + BaseClass::GetLocalVelocity());
 	pPlasmaBall->SetContextThink(&CCrematorPlasmaBall::SUB_Remove, gpGlobals->curtime + sk_cremator_max_range.GetInt() / 100, "KillBoltThink");
 	//pPlasmaBall->SetCollisionGroup(COLLISION_GROUP_NONE);
+
+	// send muzzle position + aim vector to clientside cremator code
+	m_vMuzzlePosition = muzzlePosition;
+	m_vAiming = vecAim;
 }
 
 //-----------------------------------------------------------------------------
@@ -372,13 +424,15 @@ void CNPC_Cremator::Explode()
 	QAngle tankAngle;
 	CBaseEntity* pAttacker = this;
 
-	GetAttachment( "tank", tankPos, tankAngle );
+	GetAttachment("tank", tankPos, tankAngle);
 
-	CPASFilter filter( tankPos );
-	DispatchParticleEffect( "npc_cremator_implosion", tankPos, tankAngle );
-	te->Explosion( filter, 0, &tankPos, 0, 128, 60, TE_EXPLFLAG_NOFIREBALL | TE_EXPLFLAG_NOPARTICLES | TE_EXPLFLAG_NOFIREBALLSMOKE, 128, 3 );
-	UTIL_ScreenShake( GetAbsOrigin(), 1, 150.0, 1.0, 512, SHAKE_START );
-
+	CPASFilter filter(tankPos);
+	DispatchParticleEffect("npc_cremator_implosion", tankPos, tankAngle);
+	EmitSound( "BaseExplosionEffect.Sound" );
+	// Commented out because this was causing a stack overflow somewhere down the line.
+	//te->Explosion(filter, 0, &tankPos, 0, 128, 60, TE_EXPLFLAG_NOFIREBALL | TE_EXPLFLAG_NOPARTICLES | TE_EXPLFLAG_NOFIREBALLSMOKE, 128, 3);
+	UTIL_ScreenShake(GetAbsOrigin(), 1, 150.0, 1.0, 512, SHAKE_START);
+		
 
 	int iDamageType = DMG_BLAST;
 
@@ -386,14 +440,15 @@ void CNPC_Cremator::Explode()
 		return;
 	}
 
-
-	CTakeDamageInfo info( pAttacker, pAttacker, 3, iDamageType );
+	CTakeDamageInfo info(pAttacker, pAttacker, 3, iDamageType);
 
 	// Not the right direction, but it'll be fixed up by RadiusDamage.
-	info.SetDamagePosition( GetAbsOrigin() );
-	info.SetDamageForce( Vector( 10, 0, 0 ) );
-
-	RadiusDamage( info, pAttacker->GetAbsOrigin(), 128, 0, this );
+	info.SetDamagePosition(GetAbsOrigin());
+	info.SetDamageForce(Vector(10, 0, 0));
+		
+	// This is causing stack overflow as well...
+	//RadiusDamage(info, pAttacker->GetAbsOrigin(), 128, 0, this);
+		
 }
 
 //=========================================================
@@ -414,6 +469,13 @@ void CNPC_Cremator::HandleAnimEvent(animevent_t *pEvent)
 
 				// Generate enough force to make a 75kg guy move away at 700 in/sec
 				Vector vecForce = attackDir * sk_cremator_dmg_melee_force.GetFloat();
+
+				if (pBCC->Classify() == CLASS_PLAYER_ALLY_VITAL)
+				{
+					// stop vital npcs being potentially shoved into places they shouldn't be
+					vecForce *= 0.1f;
+					offset *= 0.1f;
+				}
 
 				pHurt->ApplyAbsVelocityImpulse(vecForce);
 
@@ -579,14 +641,12 @@ void CCrematorPlasmaBall::Spawn(void)
 	SetSolid(SOLID_VPHYSICS);
 	SetGravity(0.05f);
 
-	DispatchParticleEffect("immo_beam_fire02", PATTACH_ABSORIGIN_FOLLOW, this);
 	SetTouch(&CCrematorPlasmaBall::BoltTouch);
 }
 
 
 void CCrematorPlasmaBall::Precache(void)
 {
-	PrecacheParticleSystem("immo_beam_fire02");
 	PrecacheModel("models/immolator_bolt.mdl");
 }
 

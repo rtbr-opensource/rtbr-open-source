@@ -1817,6 +1817,7 @@ void CWeaponRPG::ItemPostFrame( void )
 	BaseClass::ItemPostFrame();
 
 	CBasePlayer *pPlayer = ToBasePlayer( GetOwner() );
+
 	if ( pPlayer == NULL )
 		return;
 

@@ -33,6 +33,9 @@ ConVar sk_env_headcrabcanister_shake_radius( "sk_env_headcrabcanister_shake_radi
 ConVar sk_env_headcrabcanister_shake_radius_vehicle( "sk_env_headcrabcanister_shake_radius_vehicle", "2500" );
 
 #define ENV_HEADCRABCANISTER_TRAIL_TIME	3.0f
+#ifdef MAPBASE
+#define RANDOM_CRAB_TYPE -1
+#endif
 
 //-----------------------------------------------------------------------------
 // Spawn flags
@@ -49,6 +52,7 @@ enum
 	SF_NO_SHAKE = 0x20000,
 	SF_REMOVE_ON_IMPACT = 0x40000,
 	SF_NO_IMPACT_EFFECTS = 0x80000,
+	SF_NO_RANDOM_BABYCRABS = 0x100000,
 };
 
 
@@ -60,6 +64,7 @@ static const char *s_pHeadcrabClass[] =
 	"npc_headcrab",
 	"npc_headcrab_fast",
 	"npc_headcrab_poison",
+	"npc_babycrab",
 };
 
 
@@ -258,7 +263,23 @@ void CEnvHeadcrabCanister::Precache( void )
 	PrecacheScriptSound( "HeadcrabCanister.SkyboxExplosion" );
 	PrecacheScriptSound( "HeadcrabCanister.Open" );
 
+#ifdef MAPBASE
+	if ( m_nHeadcrabType != RANDOM_CRAB_TYPE )
+	{
+		UTIL_PrecacheOther( s_pHeadcrabClass[m_nHeadcrabType] );
+	}
+	else
+	{
+		// precache all the headcrabs if we're spawning random species
+		int iCrabMaxSpecies = HasSpawnFlags( SF_NO_RANDOM_BABYCRABS ) ? 3 : 4;
+		for (int i = 0; i < iCrabMaxSpecies; i++)
+		{
+			UTIL_PrecacheOther( s_pHeadcrabClass[i] );
+		}
+	}
+#else
 	UTIL_PrecacheOther( s_pHeadcrabClass[m_nHeadcrabType] );
+#endif
 }
 
 
@@ -733,7 +754,19 @@ void CEnvHeadcrabCanister::HeadcrabCanisterSpawnHeadcrabThink()
 	int nHeadCrabAttachment = LookupAttachment( "headcrab" );
 	if ( GetAttachment( nHeadCrabAttachment, vecSpawnPosition, vecSpawnAngles ) )
 	{
+#ifdef MAPBASE
+		int iCrabType = m_nHeadcrabType;
+		if (m_nHeadcrabType == RANDOM_CRAB_TYPE)
+		{
+			// assign a random type to the crab
+			int iCrabMaxSpecies = HasSpawnFlags( SF_NO_RANDOM_BABYCRABS ) ? 2 : 3;
+			iCrabType = RandomInt( 0, iCrabMaxSpecies );
+		}
+
+		CBaseEntity *pEnt = CreateEntityByName( s_pHeadcrabClass[iCrabType] );
+#else
 		CBaseEntity *pEnt = CreateEntityByName( s_pHeadcrabClass[m_nHeadcrabType] );
+#endif
 		CBaseHeadcrab *pHeadCrab = assert_cast<CBaseHeadcrab*>(pEnt);
 
 		// Necessary to get it to eject properly (don't allow the NPC

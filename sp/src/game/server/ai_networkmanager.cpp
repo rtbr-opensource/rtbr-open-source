@@ -33,7 +33,8 @@
 #include "tier0/memdbgon.h"
 
 // Increment this to force rebuilding of all networks
-#define	 AINET_VERSION_NUMBER	37
+#define	 AINET_VERSION_NUMBER	38
+// LHG: 37 -> 38, created HULL_SMALL for antlion rollergrub, nodegraphs need to be rebuilt to account for the new channel
 
 //-----------------------------------------------------------------------------
 

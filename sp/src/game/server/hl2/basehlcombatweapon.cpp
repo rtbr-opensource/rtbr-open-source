@@ -68,11 +68,23 @@ void CHLMachineGun::PrimaryAttack( void )
 	float fireRate = GetFireRate();
 
 	// MUST call sound before removing a round from the clip of a CHLMachineGun
-	while ( m_flNextPrimaryAttack <= gpGlobals->curtime )
+	if (gpGlobals->frametime >= fireRate)
 	{
-		WeaponSound(SINGLE, m_flNextPrimaryAttack);
-		m_flNextPrimaryAttack = m_flNextPrimaryAttack + fireRate;
-		iBulletsToFire++;
+		while (m_flNextPrimaryAttack <= gpGlobals->curtime)
+		{
+			WeaponSound( SINGLE, m_flNextPrimaryAttack );
+			m_flNextPrimaryAttack = m_flNextPrimaryAttack + fireRate;
+			iBulletsToFire++;
+		}
+	}
+	else
+	{
+		// There's a bug with the pistol that causes the firing sound to not play when you hold left-click for about 10 bullets.
+		// I'm not sure exactly why it's happening, only that it is, and the framerate compensation code is responsible for it.
+		// This code fixes that issue.
+		WeaponSound( SINGLE, gpGlobals->curtime );
+		m_flNextPrimaryAttack += fireRate;
+		iBulletsToFire = 1;
 	}
 	// Make sure we don't fire more than the amount in the clip, if this weapon uses clips
 	if ( UsesClipsForAmmo1() )
@@ -547,13 +559,12 @@ void CHLSelectFireMachineGun::BurstThink( void )
 // Purpose: Single-sound burstfire.
 //-----------------------------------------------------------------------------
 void CHLSelectFireMachineGun::BurstSingleSoundThink(void){
-	if (!m_nShotsFired){
+	if (m_iBurstSize == GetBurstSize())
+	{
 		CHLMachineGun::PrimaryAttack(BURST); // only play sound on first shot
 	}
-	else {
-		if (m_iBurstSize == 1){
-			m_nShotsFired = -1; // i really hate myself for doing this
-		}
+	else 
+	{
 		CHLMachineGun::PrimaryAttack(EMPTY); // no sound
 	}
 

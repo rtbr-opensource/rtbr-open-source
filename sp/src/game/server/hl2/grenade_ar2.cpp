@@ -11,7 +11,6 @@
 #include "soundent.h"
 #include "decals.h"
 #include "shake.h"
-#include "smoke_trail.h"
 #include "ar2_explosion.h"
 #include "vstdlib/random.h"
 #include "engine/IEngineSound.h"
@@ -20,7 +19,6 @@
 #include "particle_parse.h"
 #include "ai_basenpc.h"
 #include "props.h"
-#include "particles\particles.h"
 
 #ifdef PORTAL
 	#include "portal_util_shared.h"
@@ -46,11 +44,8 @@ ConVar	  sk_smg1_grenade_radius		( "sk_smg1_grenade_radius","0");
 ConVar	smg1_grenade_credit_transfer("smg1_grenade_credit_transfer", "1");
 #endif
 
-ConVar g_CV_SmokeTrail("smoke_trail", "1", 0); // temporary dust explosion switch
-
 BEGIN_DATADESC( CGrenadeAR2 )
 
-	DEFINE_FIELD( m_hSmokeTrail, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_fSpawnTime, FIELD_TIME ),
 	DEFINE_FIELD( m_fDangerRadius, FIELD_FLOAT ),
 	DEFINE_FIELD( m_bIsFireGrenade, FIELD_BOOLEAN ),
@@ -103,30 +98,8 @@ void CGrenadeAR2::Spawn( void )
 
 	m_fSpawnTime = gpGlobals->curtime;
 
-	// -------------
-	// Smoke trail.
-	// -------------
-	if( g_CV_SmokeTrail.GetInt() && !IsXbox() )
-	{
-		m_hSmokeTrail = SmokeTrail::CreateSmokeTrail();
-		
-		if( m_hSmokeTrail )
-		{
-			m_hSmokeTrail->m_SpawnRate = 48;
-			m_hSmokeTrail->m_ParticleLifetime = 1;
-			m_hSmokeTrail->m_StartColor.Init(0.1f, 0.1f, 0.1f);
-			m_hSmokeTrail->m_EndColor.Init(0,0,0);
-			m_hSmokeTrail->m_StartSize = 12;
-			m_hSmokeTrail->m_EndSize = m_hSmokeTrail->m_StartSize * 4;
-			m_hSmokeTrail->m_SpawnRadius = 4;
-			m_hSmokeTrail->m_MinSpeed = 4;
-			m_hSmokeTrail->m_MaxSpeed = 24;
-			m_hSmokeTrail->m_Opacity = 0.2f;
-
-			m_hSmokeTrail->SetLifetime(10.0f);
-			m_hSmokeTrail->FollowEntity(this);
-		}
-	}
+	// grenade tail
+	DispatchParticleEffect("oicw_grenade_trail", PATTACH_ROOTBONE_FOLLOW, this);
 }
 
 //-----------------------------------------------------------------------------
@@ -199,7 +172,7 @@ void CGrenadeAR2::GrenadeAR2Touch( CBaseEntity *pOther )
 		else {
 			CBaseCombatCharacter *pBCC = ToBaseCombatCharacter(pOther);
 			if (pBCC){
-				CTakeDamageInfo info(pOther, GetOwnerEntity(), m_flDamage, DMG_BLAST);
+				CTakeDamageInfo info(this, GetOwnerEntity(), m_flDamage, DMG_BLAST);
 				pBCC->TakeDamage(info);
 			}
 			DetonateFire();
@@ -227,13 +200,7 @@ void CGrenadeAR2::Detonate(void)
 		return;
 	}
 	m_bIsLive		= false;
-	m_takedamage	= DAMAGE_NO;	
-
-	if(m_hSmokeTrail)
-	{
-		UTIL_Remove(m_hSmokeTrail);
-		m_hSmokeTrail = NULL;
-	}
+	m_takedamage	= DAMAGE_NO;
 
 	CPASFilter filter( GetAbsOrigin() );
 
@@ -242,9 +209,11 @@ void CGrenadeAR2::Detonate(void)
 		g_sModelIndexFireball,
 		2.0, 
 		15,
-		TE_EXPLFLAG_NONE,
+		TE_EXPLFLAG_NOPARTICLES | TE_EXPLFLAG_NOFIREBALL | TE_EXPLFLAG_NOFIREBALLSMOKE,
 		m_DmgRadius,
 		m_flDamage );
+
+	DispatchParticleEffect( "explosion_grenade", GetAbsOrigin(), QAngle( 0, 0, 0 ) );
 
 	Vector vecForward = GetAbsVelocity();
 	VectorNormalize(vecForward);
@@ -282,11 +251,6 @@ void CGrenadeAR2::DetonateFire(void)
 	m_bIsLive = false;
 	m_takedamage = DAMAGE_NO;
 
-	if (m_hSmokeTrail)
-	{
-		UTIL_Remove(m_hSmokeTrail);
-		m_hSmokeTrail = NULL;
-	}
 	FireSystem_StartFire(GetAbsOrigin(), 2, FIREATTACK, RandomFloat(25, 30), 0, NULL, FIRE_FLARE);
 	DispatchParticleEffect("weapon_flare_impact", GetAbsOrigin(), QAngle(0, 0, 0));
 	for (int i = 0; i < FIRECOUNT - 1; i++) {
@@ -353,15 +317,16 @@ Vector CGrenadeAR2::GenerateRandomCircle(Vector originalpos) {
 
 void CGrenadeAR2::Precache( void )
 {
+	PrecacheParticleSystem( "explosion_grenade" );
 	PrecacheParticleSystem("weapon_flare_explosion");
 	PrecacheModel("models/Weapons/ar2_grenade.mdl"); 
 	PrecacheParticleSystem("weapon_flare_impact");
+	PrecacheParticleSystem("oicw_grenade_trail");
 }
 
 
 CGrenadeAR2::CGrenadeAR2(void)
 {
-	m_hSmokeTrail  = NULL;
 }
 
 void CGrenadeAR2::IgniteOtherIfAllowed(CBaseEntity * pOther)
@@ -393,4 +358,15 @@ void CGrenadeAR2::IgniteOtherIfAllowed(CBaseEntity * pOther)
 		pNPC->IgniteLifetime(5);
 	}
 
+}
+
+bool CGrenadeAR2::PassesDamageFilter( const CTakeDamageInfo &info )
+{
+	// don't get blown up by ourselves
+	if (info.GetAttacker() && info.GetAttacker()->ClassMatches( GetClassname() ))
+		return false;
+	if (info.GetInflictor() && info.GetInflictor()->ClassMatches( GetClassname() ))
+		return false;
+
+	return BaseClass::PassesDamageFilter( info );
 }

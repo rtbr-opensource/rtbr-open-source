@@ -7,14 +7,11 @@
 
 #include "cbase.h"
 #include "hud.h"
-#include "hud_macros.h"
 #include "c_basehlplayer.h"
 #include "iclientmode.h"
 #include "hudelement.h"
-#include "hud_numericdisplay.h"
 #include <vgui_controls/AnimationController.h>
 #include <vgui/ISurface.h>
-#include <vgui/ILocalize.h>
 #include <vgui_controls/Panel.h>
 
 using namespace vgui;

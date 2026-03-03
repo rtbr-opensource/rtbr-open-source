@@ -15,7 +15,6 @@
 #include "soundent.h"
 
 
-
 abstract_class CBaseHeadcrab : public CAI_BaseNPC
 {
 	DECLARE_CLASS( CBaseHeadcrab, CAI_BaseNPC );
@@ -44,6 +43,8 @@ public:
 	float	GetAutoAimRadius();
 	void	TraceAttack( const CTakeDamageInfo &info, const Vector &vecDir, trace_t *ptr, CDmgAccumulator *pAccumulator );
 	void	Ignite( float flFlameLifetime, bool bNPCOnly = true, float flSize = 0.0f, bool bCalledByLevelDesigner = false );
+	
+	virtual bool		IsPhyscannonPuntable( void ) { return true; }
 
 	float	MaxYawSpeed( void );
 	void	GatherConditions( void );

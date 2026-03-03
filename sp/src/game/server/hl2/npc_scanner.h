@@ -59,6 +59,7 @@ public:
 	void			DeployMine();
 	float			GetMaxSpeed();
 	virtual void	Gib( void );
+	virtual const char* GetScannerExplosionEffect() { return "npc_scanner_death"; }
 
 	void			HandleAnimEvent( animevent_t *pEvent );
 	Activity		NPC_TranslateActivity( Activity eNewActivity );

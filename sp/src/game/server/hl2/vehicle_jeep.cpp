@@ -140,11 +140,23 @@ BEGIN_DATADESC( CPropJeep )
 	DEFINE_INPUTFUNC( FIELD_VOID, "EnablePhysGun",				InputEnablePhysGun ),
 #endif
 
+	DEFINE_FIELD( m_vGaussBeam2, FIELD_VECTOR ),
+	DEFINE_FIELD( m_vGaussBeam2, FIELD_VECTOR ),
+	DEFINE_FIELD( m_vGaussBeam3, FIELD_VECTOR ),
+	DEFINE_FIELD( m_bCannonFiring, FIELD_BOOLEAN ),
+	DEFINE_FIELD( m_flCannonChargeAmount, FIELD_FLOAT ),
+
 	DEFINE_THINKFUNC( JeepSeagullThink ),
 END_DATADESC()
 
 IMPLEMENT_SERVERCLASS_ST( CPropJeep, DT_PropJeep )
 	SendPropBool( SENDINFO( m_bHeadlightIsOn ) ),
+	SendPropBool( SENDINFO( m_bCannonCharging ) ),
+	SendPropVector( SENDINFO( m_vGaussBeam1 ) ),
+	SendPropVector( SENDINFO( m_vGaussBeam2 ) ),
+	SendPropVector( SENDINFO( m_vGaussBeam3 ) ),
+	SendPropVector( SENDINFO( m_bCannonFiring ) ),
+	SendPropFloat( SENDINFO( m_flCannonChargeAmount ) ),
 END_SEND_TABLE();
 
 // This is overriden for the episodic jeep
@@ -156,6 +168,8 @@ LINK_ENTITY_TO_CLASS( prop_vehicle_jeep, CPropJeep );
 // Shortcut to old jeep for those who want to use the scout car in Episodic
 LINK_ENTITY_TO_CLASS( prop_vehicle_jeep_old, CPropJeep );
 #endif
+
+ConVarRef gauss_dmg_cvar( "sk_plr_dmg_gauss", false );
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -177,6 +191,10 @@ CPropJeep::CPropJeep( void )
 
 	m_bUnableToFire = true;
 	m_flAmmoCrateCloseTime = 0;
+
+	m_bCannonFiring = false;
+	m_flCannonChargeAmount = 0.0f;
+	gauss_dmg_cvar.Init( "sk_plr_dmg_gauss", false );
 }
 
 //-----------------------------------------------------------------------------
@@ -204,6 +222,10 @@ void CPropJeep::Precache( void )
 	PrecacheScriptSound( "Jeep.GaussCharge" );
 
 	PrecacheModel( GAUSS_BEAM_SPRITE );
+
+	PrecacheParticleSystem( "weapon_gauss_muzzleflash" );
+	PrecacheParticleSystem( "weapon_gauss_exhaust_fire" );
+	PrecacheParticleSystem( "weapon_gauss_beam_reflect" );
 
 	BaseClass::Precache();
 }
@@ -262,6 +284,8 @@ void CPropJeep::Activate()
 			pServerVehicle->StartEngineRumble();
 		}
 	}
+
+	m_flCannonChargeStartTime = gpGlobals->curtime;
 }
 
 //-----------------------------------------------------------------------------
@@ -686,6 +710,9 @@ void CPropJeep::Think( void )
 {
 	BaseClass::Think();
 
+	if ( gpGlobals->curtime + 0.2 > m_flCannonTime )
+		m_bCannonFiring = false;
+
 	CBasePlayer	*pPlayer = UTIL_GetLocalPlayer();
 
 	if ( m_bEngineLocked )
@@ -925,7 +952,7 @@ void CPropJeep::FireCannon( void )
 	info.m_nFlags = FIRE_BULLETS_ALLOW_WATER_SURFACE_IMPACTS;
 	info.m_pAttacker = m_hPlayer;
 
-	FireBullets( info );
+	//FireBullets( info );
 
 	// Register a muzzleflash for the AI
 	if ( m_hPlayer )
@@ -936,12 +963,251 @@ void CPropJeep::FireCannon( void )
 
 	CPASAttenuationFilter sndFilter( this, "PropJeep.FireCannon" );
 	EmitSound( sndFilter, entindex(), "PropJeep.FireCannon" );
+
+	Vector	vecMuzzleOrigin;
+	QAngle	vecMuzzleAngles;
+
+	Vector vecFanOrigin;
+	QAngle vecFanAngles;
+
+	GetAttachment( LookupAttachment("Muzzle"), vecMuzzleOrigin, vecMuzzleAngles );
+	GetAttachment( LookupAttachment("Exhaust"), vecFanOrigin, vecFanAngles );
+
+	// Fire off the particle effect
+	DispatchParticleEffect( "weapon_gauss_muzzleflash", vecMuzzleOrigin, vecMuzzleAngles, this );
+	DispatchParticleEffect( "weapon_gauss_exhaust_fire", vecFanOrigin, vecFanAngles, this );
+
+	// Try for a reflection
+	Vector vecStartPos = vecMuzzleOrigin;
+	Vector vecEndPos = vecMuzzleOrigin + ( aimDir * MAX_TRACE_LENGTH );
+	trace_t tr;
+	UTIL_TraceLine( vecStartPos, vecEndPos, MASK_SHOT, this, COLLISION_GROUP_INTERACTIVE, &tr );
+
+	ClearMultiDamage();
+
+	// Deal the initial damage
+	CBaseEntity *pHit = tr.m_pEnt;
+	
+	if ( pHit != NULL )
+	{
+		CTakeDamageInfo dmgInfo( this, GetDriver(), gauss_dmg_cvar.GetFloat(), DMG_SHOCK );
+		CalculateBulletDamageForce( &dmgInfo, m_nAmmoType, aimDir, tr.endpos );
+
+		if ( !pHit->IsWorld() )
+			dmgInfo.AdjustPlayerDamageInflictedForSkillLevel();
+		pHit->DispatchTraceAttack( dmgInfo, aimDir, &tr );
+	}
+
+	m_vGaussBeam1 = vecStartPos;
+	m_vGaussBeam2 = tr.endpos;
+	m_vGaussBeam3 = vec3_invalid;
+
+	if ( tr.DidHitWorld() )
+	{
+		float hitAngle = -DotProduct( tr.plane.normal, aimDir );
+
+		if ( hitAngle < 0.5f && !( tr.surface.flags & SURF_SKY ) )
+		{
+			Vector vecReflection;
+
+			vecReflection = 2.0f * tr.plane.normal * hitAngle + aimDir;
+
+			vecStartPos = tr.endpos;
+			vecEndPos = vecStartPos + ( vecReflection * MAX_TRACE_LENGTH );
+
+			// Trace the reflection
+			UTIL_TraceLine( vecStartPos, vecEndPos, MASK_SHOT, this, COLLISION_GROUP_NONE, &tr );
+			Vector vecForward;
+			QAngle reflectionAngles;
+
+			GetVectors( &vecForward, NULL, NULL );
+			VectorAngles( vecForward, reflectionAngles );
+			m_vGaussBeam3 = tr.endpos;
+		}
+		else
+		{
+			m_vGaussBeam3 = vec3_invalid;
+		}
+	}
+	ApplyMultiDamage();
+
+	// Do the impact effects
+	UTIL_ImpactTrace( &tr, GetAmmoDef()->DamageType( m_nAmmoType ), "ImpactGauss" );
+
+	QAngle impactAngles;
+	VectorAngles( tr.plane.normal, impactAngles );
+	if ( !(tr.surface.flags & SURF_SKY) )
+		DispatchParticleEffect( "weapon_gauss_impact", tr.endpos, impactAngles, this );
+
+	m_flCannonChargeAmount = 1.0f;
+
+	// Tell the client to draw the gauss beams
+	m_bCannonFiring = true;
 	
 	// make cylinders of gun spin a bit
 	m_nSpinPos += JEEP_GUN_SPIN_RATE;
 	//SetPoseParameter( JEEP_GUN_SPIN, m_nSpinPos );	//FIXME: Don't bother with this for E3, won't look right
 }
 
+#ifdef RTBR_DLL
+void CPropJeep::Touch( CBaseEntity *pOther )
+{
+	BaseClass::Touch( pOther );
+
+	// If we just hit a sand barnacle, we will no longer collide with it.
+	// Give us a 'little' push to get us away from it.
+	if ( FClassnameIs( pOther, "npc_sandbarnacle" ) )
+	{
+		Vector vecVelocity;
+		AngularImpulse angVelocity;
+		GetVelocity( &vecVelocity, &angVelocity );
+		VectorNegate( vecVelocity );
+
+		ApplyAbsVelocityImpulse( Vector( vecVelocity.x * 5, vecVelocity.y * 5, vecVelocity.z ) );
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: RTBR Version
+//-----------------------------------------------------------------------------
+void CPropJeep::FireChargedCannon( void )
+{
+	bool penetrated = false;
+
+	m_bCannonCharging	= false;
+	m_flCannonTime		= gpGlobals->curtime + 0.5f;
+
+	StopChargeSound();
+
+	CPASAttenuationFilter sndFilter( this, "PropJeep.FireChargedCannon" );
+	EmitSound( sndFilter, entindex(), "PropJeep.FireChargedCannon" );
+
+	if( m_hPlayer )
+	{
+		m_hPlayer->RumbleEffect( RUMBLE_357, 0, RUMBLE_FLAG_RESTART );
+	}
+
+	//Find the direction the gun is pointing in
+	Vector aimDir;
+	GetCannonAim( &aimDir );
+
+	Vector endPos = m_vecGunOrigin + ( aimDir * MAX_TRACE_LENGTH );
+
+	trace_t tr;
+
+	// Fire off the particle effect
+	Vector	vecMuzzleOrigin;
+	QAngle	vecMuzzleAngles;
+
+	Vector vecFanOrigin;
+	QAngle vecFanAngles;
+
+	GetAttachment( LookupAttachment("Muzzle"), vecMuzzleOrigin, vecMuzzleAngles );
+	GetAttachment( LookupAttachment("Exhaust"), vecFanOrigin, vecFanAngles );
+
+	DispatchParticleEffect( "weapon_gauss_muzzleflash", vecMuzzleOrigin, vecMuzzleAngles, this );
+	DispatchParticleEffect( "weapon_gauss_exhaust_fire", vecFanOrigin, vecFanAngles, this );
+
+	UTIL_TraceLine( m_vecGunOrigin, endPos, MASK_SHOT, this, COLLISION_GROUP_NONE, &tr );
+	
+	ClearMultiDamage();
+
+	//Find how much damage to do
+	float flChargeAmount = ( gpGlobals->curtime - m_flCannonChargeStartTime ) / MAX_GAUSS_CHARGE_TIME;
+
+	//Clamp this
+	if ( flChargeAmount > 1.0f )
+	{
+		flChargeAmount = 1.0f;
+	}
+
+	//Determine the damage amount
+	//FIXME: Use ConVars!
+	float flDamage = 15 + ( ( 250 - 15 ) * flChargeAmount );
+
+	CBaseEntity *pHit = tr.m_pEnt;
+	
+	//Look for wall penetration
+	if ( tr.DidHitWorld() && !(tr.surface.flags & SURF_SKY) )
+	{
+		//Try wall penetration
+		UTIL_ImpactTrace( &tr, m_nBulletType, "ImpactJeep" );
+		//UTIL_DecalTrace( &tr, "RedGlowFade" );
+
+		CPVSFilter filter( tr.endpos );
+		te->GaussExplosion( filter, 0.0f, tr.endpos, tr.plane.normal, 0 );
+		
+		Vector	testPos = tr.endpos + ( aimDir * 48.0f );
+
+		UTIL_TraceLine( testPos, tr.endpos, MASK_SHOT, GetDriver(), COLLISION_GROUP_NONE, &tr );
+			
+		if ( tr.allsolid == false )
+		{
+			UTIL_DecalTrace( &tr, "RedGlowFade" );
+
+			penetrated = true;
+		}
+	}
+	else if ( pHit != NULL )
+	{
+		CTakeDamageInfo dmgInfo( this, GetDriver(), flDamage, DMG_SHOCK );
+		CalculateBulletDamageForce( &dmgInfo, GetAmmoDef()->Index("GaussEnergy"), aimDir, tr.endpos, 1.0f + flChargeAmount * 4.0f );
+
+		//Do direct damage to anything in our path
+		pHit->DispatchTraceAttack( dmgInfo, aimDir, &tr );
+	}
+
+	ApplyMultiDamage();
+
+	// Do the impact effects
+	UTIL_ImpactTrace( &tr, GetAmmoDef()->DamageType( m_nAmmoType ), "ImpactGauss" );
+
+	QAngle impactAngles;
+	VectorAngles( tr.plane.normal, impactAngles );
+	if ( !(tr.surface.flags & SURF_SKY) )
+		DispatchParticleEffect( "weapon_gauss_impact", tr.endpos, impactAngles, this );
+
+	//Kick up an effect
+	if ( !(tr.surface.flags & SURF_SKY) )
+	{
+  		UTIL_ImpactTrace( &tr, m_nBulletType, "ImpactJeep" );
+
+		//Do a gauss explosion
+		CPVSFilter filter( tr.endpos );
+		te->GaussExplosion( filter, 0.0f, tr.endpos, tr.plane.normal, 0 );
+	}
+
+	m_vGaussBeam1 = vecMuzzleOrigin;
+	m_vGaussBeam2 = tr.endpos;
+	m_vGaussBeam3 = vec3_invalid; // Charged fire doesn't reflect
+	m_flCannonChargeAmount = flChargeAmount;
+
+	// Tell the client to draw the gauss beams
+	m_bCannonFiring = true;
+
+	// Register a muzzleflash for the AI
+	if ( m_hPlayer )
+	{
+		m_hPlayer->SetMuzzleFlashTime( gpGlobals->curtime + 0.5f );
+	}
+
+	//Rock the car
+	IPhysicsObject *pObj = VPhysicsGetObject();
+
+	if ( pObj != NULL )
+	{
+		Vector	shoveDir = aimDir * -( flDamage * 500.0f );
+
+		pObj->ApplyForceOffset( shoveDir, m_vecGunOrigin );
+	}
+
+	//Do radius damage if we didn't penetrate the wall
+	if ( penetrated == true )
+	{
+		RadiusDamage( CTakeDamageInfo( this, this, flDamage, DMG_SHOCK ), tr.endpos, 200.0f, CLASS_NONE, NULL );
+	}
+}
+#else
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
@@ -969,6 +1235,22 @@ void CPropJeep::FireChargedCannon( void )
 	GetCannonAim( &aimDir );
 
 	Vector endPos = m_vecGunOrigin + ( aimDir * MAX_TRACE_LENGTH );
+
+#if 0
+	// Mostly works save for an issue we can't remember, so we ifdef'ed it out.
+	// Fire off the particle effect
+	Vector	vecMuzzleOrigin;
+	QAngle	vecMuzzleAngles;
+
+	Vector vecFanOrigin;
+	QAngle vecFanAngles;
+
+	GetAttachment( LookupAttachment("Muzzle"), vecMuzzleOrigin, vecMuzzleAngles );
+	GetAttachment( LookupAttachment("Exhaust"), vecFanOrigin, vecFanAngles );
+
+	DispatchParticleEffect( "weapon_gauss_muzzleflash", vecMuzzleOrigin, vecMuzzleAngles, this );
+	DispatchParticleEffect( "weapon_gauss_exhaust_fire", vecFanOrigin, vecFanAngles, this );
+#endif
 	
 	//Shoot a shot straight out
 	trace_t	tr;
@@ -1058,6 +1340,7 @@ void CPropJeep::FireChargedCannon( void )
 		RadiusDamage( CTakeDamageInfo( this, this, flDamage, DMG_SHOCK ), tr.endpos, 200.0f, CLASS_NONE, NULL );
 	}
 }
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -1337,8 +1620,7 @@ void CPropJeep::DriveVehicle( float flFrameTime, CUserCmd *ucmd, int iButtonsDow
 {
 	int iButtons = ucmd->buttons;
 
-	//Adrian: No headlights on Superfly.
-/*	if ( ucmd->impulse == 100 )
+	if ( ucmd->impulse == 100 )
 	{
 		if (HeadlightIsOn())
 		{
@@ -1348,7 +1630,7 @@ void CPropJeep::DriveVehicle( float flFrameTime, CUserCmd *ucmd, int iButtonsDow
 		{
 			HeadlightTurnOn();
 		}
-	}*/
+	}
 		
 	// Only handle the cannon if the vehicle has one
 	if ( m_bHasGun )

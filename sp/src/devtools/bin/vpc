@@ -1,7 +1,7 @@
 #!/bin/bash
 
-OS=`uname`
-SCRIPTPATH=`dirname $0`
+OS=$(uname)
+SCRIPTPATH=$(dirname $0)
 FORCEARG=""
 
 case $OS in
@@ -16,7 +16,6 @@ case $OS in
 	exit -1
 	;;
 esac
-
 
 if [ $OS == "Darwin" ]; then
 	$SCRIPTPATH/$BINNAME $@

@@ -650,12 +650,12 @@ public:
 LINK_ENTITY_TO_CLASS( item_ammo_ar2_altfire, CItem_AR2AltFireRound );
 
 // ========================================================================
-//	>> CItem_AnnabelleRound
+//	>> CItem_BoxAnnabelleRounds
 // ========================================================================
-class CItem_AnnabelleRound : public CItem
+class CItem_BoxAnnabelleRounds : public CItem
 {
 public:
-	DECLARE_CLASS(CItem_AnnabelleRound, CItem);
+	DECLARE_CLASS(CItem_BoxAnnabelleRounds, CItem);
 
 	void Precache(void)
 	{
@@ -683,7 +683,115 @@ public:
 	}
 };
 
-LINK_ENTITY_TO_CLASS(item_ammo_annabelle, CItem_AnnabelleRound);
+LINK_ENTITY_TO_CLASS(item_ammo_annabelle, CItem_BoxAnnabelleRounds);
+
+// ========================================================================
+//	>> CItem_BoxOICWRounds
+// ========================================================================
+class CItem_BoxOICWRounds : public CItem
+{
+public:
+	DECLARE_CLASS( CItem_BoxOICWRounds, CItem );
+
+	void Spawn( void )
+	{
+		Precache();
+		SetModel( "models/items/boxoicwrounds.mdl" );
+		BaseClass::Spawn();
+	}
+	void Precache( void )
+	{
+		PrecacheModel( "models/items/boxoicwrounds.mdl" );
+	}
+	bool MyTouch( CBasePlayer *pPlayer )
+	{
+		if (ITEM_GiveAmmo( pPlayer, SIZE_AMMO_OICW, "OICW" ))
+		{
+			if (g_pGameRules->ItemShouldRespawn( this ) == GR_ITEM_RESPAWN_NO)
+			{
+				UTIL_Remove( this );
+			}
+
+			return true;
+		}
+		return false;
+	}
+};
+
+LINK_ENTITY_TO_CLASS( item_ammo_oicw, CItem_BoxOICWRounds );
+
+// ========================================================================
+//	>> CItem_SmallBoxXBowRounds
+// ========================================================================
+class CItem_SmallBoxXBowRounds : public CItem
+{
+public:
+	DECLARE_CLASS( CItem_SmallBoxXBowRounds, CItem );
+
+	void Precache( void )
+	{
+		PrecacheModel( "models/items/crossbowrounds_small.mdl" );
+	}
+
+	void Spawn( void )
+	{
+		Precache();
+		SetModel( "models/items/crossbowrounds_small.mdl" );
+		BaseClass::Spawn();
+	}
+
+	bool MyTouch( CBasePlayer *pPlayer )
+	{
+		if (ITEM_GiveAmmo( pPlayer, SIZE_AMMO_CROSSBOW_SMALL, "XBowBolt" ))
+		{
+			if (g_pGameRules->ItemShouldRespawn( this ) == GR_ITEM_RESPAWN_NO)
+			{
+				UTIL_Remove( this );
+			}
+			return true;
+		}
+		return false;
+	}
+};
+
+LINK_ENTITY_TO_CLASS( item_ammo_crossbow_small, CItem_SmallBoxXBowRounds );
+
+// ========================================================================
+//	>> CItem_AKMMagazine
+// ========================================================================
+class CItem_AKMMagazine : public CItem
+{
+public:
+	DECLARE_CLASS( CItem_AKMMagazine, CItem );
+
+	void Spawn( void )
+	{
+		Precache();
+		SetModel( "models/items/akm_magazine.mdl" );
+		BaseClass::Spawn();
+	}
+	void Precache( void )
+	{
+		PrecacheModel( "models/items/akm_magazine.mdl" );
+	}
+	bool MyTouch( CBasePlayer *pPlayer )
+	{
+		if (ITEM_GiveAmmo( pPlayer, SIZE_AMMO_AKM, "AKM" ))
+		{
+			if (g_pGameRules->ItemShouldRespawn( this ) == GR_ITEM_RESPAWN_NO)
+			{
+				UTIL_Remove( this );
+			}
+
+			return true;
+		}
+		return false;
+	}
+};
+
+LINK_ENTITY_TO_CLASS( item_ammo_akm, CItem_AKMMagazine );
+
+
 
 // ==================================================================
 // Ammo crate which will supply infinite ammo of the specified type

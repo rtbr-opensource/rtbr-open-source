@@ -63,28 +63,24 @@ void CNPC_XenHair::StartTask( const Task_t *pTask )
 	{
 	case TASK_HAIR_EXTEND:
 	{
-		m_bIsRetracted = false;
 		m_flHairVelocity = 16.0f;
 		m_flIdealHeight = GetAbsOrigin().z + 64.0f;
-		if ( GetEnemy() )
-		{
-			variant_t Val;
-			Val.Set( FIELD_EHANDLE, GetEnemy() );
-			m_OnRise.CBaseEntityOutput::FireOutput( Val, GetEnemy(), this );
-		}
+
+		CBaseEntity *pActivator = GetRetractActivator();
+		variant_t Val;
+		Val.Set( FIELD_EHANDLE, pActivator );
+
 		break;
 	}
 	case TASK_HAIR_RETRACT:
 	{
-		m_bIsRetracted = true;
 		m_flHairVelocity = -16.0f;
 		m_flIdealHeight = GetAbsOrigin().z - 64.0f;
-		if ( GetEnemy() )
-		{
-			variant_t Val;
-			Val.Set( FIELD_EHANDLE, GetEnemy() );
-			m_OnLower.CBaseEntityOutput::FireOutput( Val, GetEnemy(), this );
-		}
+
+		CBaseEntity *pActivator = GetRetractActivator();
+		variant_t Val;
+		Val.Set( FIELD_EHANDLE, pActivator );
+
 		break;
 	}
 	default:
@@ -127,14 +123,7 @@ void CNPC_XenHair::RunTask ( const Task_t *pTask )
 
 void CNPC_XenHair::AlertSound( void )
 {
-	if (m_bIsRetracted)
-	{
-		EmitSound( "npc_xenhair.extend" );
-	}
-	else
-	{
-		EmitSound( "npc_xenhair.retract" );
-	}
+	EmitSound( "npc_xenhair.retract" );
 }
 
 AI_BEGIN_CUSTOM_NPC( npc_xenhair, CNPC_XenHair )

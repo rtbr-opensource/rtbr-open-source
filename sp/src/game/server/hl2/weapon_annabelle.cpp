@@ -140,6 +140,33 @@ acttable_t	CWeaponAnnabelle::m_acttable[] =
 	{ ACT_RELOAD_LOW,				ACT_RELOAD_ANNABELLE_LOW,			false },
 	{ ACT_GESTURE_RELOAD,			ACT_GESTURE_RELOAD_ANNABELLE,		false },
 
+	// Readiness activities (not aiming)
+	{ ACT_IDLE_RELAXED,				ACT_IDLE_AR2_RELAXED,			false },//never aims
+	{ ACT_IDLE_STIMULATED,			ACT_IDLE_AR2_STIMULATED,		false },
+	{ ACT_IDLE_AGITATED,			ACT_IDLE_ANGRY_AR2,			false },//always aims
+
+	{ ACT_WALK_RELAXED,				ACT_WALK_AR2_RELAXED,			false },//never aims
+	{ ACT_WALK_STIMULATED,			ACT_WALK_AR2_STIMULATED,		false },
+	{ ACT_WALK_AGITATED,			ACT_WALK_AIM_AR2,				false },//always aims
+
+	{ ACT_RUN_RELAXED,				ACT_RUN_AR2_RELAXED,			false },//never aims
+	{ ACT_RUN_STIMULATED,			ACT_RUN_AR2_STIMULATED,		false },
+	{ ACT_RUN_AGITATED,				ACT_RUN_AIM_RIFLE,				false },//always aims
+
+// Readiness activities (aiming)
+	{ ACT_IDLE_AIM_RELAXED,			ACT_IDLE_AR2_RELAXED,			false },//never aims	
+	{ ACT_IDLE_AIM_STIMULATED,		ACT_IDLE_AIM_AR2_STIMULATED,	false },
+	{ ACT_IDLE_AIM_AGITATED,		ACT_IDLE_ANGRY_AR2,			false },//always aims
+
+	{ ACT_WALK_AIM_RELAXED,			ACT_WALK_AR2_RELAXED,			false },//never aims
+	{ ACT_WALK_AIM_STIMULATED,		ACT_WALK_AIM_AR2_STIMULATED,	false },
+	{ ACT_WALK_AIM_AGITATED,		ACT_WALK_AIM_AR2,				false },//always aims
+
+	{ ACT_RUN_AIM_RELAXED,			ACT_RUN_AR2_RELAXED,			false },//never aims
+	{ ACT_RUN_AIM_STIMULATED,		ACT_RUN_AIM_AR2_STIMULATED,	false },
+	{ ACT_RUN_AIM_AGITATED,			ACT_RUN_AIM_RIFLE,				false },//always aims
+//End readiness activities
+
 	{ ACT_ARM,						ACT_ARM_RIFLE,				true },
 	{ ACT_DISARM,					ACT_DISARM_RIFLE,				true },
 #else
@@ -162,6 +189,13 @@ acttable_t	CWeaponAnnabelle::m_acttable[] =
 	{ ACT_GESTURE_RELOAD,			ACT_GESTURE_RELOAD_SMG1,			false },
 #endif
 
+#if EXPANDED_HL2_COVER_ACTIVITIES
+	{ ACT_COVER_WALL_R,				ACT_COVER_WALL_R_RIFLE,			false },
+	{ ACT_COVER_WALL_L,				ACT_COVER_WALL_L_RIFLE,			false },
+	{ ACT_COVER_WALL_LOW_R,			ACT_COVER_WALL_LOW_R_RIFLE,		false },
+	{ ACT_COVER_WALL_LOW_L,			ACT_COVER_WALL_LOW_L_RIFLE,		false },
+#endif
+
 #ifdef MAPBASE
 	// HL2:DM activities (for third-person animations in SP)
 	{ ACT_HL2MP_IDLE,					ACT_HL2MP_IDLE_AR2,                    false },
@@ -180,6 +214,17 @@ acttable_t	CWeaponAnnabelle::m_acttable[] =
 
 IMPLEMENT_ACTTABLE(CWeaponAnnabelle);
 
+#ifdef MAPBASE
+acttable_t* GetAnnabelleActtable()
+{
+	return CWeaponAnnabelle::m_acttable;
+}
+
+int GetAnnabelleActtableCount()
+{
+	return ARRAYSIZE(CWeaponAnnabelle::m_acttable);
+}
+#endif // MAPBASE
 
 void CWeaponAnnabelle::Precache( void )
 {
@@ -212,7 +257,7 @@ void CWeaponAnnabelle::Operator_HandleAnimEvent( animevent_t *pEvent, CBaseComba
 			m_iClip1 = m_iClip1 - 1;
 
 			vecShootDir = npc->GetActualShootTrajectory( vecShootOrigin );
-			pOperator->FireBullets( 1, vecShootOrigin, vecShootDir, VECTOR_CONE_PRECALCULATED, MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 0 );
+			pOperator->FireBullets( 1, vecShootOrigin, vecShootDir, VECTOR_CONE_PRECALCULATED, MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 1 );
 		}
 		break;
 
@@ -432,7 +477,7 @@ void CWeaponAnnabelle::PrimaryAttack( void )
 	pPlayer->SetMuzzleFlashTime( gpGlobals->curtime + 1.0 );
 	
 	// Fire the bullets
-	pPlayer->FireBullets( 1, vecSrc, vecAiming, GetBulletSpread(), MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 0, -1, -1, 0, NULL, true, true );
+	pPlayer->FireBullets( 1, vecSrc, vecAiming, GetBulletSpread(), MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 1, -1, -1, 0, NULL, true, true );
 	
 	
 	pPlayer->ViewPunch( QAngle( random->RandomFloat( -2, -1 ), random->RandomFloat( -2, 2 ), 0 ) );
@@ -487,7 +532,7 @@ void CWeaponAnnabelle::SecondaryAttack(void)
 	pPlayer->SetMuzzleFlashTime(gpGlobals->curtime + 1.0);
 
 	// Fire the bullets
-	pPlayer->FireBullets(1, vecSrc, vecAiming, GetBulletSpread(), MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 0, -1, -1, 0, NULL, true, true);
+	pPlayer->FireBullets(1, vecSrc, vecAiming, GetBulletSpread(), MAX_TRACE_LENGTH, m_iPrimaryAmmoType, 1, -1, -1, 0, NULL, true, true);
 
 	pPlayer->ViewPunch(QAngle(random->RandomFloat(-2, -1), random->RandomFloat(-2, 2), 0));
 
@@ -688,6 +733,25 @@ void CWeaponAnnabelle::ItemHolsterFrame( void )
 	// We can't be active
 	if ( GetOwner()->GetActiveWeapon() == this )
 		return;
+
+	// If it's been longer than the auto-reload threshold, reload
+	if ( ( sk_auto_reload_time.GetFloat() >= 0.0f ) && ( ( gpGlobals->curtime - m_flHolsterTime ) > sk_auto_reload_time.GetFloat() ) )
+	{
+		// Reset the timer
+		m_flHolsterTime = gpGlobals->curtime;
+	
+		if ( GetOwner() == NULL )
+			return;
+
+		if ( m_iClip1 == GetMaxClip1() )
+			return;
+
+		// Just load the clip with no animations
+		int ammoFill = MIN( (GetMaxClip1() - m_iClip1), GetOwner()->GetAmmoCount( GetPrimaryAmmoType() ) );
+		
+		GetOwner()->RemoveAmmo( ammoFill, GetPrimaryAmmoType() );
+		m_iClip1 += ammoFill;
+	}
 }
 
 //-----------------------------------------------------------------------------

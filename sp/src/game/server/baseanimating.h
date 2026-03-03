@@ -16,6 +16,9 @@
 #include "datacache/idatacache.h"
 #include "tier0/threadtools.h"
 
+#ifdef MAPBASE_VSCRIPT
+struct scriptanimevent_t;
+#endif
 
 struct animevent_t;
 struct matrix3x4_t;
@@ -146,7 +149,7 @@ public:
 	virtual	void DispatchAnimEvents ( CBaseAnimating *eventHandler ); // Handle events that have happend since last time called up until X seconds into the future
 	virtual void HandleAnimEvent( animevent_t *pEvent );
 #ifdef MAPBASE_VSCRIPT
-	bool ScriptHookHandleAnimEvent( animevent_t *pEvent );
+	bool ScriptHookHandleAnimEvent( scriptanimevent_t &event );
 #endif
 
 	int		LookupPoseParameter( CStudioHdr *pStudioHdr, const char *szName );
@@ -208,7 +211,7 @@ public:
 	int		ScriptSelectHeaviestSequence( int activity ) { return SelectHeaviestSequence( (Activity)activity ); }
 	int		ScriptSelectWeightedSequence( int activity, int curSequence ) { return SelectWeightedSequence( (Activity)activity, curSequence ); }
 
-	HSCRIPT ScriptGetSequenceKeyValues( int iSequence );
+	HSCRIPT_RC ScriptGetSequenceKeyValues( int iSequence );
 
 	// For VScript
 	int		GetSkin() { return m_nSkin; }
@@ -316,8 +319,8 @@ public:
 	void DoMuzzleFlash();
 
 	// Fire
-	virtual void Ignite( float flFlameLifetime, bool bNPCOnly = true, float flSize = 0.0f, bool bCalledByLevelDesigner = false );
-	virtual void IgniteLifetime( float flFlameLifetime );
+	virtual void Ignite( float flFlameLifetime, bool bNPCOnly = true, float flSize = 0.0f, bool bCalledByLevelDesigner = false, float flDamageScale = 1.0f );
+	virtual void IgniteLifetime( float flFlameLifetime, float flDamageScale = 1.0f );
 	virtual void IgniteGreen(float flFlameLifetime, bool bNPCOnly = true, float flSize = 0.0f, bool bCalledByLevelDesigner = false);
 	virtual void IgniteLifetimeGreen(float flFlameLifetime);
 	virtual void IgniteNumHitboxFires( int iNumHitBoxFires );

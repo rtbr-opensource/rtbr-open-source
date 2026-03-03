@@ -100,6 +100,9 @@ public:
 	virtual void Destroy( const char *pClassName, IServerNetworkable *pNetworkable ) = 0;
 	virtual IEntityFactory *FindFactory( const char *pClassName ) = 0;
 	virtual const char *GetCannonicalName( const char *pClassName ) = 0;
+#ifdef MAPBASE
+	virtual void UninstallFactory(const char* pClassName) = 0;
+#endif // MAPBASE
 };
 
 IEntityFactoryDictionary *EntityFactoryDictionary();
@@ -188,8 +191,7 @@ extern CGlobalVars *gpGlobals;
 inline bool FStrEq(const char *sz1, const char *sz2)
 {
 #ifdef MAPBASE
-	// V_stricmp() already checks if the pointers are equal, so having a pointer comparison here is pointless.
-	// I'm not sure if this was already automatically phased out by the compiler, but if it wasn't, then this is a very good change.
+	// V_stricmp() already checks if the pointers are equal, so having a pointer comparison here is unnecessary.
 	return ( V_stricmp(sz1, sz2) == 0 );
 #else
 	return ( sz1 == sz2 || V_stricmp(sz1, sz2) == 0 );
@@ -516,7 +518,7 @@ void			UTIL_HudMessageAll( const hudtextparms_t &textparms, const char *pMessage
 void			UTIL_HudMessage( CBasePlayer *pToPlayer, const hudtextparms_t &textparms, const char *pMessage, const char *pszFont = NULL, bool bAutobreak = false );
 
 // brings up hud keyboard hints display
-void			UTIL_HudHintText( CBaseEntity *pEntity, const char *pMessage );
+void			UTIL_HudHintText( CBaseEntity *pEntity, const char *pMessage, const bool bDim = false );
 
 // Writes message to console with timestamp and FragLog header.
 void			UTIL_LogPrintf( PRINTF_FORMAT_STRING const char *fmt, ... );

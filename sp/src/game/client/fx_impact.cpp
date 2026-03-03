@@ -316,7 +316,7 @@ static ImpactEffect_t s_pImpactEffect[26] =
 	{ NULL,					NULL },							// CHAR_TEX_UNUSED		
 	{ NULL,					NULL },							// CHAR_TEX_PLASTIC		
 	{ "impact_metal",		NULL },							// CHAR_TEX_METAL			
-	{ "impact_dirt",		NULL },							// CHAR_TEX_SAND			
+	{ "impact_sand",		NULL },							// CHAR_TEX_SAND			
 	{ NULL,					NULL },							// CHAR_TEX_FOLIAGE		
 	{ "impact_computer",	NULL },							// CHAR_TEX_COMPUTER		
 	{ NULL,					NULL },							// CHAR_TEX_UNUSED		

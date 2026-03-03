@@ -28,6 +28,10 @@
 extern IScriptManager *scriptmanager;
 extern ScriptClassDesc_t * GetScriptDesc( CBaseEntity * );
 
+#ifdef MAPBASE_VSCRIPT
+ConVar script_connect_debugger_on_mapspawn_client( "script_connect_debugger_on_mapspawn_client", "0" );
+#endif
+
 // #define VMPROFILE 1
 
 #ifdef VMPROFILE
@@ -234,8 +238,7 @@ class CMaterialProxyScriptInstanceHelper : public IScriptInstanceHelper
 
 CMaterialProxyScriptInstanceHelper g_MaterialProxyScriptInstanceHelper;
 
-BEGIN_SCRIPTDESC_ROOT_NAMED( CScriptMaterialProxy, "CScriptMaterialProxy", "Material proxy for VScript" )
-	DEFINE_SCRIPT_INSTANCE_HELPER( &g_MaterialProxyScriptInstanceHelper )
+BEGIN_SCRIPTDESC_ROOT_NAMED_WITH_HELPER( CScriptMaterialProxy, "CScriptMaterialProxy", "Material proxy for VScript", &g_MaterialProxyScriptInstanceHelper )
 	DEFINE_SCRIPTFUNC( GetVarString, "Gets a material var's string value" )
 	DEFINE_SCRIPTFUNC( GetVarInt, "Gets a material var's int value" )
 	DEFINE_SCRIPTFUNC( GetVarFloat, "Gets a material var's float value" )
@@ -271,6 +274,8 @@ void CScriptMaterialProxy::Release( void )
 		g_pScriptVM->RemoveInstance( m_hScriptInstance );
 		m_hScriptInstance = NULL;
 	}
+
+	g_ScriptPersistableList.FindAndRemove( this );
 
 	delete this; 
 }
@@ -431,7 +436,6 @@ const Vector& CScriptMaterialProxy::GetVarVector( int i )
 	if (m_MaterialVars[i]->GetType() != MATERIAL_VAR_TYPE_VECTOR)
 		return vec3_origin;
 
-	// This is really bad. Too bad!
 	return *(reinterpret_cast<const Vector*>(m_MaterialVars[i]->GetVecValue()));
 }
 
@@ -682,6 +686,17 @@ bool VScriptClientInit()
 				//g_pScriptVM->RegisterInstance( &g_ScriptEntityIterator, "Entities" );
 #endif
 
+#ifdef MAPBASE_VSCRIPT
+				if ( script_connect_debugger_on_mapspawn_client.GetInt() == 2 )
+				{
+					g_pScriptVM->ConnectDebugger( vscript_debugger_port, 10.0f );
+				}
+				else if ( script_connect_debugger_on_mapspawn_client.GetInt() != 0 )
+				{
+					g_pScriptVM->ConnectDebugger( vscript_debugger_port );
+				}
+#endif
+
 				if (scriptLanguage == SL_SQUIRREL)
 				{
 					g_pScriptVM->Run( g_Script_vscript_client );
@@ -761,6 +776,8 @@ public:
 	virtual void LevelShutdownPostEntity( void )
 	{
 #ifdef MAPBASE_VSCRIPT
+		g_ScriptEntityIterator.DisableEntityListening();
+
 		g_ScriptNetMsg->LevelShutdownPreVM();
 
 		GetScriptHookManager().OnShutdown();
@@ -768,11 +785,19 @@ public:
 		VScriptClientTerm();
 	}
 
-	virtual void FrameUpdatePostEntityThink() 
+#ifdef MAPBASE_VSCRIPT
+	virtual void Update( float frametime )
+	{
+		if ( g_pScriptVM )
+			g_pScriptVM->Frame( frametime );
+	}
+#else
+	virtual void FrameUpdatePostEntityThink()
 	{ 
 		if ( g_pScriptVM )
 			g_pScriptVM->Frame( gpGlobals->frametime );
 	}
+#endif
 
 	bool m_bAllowEntityCreationInScripts;
 };

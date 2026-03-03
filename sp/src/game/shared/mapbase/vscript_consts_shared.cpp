@@ -14,6 +14,7 @@
 #include "c_ai_basenpc.h"
 #else
 #include "ai_basenpc.h"
+#include "ai_senses.h"
 #include "globalstate.h"
 #endif
 
@@ -291,6 +292,17 @@ void RegisterSharedScriptConstants()
 	ScriptRegisterConstant( g_pScriptVM, EF_PARENT_ANIMATES, "Effect flag used in GetEffects(), etc." );
 
 	// 
+	// Solid Types
+	// 
+	ScriptRegisterConstant( g_pScriptVM, SOLID_NONE, "Solid type used by VPhysics" );
+	ScriptRegisterConstant( g_pScriptVM, SOLID_BSP, "Solid type used by VPhysics" );
+	ScriptRegisterConstant( g_pScriptVM, SOLID_BBOX, "Solid type used by VPhysics" );
+	ScriptRegisterConstant( g_pScriptVM, SOLID_OBB, "Solid type used by VPhysics" );
+	ScriptRegisterConstant( g_pScriptVM, SOLID_OBB_YAW, "Solid type used by VPhysics" );
+	ScriptRegisterConstant( g_pScriptVM, SOLID_CUSTOM, "Solid type used by VPhysics" );
+	ScriptRegisterConstant( g_pScriptVM, SOLID_VPHYSICS, "Solid type used by VPhysics" );
+
+	// 
 	// Solid Flags
 	// 
 	ScriptRegisterConstant( g_pScriptVM, FSOLID_CUSTOMRAYTEST, "Solid flag used in GetSolidFlags(), etc." );
@@ -346,7 +358,8 @@ void RegisterSharedScriptConstants()
 	ScriptRegisterConstant( g_pScriptVM, ROPE_NO_GRAVITY, "Disable gravity on this rope. (for use in rope flags)" );
 	ScriptRegisterConstant( g_pScriptVM, ROPE_NUMFLAGS, "The number of rope flags recognized by the game." );
 
-	ScriptRegisterConstantNamed( g_pScriptVM, Vector( ROPE_GRAVITY ), "ROPE_GRAVITY", "Default rope gravity vector." );
+	static Vector vecRopeGravity( ROPE_GRAVITY );
+	ScriptRegisterConstantNamed( g_pScriptVM, vecRopeGravity, "ROPE_GRAVITY", "Default rope gravity vector." );
 
 	// 
 	// Sounds
@@ -416,8 +429,8 @@ void RegisterSharedScriptConstants()
 
 #ifdef GAME_DLL
 	// 
-	// AI Sounds
-	// (QueryHearSound hook can use these)
+	// AI Senses
+	// (NPC hooks can use these)
 	// 
 	ScriptRegisterConstant( g_pScriptVM, SOUND_NONE, "Sound type used in QueryHearSound hooks, etc." );
 	ScriptRegisterConstant( g_pScriptVM, SOUND_COMBAT, "Sound type used in QueryHearSound hooks, etc." );
@@ -469,6 +482,11 @@ void RegisterSharedScriptConstants()
 	ScriptRegisterConstantNamed( g_pScriptVM, (int)SOUNDENT_VOLUME_SHOTGUN, "SOUNDENT_VOLUME_SHOTGUN", "Sound volume preset for use in InsertAISound, etc." );
 	ScriptRegisterConstantNamed( g_pScriptVM, (int)SOUNDENT_VOLUME_PISTOL, "SOUNDENT_VOLUME_PISTOL", "Sound volume preset for use in InsertAISound, etc." );
 	ScriptRegisterConstantNamed( g_pScriptVM, (int)SOUNDENT_VOLUME_EMPTY, "SOUNDENT_VOLUME_PISTOL", "Sound volume preset for use in InsertAISound, etc." );
+
+	ScriptRegisterConstantNamed( g_pScriptVM, (int)SEEN_ALL, "SEEN_ALL", "All NPC sight arrays. Used in GetFirstSeenEntity, etc." );
+	ScriptRegisterConstantNamed( g_pScriptVM, (int)SEEN_HIGH_PRIORITY, "SEEN_HIGH_PRIORITY", "NPC sight array for players. Used in GetFirstSeenEntity, etc." );
+	ScriptRegisterConstantNamed( g_pScriptVM, (int)SEEN_NPCS, "SEEN_NPCS", "NPC sight array for other NPCs. Used in GetFirstSeenEntity, etc." );
+	ScriptRegisterConstantNamed( g_pScriptVM, (int)SEEN_MISC, "SEEN_MISC", "NPC sight array for objects. Used in GetFirstSeenEntity, etc." );
 
 	// 
 	// Capabilities

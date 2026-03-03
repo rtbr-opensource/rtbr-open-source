@@ -106,7 +106,8 @@ void ImpactCallback( const CEffectData &data )
 	if ( Impact( vecOrigin, vecStart, iMaterial, iDamageType, iHitbox, pEntity, tr ) )
 	{
 		// Check for custom effects based on the Decal index
-		PerformCustomEffects( vecOrigin, tr, vecShotDir, iMaterial, 1.0 );
+		if ( !pEntity->IsNPC() )
+			PerformCustomEffects( vecOrigin, tr, vecShotDir, iMaterial, 1.0 );
 	}
 
 	PlayImpactSound( pEntity, tr, vecOrigin, nSurfaceProp );

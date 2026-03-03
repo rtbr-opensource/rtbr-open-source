@@ -18,6 +18,8 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+const int ELI_FOLLOW_DISTANCE_THRESHOLD = ( 164 * 164 );
+
 //-----------------------------------------------------------------------------
 // NPC's Anim Events Go Here
 //-----------------------------------------------------------------------------
@@ -29,6 +31,8 @@ class CNPC_Eli : public CAI_BaseActor
 {
 public:
 	DECLARE_CLASS( CNPC_Eli, CAI_BaseActor );
+	DECLARE_DATADESC();
+	DEFINE_CUSTOM_AI;
 
 	void	Spawn( void );
 	void	Precache( void );
@@ -36,15 +40,43 @@ public:
 	void	HandleAnimEvent( animevent_t *pEvent );
 	int		GetSoundInterests( void );
 	void	SetupWithoutParent( void );
+
 	void	PrescheduleThink( void );
+	int		SelectSchedule( void );
+
+	virtual void RunTask( const Task_t *pTask );
+
+	// Input handlers
+	void	InputActivateFollowBehvaior( inputdata_t &inputdata );
+	void	InputDeactivateFollowBehvaior( inputdata_t &inputdata );
 
 #ifdef MAPBASE
 	// Use Eli's default subtitle color (255,208,172)
 	bool	GetGameTextSpeechParams( hudtextparms_t &params ) { params.r1 = 255; params.g1 = 208; params.b1 = 172; return BaseClass::GetGameTextSpeechParams( params ); }
 #endif
+
+private:
+	bool	m_bFollowBehvaiorActive;
+	EHANDLE m_hFollowTarget;
+
+private:
+	enum
+	{
+		SCHED_ELI_FOLLOW_TARGET = BaseClass::NEXT_SCHEDULE
+	};
 };
 
 LINK_ENTITY_TO_CLASS( npc_eli, CNPC_Eli );
+
+BEGIN_DATADESC( CNPC_Eli )
+
+	DEFINE_FIELD( m_bFollowBehvaiorActive,	FIELD_BOOLEAN ),
+	DEFINE_FIELD( m_hFollowTarget, FIELD_EHANDLE ),
+
+	DEFINE_INPUTFUNC( FIELD_STRING,		"ActivateFollowBehavior",	InputActivateFollowBehvaior ),
+	DEFINE_INPUTFUNC( FIELD_STRING,		"DeactivateFollowBehavior",	InputDeactivateFollowBehvaior )
+
+END_DATADESC()
 
 //-----------------------------------------------------------------------------
 // Classify - indicates this NPC's place in the 
@@ -148,6 +180,50 @@ void CNPC_Eli::SetupWithoutParent( void )
 	CapabilitiesAdd( bits_CAP_FRIENDLY_DMG_IMMUNE );
 }
 
+// TODO: These should be refactored at some point.
+//-----------------------------------------------------------------------------
+// Purpose:
+//-----------------------------------------------------------------------------
+void CNPC_Eli::InputActivateFollowBehvaior( inputdata_t &inputdata )
+{
+	CBaseEntity *followTarget = gEntList.FindEntityByName( 0, inputdata.value.String(), this, this, this, 0 );
+
+	if ( followTarget )
+	{
+		m_bFollowBehvaiorActive = true;
+		m_hFollowTarget = followTarget;
+
+		// Think immediately after this is fired - so that we begin moving right away
+		SetNextThink( gpGlobals->curtime + 0.1f );
+
+		return;
+	}
+
+	m_bFollowBehvaiorActive = false;
+	DevMsg( "npc_eli->ActivateFollowBehavior requires a valid target to be passed in as a parameter\n" );
+	return;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose:
+//-----------------------------------------------------------------------------
+void CNPC_Eli::InputDeactivateFollowBehvaior( inputdata_t &inputdata )
+{
+	if ( !m_bFollowBehvaiorActive )
+	{
+		return;
+	}
+
+	if ( GetTarget() )
+	{
+		m_hFollowTarget = NULL;
+		SetTarget( NULL );
+		m_bFollowBehvaiorActive = false;
+
+		return;
+	}
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
@@ -163,6 +239,72 @@ void CNPC_Eli::PrescheduleThink( void )
 	}
 }
 
+// TODO: These should be refactored at some point.
+//-----------------------------------------------------------------------------
+// Purpose: Schedule selection, overridden so Eli can have a custom follow schedule.
+//-----------------------------------------------------------------------------
+int CNPC_Eli::SelectSchedule( void )
+{
+	// If we're running a scene, don't let us follow a target.
+	int nBaseSched = BaseClass::SelectSchedule();
+
+	if ( nBaseSched == SCHED_SCENE_GENERIC )
+	{
+		DevWarning( "Eli is running a scene! Don't follow!\n" );
+	}
+
+#ifdef RTBR_DLL
+	if ( m_bFollowBehvaiorActive && m_hFollowTarget && !IsCurSchedule( SCHED_ELI_FOLLOW_TARGET ) && nBaseSched != SCHED_SCENE_GENERIC )
+	{
+		if ( m_hFollowTarget->GetAbsOrigin().DistToSqr( GetAbsOrigin() ) > ELI_FOLLOW_DISTANCE_THRESHOLD )	// Don't follow if we're close enough.
+		{
+			SetTarget( m_hFollowTarget );
+
+			// We need to think more often when we have a follow target... or else we'll lag behind
+			SetNextThink( gpGlobals->curtime + 0.2f );
+
+			return SCHED_ELI_FOLLOW_TARGET;
+		}
+	}
+#endif
+
+	return nBaseSched;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Task handling, overridden so Eli can have a custom follow schedule.
+//-----------------------------------------------------------------------------
+void CNPC_Eli::RunTask( const Task_t *pTask )
+{
+	if ( IsCurSchedule( SCHED_ELI_FOLLOW_TARGET ) && (pTask->iTask == TASK_RUN_PATH || pTask->iTask == TASK_WAIT_FOR_MOVEMENT) )
+	{
+		if ( m_hFollowTarget && m_hFollowTarget->GetAbsOrigin().DistToSqr( GetAbsOrigin() ) < ELI_FOLLOW_DISTANCE_THRESHOLD )
+		{
+			TaskComplete();
+			return;
+		}
+	}
+
+	BaseClass::RunTask( pTask );
+}
+
 //-----------------------------------------------------------------------------
 // AI Schedules Specific to this NPC
 //-----------------------------------------------------------------------------
+
+AI_BEGIN_CUSTOM_NPC( npc_eli, CNPC_Eli )
+
+	DEFINE_SCHEDULE
+			(
+				// This is just SCHED_FOLLOW
+				SCHED_ELI_FOLLOW_TARGET,
+				"	Tasks"
+				"		TASK_GET_PATH_TO_TARGET			0"
+				"		TASK_RUN_PATH					0"
+				"		TASK_WAIT_FOR_MOVEMENT			0"
+				"		TASK_SET_SCHEDULE				SCHEDULE:SCHED_TARGET_FACE "
+				""
+				"	Interrupts"
+			)
+
+AI_END_CUSTOM_NPC()

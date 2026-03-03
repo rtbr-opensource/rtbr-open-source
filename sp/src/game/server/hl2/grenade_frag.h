@@ -9,6 +9,7 @@
 #define GRENADE_FRAG_H
 #pragma once
 
+#define GRENADE_TIMER	3.0f //Seconds
 #define FRAG_GRENADE_BLIP_FREQUENCY			1.0f
 #define FRAG_GRENADE_BLIP_FAST_FREQUENCY	0.3f
 
@@ -18,7 +19,7 @@
 class CBaseGrenade;
 struct edict_t;
 
-CBaseGrenade *Fraggrenade_Create( const Vector &position, const QAngle &angles, const Vector &velocity, const AngularImpulse &angVelocity, CBaseEntity *pOwner, float timer, bool combineSpawned, float startTime = -1 );
+CBaseGrenade *Fraggrenade_Create( const Vector &position, const QAngle &angles, const Vector &velocity, const AngularImpulse &angVelocity, CBaseEntity *pOwner, float timer, bool combineSpawned );
 bool	Fraggrenade_WasPunted( const CBaseEntity *pEntity );
 bool	Fraggrenade_WasCreatedByCombine( const CBaseEntity *pEntity );
 

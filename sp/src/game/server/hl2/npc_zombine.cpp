@@ -253,7 +253,7 @@ void CNPC_Zombine::Precache( void )
 {
 	BaseClass::Precache();
 
-	PrecacheModel( "models/zombie/zombie_soldier.mdl" );
+	PrecacheModel( DefaultOrCustomModel( "models/zombie/zombie_soldier.mdl" ) );
 	PrecacheModel("models/zombie/zombie_police.mdl");
 
 	PrecacheScriptSound( "Zombie.FootstepRight" );
@@ -276,13 +276,13 @@ void CNPC_Zombine::Precache( void )
 void CNPC_Zombine::SetZombieModel( void )
 {
 	if (FClassnameIs(this, "npc_zombine")) {
-		SetModel("models/zombie/zombie_soldier.mdl");
+		SetModel( DefaultOrCustomModel( "models/zombie/zombie_soldier.mdl" ) );
 	}
 	else if (FClassnameIs(this, "npc_metrozop")) {
 		SetModel("models/zombie/zombie_police.mdl");
 	}
 	else {
-		SetModel("models/zombie/zombie_soldier.mdl");
+		SetModel( DefaultOrCustomModel( "models/zombie/zombie_soldier.mdl" ) );
 	}
 	
 	SetHullType( HULL_HUMAN );

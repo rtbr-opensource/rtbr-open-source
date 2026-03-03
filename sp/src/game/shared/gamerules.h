@@ -83,7 +83,6 @@ enum
 	GR_NEUTRAL,
 };
 
-
 // This class has the data tables and gets the CGameRules data to the client.
 class CGameRulesProxy : public CBaseEntity
 {
@@ -178,7 +177,12 @@ public:
 	//Allow thirdperson camera.
 	virtual bool AllowThirdPersonCamera( void ) { return false; }
 
-	virtual void ClientCommandKeyValues( edict_t *pEntity, KeyValues *pKeyValues ) {} 
+#ifdef MAPBASE
+	virtual void ClientCommandKeyValues(edict_t* pEntity, KeyValues* pKeyValues);
+#else
+	virtual void ClientCommandKeyValues(edict_t* pEntity, KeyValues* pKeyValues) {}
+#endif // MAPBASE
+
 
 	// IsConnectedUserInfoChangeAllowed allows the clients to change
 	// cvars with the FCVAR_NOT_CONNECTED rule if it returns true
@@ -283,7 +287,7 @@ public:
 	virtual int	GetAutoAimMode()	{ return AUTOAIM_ON; }
 
 	virtual bool ShouldUseRobustRadiusDamage(CBaseEntity *pEntity) { return false; }
-	virtual void  RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore );
+	virtual void RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore, int iFlags = 0 );
 	// Let the game rules specify if fall death should fade screen to black
 	virtual bool  FlPlayerFallDeathDoesScreenFade( CBasePlayer *pl ) { return TRUE; }
 

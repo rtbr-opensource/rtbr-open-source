@@ -22,6 +22,10 @@
 
 extern ScriptClassDesc_t * GetScriptDesc( CBaseEntity * );
 
+#ifdef MAPBASE_VSCRIPT
+ConVar script_connect_debugger_on_mapspawn( "script_connect_debugger_on_mapspawn", "0" );
+#endif
+
 // #define VMPROFILE 1
 
 #ifdef VMPROFILE
@@ -606,10 +610,10 @@ bool VScriptServerInit()
 
 #ifdef MAPBASE_VSCRIPT
 				// MULTIPLAYER
+				// NOTE: 'PlayerInstanceFromIndex' and 'GetPlayerFromUserID' are used in L4D2 and Source 2,
+				// but the GetPlayerBy* names are more consistent.
 				// ScriptRegisterFunctionNamed( g_pScriptVM, UTIL_PlayerByIndex, "GetPlayerByIndex", "PlayerInstanceFromIndex" );
-				// ScriptRegisterFunctionNamed( g_pScriptVM, UTIL_PlayerByUserId, "GetPlayerByUserId", "GetPlayerFromUserID" );
-				// ScriptRegisterFunctionNamed( g_pScriptVM, UTIL_PlayerByName, "GetPlayerByName", "" );
-				// ScriptRegisterFunctionNamed( g_pScriptVM, ScriptGetPlayerByNetworkID, "GetPlayerByNetworkID", "" );
+				// ScriptRegisterFunctionNamed( g_pScriptVM, UTIL_PlayerByUserId, "GetPlayerByUserID", "GetPlayerFromUserID" );
 
 				ScriptRegisterFunctionNamed( g_pScriptVM, UTIL_ShowMessageAll, "ShowMessage", "Print a hud message on all clients" );
 #else
@@ -661,6 +665,17 @@ bool VScriptServerInit()
 
 				RegisterSharedScriptConstants();
 				RegisterSharedScriptFunctions();
+#endif
+
+#ifdef MAPBASE_VSCRIPT
+				if ( script_connect_debugger_on_mapspawn.GetInt() == 2 )
+				{
+					g_pScriptVM->ConnectDebugger( vscript_debugger_port, 10.0f );
+				}
+				else if ( script_connect_debugger_on_mapspawn.GetInt() != 0 )
+				{
+					g_pScriptVM->ConnectDebugger( vscript_debugger_port );
+				}
 #endif
 
 				if (scriptLanguage == SL_SQUIRREL)
@@ -841,6 +856,8 @@ public:
 	virtual void LevelShutdownPostEntity( void )
 	{
 #ifdef MAPBASE_VSCRIPT
+		g_ScriptEntityIterator.DisableEntityListening();
+
 		g_ScriptNetMsg->LevelShutdownPreVM();
 
 		GetScriptHookManager().OnShutdown();

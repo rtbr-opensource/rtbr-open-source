@@ -134,6 +134,11 @@ enum PlayerPhysFlag_e
 #define SUIT_NEXT_IN_30MIN	1800
 #define SUIT_NEXT_IN_1HOUR	3600
 
+// Suit chatter levels
+#define SUIT_CHATTER_LEVEL_NONE		0 // No suit chatter at all
+#define SUIT_CHATTER_LEVEL_MINIMAL	1 // Important updates (low health, no ammo)
+#define SUIT_CHATTER_LEVEL_ALL		2 // All suit updates
+
 #define CSUITNOREPEAT		32
 
 #define TEAM_NAME_LENGTH	16
@@ -275,9 +280,8 @@ public:
 
 	void Fidget();
 	void ResetFidget(void);
-	bool LookingAtFriendly( void );
+	bool LookingAtFriendly(void);
 	int m_iIdleTicks = 0;
-	Vector m_vLastPosition;
 	QAngle m_vViewAngles;
 
 #ifdef MAPBASE
@@ -425,6 +429,9 @@ public:
 	const Vector&			ScriptGetEyeUp() { static Vector vecUp; EyeVectors( NULL, NULL, &vecUp ); return vecUp; }
 
 	HSCRIPT					ScriptGetViewModel( int viewmodelindex );
+
+	HSCRIPT					ScriptGetUseEntity() { return ToHScript( GetUseEntity() ); }
+	HSCRIPT					ScriptGetHeldObject() { return ToHScript( GetHeldObject() ); }
 #endif
 
 	// View model prediction setup
@@ -606,6 +613,8 @@ public:
 	void					TakeIgniteDamage(void);
 	void					CheckTimeBasedDamage( void );
 
+	void					SetXenHealing( bool bEnable );
+
 	void					ResetAutoaim( void );
 	
 	virtual Vector			GetAutoaimVector( float flScale );
@@ -620,6 +629,11 @@ public:
 	QAngle					AutoaimDeflection( Vector &vecSrc, autoaim_params_t &params );
 	virtual bool			ShouldAutoaim( void );
 	void					SetTargetInfo( Vector &vecSrc, float flDist );
+
+#ifdef MAPBASE
+	// Tries to figure out what the player is trying to aim at
+	CBaseEntity				*GetProbableAimTarget( const Vector &vecSrc, const Vector &vecDir );
+#endif
 
 	void					SetViewEntity( CBaseEntity *pEntity );
 	CBaseEntity				*GetViewEntity( void ) { return m_hViewEntity; }
@@ -1135,6 +1149,7 @@ private:
 	// from edict_t
 	// CBasePlayer doesn't send this but CCSPlayer does.
 	CNetworkVarForDerived( int, m_ArmorValue );
+	float					m_flArmorDamageAccumulator;
 	float					m_AirFinished;
 	float					m_PainFinished;
 
@@ -1187,6 +1202,9 @@ public:
 	int						m_nNumCrateHudHints;
 
 #ifdef MAPBASE
+	bool					GetDrawPlayerLegs( void ) { return m_bDrawPlayerLegs; }
+	void					SetDrawPlayerLegs( bool bToggle ) { m_bDrawPlayerLegs.Set( bToggle ); }
+
 	bool					GetDrawPlayerModelExternally( void ) { return m_bDrawPlayerModelExternally; }
 	void					SetDrawPlayerModelExternally( bool bToggle ) { m_bDrawPlayerModelExternally.Set( bToggle ); }
 #endif
@@ -1230,6 +1248,7 @@ private:
 	char					m_szNetname[MAX_PLAYER_NAME_LENGTH];
 
 #ifdef MAPBASE
+	CNetworkVar( bool, m_bDrawPlayerLegs );
 	CNetworkVar( bool, m_bDrawPlayerModelExternally );
 #endif
 

@@ -39,6 +39,7 @@ void RegisterUserMessages( void )
 	usermessages->Register( "CloseCaption", -1 ); // Show a caption (by string id number)(duration in 10th of a second)
 	usermessages->Register( "HintText", -1 );	// Displays hint text display
 	usermessages->Register( "KeyHintText", -1 );	// Displays hint text display
+	usermessages->Register( "DimKeyHintText", -1 );	// Displays dim (no flashing, sound) hint text display
 	usermessages->Register( "SquadMemberDied", 0 );
 	usermessages->Register( "AmmoDenied", 2 );
 #ifdef MAPBASE

@@ -34,7 +34,8 @@ const char *pWeaponSoundCategories[ NUM_SHOOT_SOUND_TYPES ] =
 	"special2",
 	"special3",
 	"taunt",
-	"deploy"
+	"deploy",
+	"special4"
 };
 #else
 extern const char *pWeaponSoundCategories[ NUM_SHOOT_SOUND_TYPES ];
@@ -408,12 +409,28 @@ FileWeaponInfo_t::FileWeaponInfo_t()
 	m_flSwaySpeedScale = 1.0f;
 	szDroppedModel[0] = 0;
 	m_bUsesHands = false;
+	m_nHandRig = HANDRIG_DEFAULT;
+	m_nWeaponRestriction = WPNRESTRICT_NONE;
 #endif
 }
 
 #ifdef CLIENT_DLL
 extern ConVar hud_fastswitch;
 #endif
+
+#ifdef MAPBASE
+const char* pHandRigs[NUM_HAND_RIG_TYPES] = {
+	"default",
+	"css",
+	"blender",
+};
+
+const char* pWeaponRestrictions[NUM_WEAPON_RESTRICTION_TYPES] = {
+	"none",
+	"player_only",
+	"npc_only",
+};
+#endif // MAPBASE
 
 void FileWeaponInfo_t::Parse( KeyValues *pKeyValuesData, const char *szWeaponName )
 {
@@ -483,6 +500,32 @@ void FileWeaponInfo_t::Parse( KeyValues *pKeyValuesData, const char *szWeaponNam
 	Q_strncpy( szDroppedModel, pKeyValuesData->GetString( "droppedmodel" ), MAX_WEAPON_STRING );
 
 	m_bUsesHands = ( pKeyValuesData->GetInt( "uses_hands", 0 ) != 0 ) ? true : false;
+
+	const char* pszHandRig = pKeyValuesData->GetString("hand_rig", nullptr);
+	if (pszHandRig)
+	{
+		for (int i = 0; i < NUM_HAND_RIG_TYPES; i++)
+		{
+			if (V_stricmp(pszHandRig, pHandRigs[i]) == 0)
+			{
+				m_nHandRig = i;
+				break;
+			}
+		}
+	}
+
+	const char* pszRestrictString = pKeyValuesData->GetString("usage_restriction", nullptr);
+	if (pszRestrictString)
+	{
+		for (int i = 0; i < NUM_WEAPON_RESTRICTION_TYPES; i++)
+		{
+			if (V_stricmp(pszRestrictString, pWeaponRestrictions[i]) == 0)
+			{
+				m_nWeaponRestriction = i;
+				break;
+			}
+		}
+	}
 #endif
 
 #ifndef MAPBASE // Mapbase makes weapons in the same slot & position swap each other out, which is a feature mods can intentionally use.

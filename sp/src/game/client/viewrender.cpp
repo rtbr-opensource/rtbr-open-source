@@ -198,7 +198,6 @@ static bool	g_bRenderingView = false;			// For debugging...
 static int g_CurrentViewID = VIEW_NONE;
 bool g_bRenderingScreenshot = false;
 
-
 #define FREEZECAM_SNAPSHOT_FADE_SPEED 340
 float g_flFreezeFlash = 0.0f;
 
@@ -966,17 +965,6 @@ CViewRender::CViewRender()
 	m_pActiveRenderer = NULL;
 	m_pCurrentlyDrawingEntity = NULL;
 }
-
-
-//-----------------------------------------------------------------------------
-// Purpose: 
-// Output : Returns true on success, false on failure.
-//-----------------------------------------------------------------------------
-inline bool CViewRender::ShouldDrawEntities( void )
-{
-	return ( !m_pDrawEntities || (m_pDrawEntities->GetInt() != 0) );
-}
-
 
 //-----------------------------------------------------------------------------
 // Purpose: Check all conditions which would prevent drawing the view model

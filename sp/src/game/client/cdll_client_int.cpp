@@ -1201,6 +1201,7 @@ void CHLClient::PostInit()
 		}
 	}
 #endif
+
 }
 
 //-----------------------------------------------------------------------------
@@ -1246,7 +1247,7 @@ void CHLClient::Shutdown( void )
 	UncacheAllMaterials();
 
 	IGameSystem::ShutdownAllSystems();
-	
+
 	gHUD.Shutdown();
 	VGui_Shutdown();
 	
@@ -1703,6 +1704,7 @@ void CHLClient::LevelInitPreEntity( char const* pMapName )
 		CReplayRagdollRecorder::Instance().Init();
 	}
 #endif
+
 }
 
 
@@ -1714,6 +1716,7 @@ void CHLClient::LevelInitPostEntity( )
 	IGameSystem::LevelInitPostEntityAllSystems();
 	C_PhysPropClientside::RecreateAll();
 	internalCenterPrint->Clear();
+
 }
 
 //-----------------------------------------------------------------------------

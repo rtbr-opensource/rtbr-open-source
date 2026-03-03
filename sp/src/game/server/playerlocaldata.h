@@ -58,8 +58,6 @@ public:
 	CNetworkVar( float, m_flDuckJumpTime );
 	// Jump time, time to auto unduck (since we auto crouch jump now).
 	CNetworkVar( float, m_flJumpTime );
-	// Whether player has been ignited by the Cremator.
-	CNetworkVar(bool, m_bOnFireImmolator);
 	// Step sound side flip/flip
 	int m_nStepside;;
 	// Velocity at time when we hit ground
@@ -94,7 +92,11 @@ public:
 
 	CNetworkVar( bool, m_bSlowMovement );
 #ifdef RTBR_DLL
+	// Whether player has been ignited by the Cremator.
+	CNetworkVar(bool, m_bOnFireImmolator);
 	CNetworkVar(float, m_flGrenadeStart);
+	CNetworkVar(bool, m_bBeingXenHealed);
+	CNetworkVar( float, m_flCrosshairScale );
 #endif
 };
 

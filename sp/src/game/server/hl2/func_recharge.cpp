@@ -25,6 +25,7 @@
 static ConVar	sk_suitcharger( "sk_suitcharger","0" );
 static ConVar	sk_suitcharger_citadel( "sk_suitcharger_citadel","0" );
 static ConVar	sk_suitcharger_citadel_maxarmor( "sk_suitcharger_citadel_maxarmor","0" );
+static ConVar	sk_suitcharger_gauss_ratio( "sk_suitcharger_gauss_ratio", "0" );
 
 #define SF_CITADEL_RECHARGER	0x2000
 #define SF_KLEINER_RECHARGER	0x4000 // Gives only 25 health
@@ -114,6 +115,7 @@ END_DATADESC()
 
 LINK_ENTITY_TO_CLASS(func_recharge, CRecharge);
 
+int g_interactionSuitChargerEmpty = 1;
 
 bool CRecharge::KeyValue( const char *szKeyName, const char *szValue )
 {
@@ -411,6 +413,7 @@ public:
 	void Recharge(void);
 	bool KeyValue( const char *szKeyName, const char *szValue );
 	void Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
+	void UseAmmo(CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value);
 	virtual int	ObjectCaps( void ) { return (BaseClass::ObjectCaps() | m_iCaps ); }
 
 	void SetInitialCharge( void );
@@ -733,6 +736,10 @@ void CNewRecharge::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE 
 		return;
 	CBasePlayer *pPlayer = static_cast<CBasePlayer *>(pActivator);
 
+	if (useType == USE_AMMO){
+		UseAmmo(pActivator, pCaller, useType, value);
+		return;
+	}
 	// Reset to a state of continuous use.
 	m_iCaps = FCAP_CONTINUOUS_USE;
 
@@ -859,6 +866,171 @@ void CNewRecharge::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE 
 		UpdateJuice( m_iJuice - nIncrementArmor );
 		pPlayer->IncrementArmorValue( nIncrementArmor, nMaxArmor );
 	}
+	// Send the output.
+	float flRemaining = m_iJuice / MaxJuice();
+	m_OutRemainingCharge.Set(flRemaining, pActivator, this);
+
+	// govern the rate of charge
+	m_flNextCharge = gpGlobals->curtime + 0.1;
+}
+
+void CNewRecharge::UseAmmo(CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value)
+{
+	// if it's not a player, ignore
+	if (!pActivator || !pActivator->IsPlayer())
+		return;
+	CBasePlayer *pPlayer = static_cast<CBasePlayer *>(pActivator);
+
+	CBaseCombatWeapon *pWeapon = static_cast<CBaseCombatWeapon *>(pCaller);
+	if (!pWeapon)
+		return;
+	// Reset to a state of continuous use.
+	m_iCaps = FCAP_CONTINUOUS_USE;
+
+	int iGaussRatio = sk_suitcharger_gauss_ratio.GetInt();
+	if (iGaussRatio <= 0)
+		iGaussRatio = 2; // set a default to avoid a divide by zero error and unintended side effects of negative numbers
+
+	if (m_iOn)
+	{
+		float flCharges = CHARGES_PER_SECOND;
+		float flCalls = CALLS_PER_SECOND;
+
+		if (HasSpawnFlags(SF_CITADEL_RECHARGER))
+			flCharges = CITADEL_CHARGES_PER_SECOND;
+
+#ifdef MAPBASE
+		if (m_iIncrementValue != 0)
+			flCharges = CUSTOM_CHARGES_PER_SECOND(m_iIncrementValue);
+#endif
+
+		m_flJuice -= (flCharges / flCalls) * iGaussRatio;
+		StudioFrameAdvance();
+	}
+
+	// Only usable if you have the HEV suit on
+	if (!pPlayer->IsSuitEquipped())
+	{
+		if (m_flSoundTime <= gpGlobals->curtime)
+		{
+			m_flSoundTime = gpGlobals->curtime + 0.62;
+			EmitSound("SuitCharger.Deny");
+		}
+		return;
+	}
+
+	// if there is no juice left, turn it off
+	if (m_iJuice <= 0)
+	{
+		// Start our deny animation over again
+		ResetSequence(LookupSequence("emptyclick"));
+
+		m_nState = 1;
+
+		// Shut off
+		Off();
+
+		// tell the gauss that we're empty, so it can do its outro
+		pWeapon->DispatchInteraction( g_interactionSuitChargerEmpty, NULL, pPlayer );
+
+		// Play a deny sound
+		if (m_flSoundTime <= gpGlobals->curtime)
+		{
+			m_flSoundTime = gpGlobals->curtime + 0.62;
+			EmitSound("SuitCharger.Empty");
+		}
+
+		return;
+	}
+	else if (m_iJuice < iGaussRatio)
+	{
+		SetCycle( 1.0f - ((float) m_iJuice / MaxJuice()) ); // force set the cycle because the suitcharger code really was not built for setting the ratio beyond like 3 or 4
+		// Set the sequence to empty if the juice is low enough, since it looks the same anyway.
+		// This fixes some annoying bug where if sk_suitcharger_gauss_ratio is 2, and you almost empty the suitcharger,
+		// the cycle gets reset to like 75% depleted instead of near-depleted.
+		// TODO: we *NEED* to fix this code
+		if (m_iJuice == 1)
+			ResetSequence( LookupSequence( "emptyclick" ) );
+
+		// tell the gauss that we're empty, so it can do its outro
+		pWeapon->DispatchInteraction( g_interactionSuitChargerEmpty, NULL, pPlayer );
+
+		// Play a deny sound
+		if (m_flSoundTime <= gpGlobals->curtime)
+		{
+			m_flSoundTime = gpGlobals->curtime + 0.62;
+			EmitSound( "SuitCharger.Empty" );
+		}
+
+		return;
+	}
+
+	// Get our maximum armor value
+	int nMaxArmor = 100;
+	if (HasSpawnFlags(SF_CITADEL_RECHARGER))
+	{
+		nMaxArmor = sk_suitcharger_citadel_maxarmor.GetInt();
+	}
+
+	int nIncrementArmor = iGaussRatio;
+
+	// The citadel charger gives more per charge and also gives health
+	if (HasSpawnFlags(SF_CITADEL_RECHARGER))
+	{
+		nIncrementArmor = 10;
+
+#ifdef HL2MP
+		nIncrementArmor = 2;
+#endif
+
+		// Also give health for the citadel version.
+		if (pActivator->GetHealth() < pActivator->GetMaxHealth() && m_flNextCharge < gpGlobals->curtime)
+		{
+			pActivator->TakeHealth(5, DMG_GENERIC);
+		}
+	}
+
+#ifdef MAPBASE
+	if (m_iIncrementValue != 0)
+		nIncrementArmor = m_iIncrementValue * iGaussRatio;
+#endif
+
+	
+	int primAmmo = pPlayer->GetActiveWeapon()->GetPrimaryAmmoType(); // if we don't have a secondary ammo that we need to recharge then we're fine. but this is stupid!
+	// If we're over our limit, debounce our keys
+	if (!g_pGameRules->CanHaveAmmo(pPlayer, primAmmo)){
+		// instead of depressing the button, change attack interval so that the player HAS to depress the button
+		pWeapon->SetNextPrimaryAttack(gpGlobals->curtime + 999); // theoretically the player can bug this out by holding attack3 for 1000 seconds
+		EmitSound("SuitCharger.Deny");
+		return;
+	}
+	// This is bumped out if used within the time period
+	SetNextThink(gpGlobals->curtime + CHARGE_RATE);
+	SetThink(&CNewRecharge::Off);
+
+	// Time to recharge yet?
+	if (m_flNextCharge >= gpGlobals->curtime)
+		return;
+	// Play the on sound or the looping charging sound
+	if (!m_iOn)
+	{
+		m_iOn++;
+		EmitSound("SuitCharger.Start");
+		m_flSoundTime = 0.56 + gpGlobals->curtime;
+
+		m_OnPlayerUse.FireOutput(pActivator, this);
+	}
+
+	if ((m_iOn == 1) && (m_flSoundTime <= gpGlobals->curtime))
+	{
+		m_iOn++;
+		CPASAttenuationFilter filter(this, "SuitCharger.Loop");
+		filter.MakeReliable();
+		EmitSound(filter, entindex(), "SuitCharger.Loop");
+	}
+	// Give ammo if we need it
+	pPlayer->GiveAmmo( nIncrementArmor / iGaussRatio, primAmmo, true ); // add ammo
+	UpdateJuice(m_iJuice - nIncrementArmor);
 	// Send the output.
 	float flRemaining = m_iJuice / MaxJuice();
 	m_OutRemainingCharge.Set(flRemaining, pActivator, this);

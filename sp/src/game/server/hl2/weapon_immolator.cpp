@@ -29,9 +29,9 @@
 
 #define IMMOLATOR_TARGET_INVALID Vector( FLT_MAX, FLT_MAX, FLT_MAX )
 
-ConVar sk_plr_dmg_immolator("sk_plr_dmg_immolator", "3", FCVAR_REPLICATED);
+ConVar sk_plr_dmg_immolator("sk_plr_dmg_immolator", "0", FCVAR_REPLICATED);
 ConVar sk_immolator_rtbr_plasma_stream("sk_immolator_rtbr_plasma_stream", "1", FCVAR_REPLICATED);
-ConVar sk_immolator_rtbr_burn_seconds("sk_immolator_rtbr_burn_seconds", "3");
+ConVar sk_immolator_rtbr_burn_seconds("sk_immolator_rtbr_burn_seconds", "0");
 
 //-----------------------------------------------------------------------------
 // Crossbow Bolt
@@ -105,9 +105,18 @@ public:
 	float m_flTimeLastUpdatedRadius;
 
 	Vector  m_vecImmolatorTarget;
+
+	int m_iUpdateCounter;
+
+	CNetworkVar( bool, m_bImmolating );
+	CNetworkVar( Vector, m_vPlayerMuzzleVector );
+	CNetworkVar( Vector, m_vAiming );
 };
 
 IMPLEMENT_SERVERCLASS_ST(CWeaponImmolator, DT_WeaponImmolator)
+	SendPropBool(SENDINFO(m_bImmolating)),
+	SendPropVector(SENDINFO(m_vPlayerMuzzleVector)),
+	SendPropVector( SENDINFO( m_vAiming ) ),
 END_SEND_TABLE()
 
 LINK_ENTITY_TO_CLASS(info_target_immolator, CPointEntity);
@@ -120,6 +129,10 @@ DEFINE_FIELD(m_beamIndex, FIELD_INTEGER),
 DEFINE_FIELD(m_flBurnRadius, FIELD_FLOAT),
 DEFINE_FIELD(m_flTimeLastUpdatedRadius, FIELD_TIME),
 DEFINE_FIELD(m_vecImmolatorTarget, FIELD_VECTOR),
+DEFINE_FIELD(m_bImmolating, FIELD_BOOLEAN),
+DEFINE_FIELD(m_vPlayerMuzzleVector, FIELD_VECTOR),
+DEFINE_FIELD( m_vAiming, FIELD_VECTOR ),
+DEFINE_FIELD( m_iUpdateCounter, FIELD_INTEGER),
 
 DEFINE_ENTITYFUNC(UpdateThink),
 END_DATADESC()
@@ -157,9 +170,11 @@ void CWeaponImmolator::StartImmolating()
 	WeaponSound(SINGLE);
 	SendWeaponAnim(ACT_VM_PRIMARYATTACK);
 
-	DispatchParticleEffect("immo_beam_muzzle01", PATTACH_POINT_FOLLOW, ToBasePlayer(GetOwner())->GetViewModel(), "muzzle", true);
-
+	DispatchParticleEffect( "weapon_immolator_muzzle", PATTACH_POINT_FOLLOW, ToBasePlayer( GetOwner() )->GetViewModel(), "muzzle", true );
+	
 	CSoundEnt::InsertSound(SOUND_DANGER, m_vecImmolatorTarget, 256, 5.0, GetOwner());
+
+	m_bImmolating = true;
 }
 
 void CWeaponImmolator::StopImmolating()
@@ -176,7 +191,7 @@ void CWeaponImmolator::StopImmolating()
 	WeaponSound(WPN_DOUBLE);
 	SendWeaponAnim(ACT_VM_SECONDARYATTACK);
 
-	
+	m_bImmolating = false;
 }
 
 void CWeaponImmolator::OnPickedUp(CBaseCombatCharacter *pNewOwner)
@@ -194,9 +209,8 @@ void CWeaponImmolator::StopImmolatingSilent()
 	if (pOwner && pOwner->GetViewModel()) {
 		StopParticleEffects(pOwner->GetViewModel());
 	}
-
 	m_flNextPrimaryAttack = gpGlobals->curtime + 0.1; // 1upD - Use 5 second delay only if maximum burn radius was achieved
-
+	m_bImmolating = false;
 }
 
 bool CWeaponImmolator::Holster(CBaseCombatWeapon *pSwitchingTo)
@@ -211,8 +225,9 @@ bool CWeaponImmolator::Holster(CBaseCombatWeapon *pSwitchingTo)
 //-----------------------------------------------------------------------------
 void CWeaponImmolator::Precache(void)
 {
-	PrecacheParticleSystem("immo_beam_muzzle01");
+	PrecacheParticleSystem("weapon_immolator_muzzle");
 	m_beamIndex = PrecacheModel("sprites/bluelaser1.vmt");
+	UTIL_PrecacheOther( "immolator_plasma_ball" );
 
 	BaseClass::Precache();
 }
@@ -299,8 +314,25 @@ void CWeaponImmolator::UpdateThink(void)
 		return;
 	}
 
-	Update();
-	SetNextThink(gpGlobals->curtime + 0.05);
+	// The flame stream particle updates at 40 ticks/sec, but we only fire 20 flames per second serverside. We double the think rate
+	// and fire a flame every even think, whilst updating the particle every odd think.
+	if ( m_iUpdateCounter == 0 )
+	{
+		Update();
+		m_iUpdateCounter = 1;
+	}
+	else
+	{	
+		CBasePlayer *pPlayer = ToBasePlayer( GetOwner() );
+		if ( !pPlayer )
+			return;
+
+		Vector vecAiming = pPlayer->GetAutoaimVector( 0 );
+		m_vPlayerMuzzleVector = playerMuzzleVector;
+		m_vAiming = Vector( vecAiming.x, vecAiming.y, vecAiming.z );
+		m_iUpdateCounter = 0;
+	}
+	SetNextThink(gpGlobals->curtime + 0.025);
 }
 
 //-----------------------------------------------------------------------------
@@ -320,7 +352,6 @@ void CWeaponImmolator::Update()
 
 		Vector vecAiming = pOwner->GetAutoaimVector(0);
 
-
 		// Create a new entity with CCrossbowBolt private data
 		CImmolatorPlasmaBall *pPlasmaBall = (CImmolatorPlasmaBall *)CBaseEntity::Create("immolator_plasma_ball", playerMuzzleVector, QAngle(0,0,0), pOwner);
 		//UTIL_SetOrigin(pPlasmaBall, vecSrc);
@@ -328,18 +359,22 @@ void CWeaponImmolator::Update()
 		//pPlasmaBall->SetAbsAngles(vecAngles);
 		pPlasmaBall->Spawn();
 		pPlasmaBall->SetOwnerEntity(pOwner);
-		pPlasmaBall->SetBaseVelocity((vecAiming * 512) + GetAbsVelocity());
+		pPlasmaBall->SetBaseVelocity((vecAiming * 512));
 		pPlasmaBall->SetContextThink(&CImmolatorPlasmaBall::SUB_Remove, gpGlobals->curtime + 0.75, "KillBoltThink");
 		pPlasmaBall->SetCollisionGroup(COLLISION_GROUP_NONE);
 
 		GetOwner()->RemoveAmmo(1, m_iPrimaryAmmoType);
 
+		// send over coordinates + angles for the clientside immolator flame stream
+		m_vPlayerMuzzleVector = playerMuzzleVector;
+		m_vAiming = Vector(vecAiming.x, vecAiming.y, vecAiming.z);
+		
 		// If the gun runs out of ammo, stop firing
 		if (pOwner && pOwner->GetAmmoCount(m_iPrimaryAmmoType) <= 0)
 		{
 			StopImmolating();
 			// Can't use the immolator again for a while
-			m_flNextPrimaryAttack = gpGlobals->curtime + 5.0;
+			m_flNextPrimaryAttack = gpGlobals->curtime + 1.0;
 		}
 
 		return;
@@ -567,19 +602,16 @@ void CImmolatorPlasmaBall::Spawn(void)
 	SetModel("models/immolator_bolt.mdl");
 	PrecacheParticleSystem("burning_character_immo");
 	SetMoveType(MOVETYPE_FLYGRAVITY, MOVECOLLIDE_FLY_CUSTOM);
-	UTIL_SetSize(this, -Vector(0.3f, 0.3f, 0.3f), Vector(0.3f, 0.3f, 0.3f));
-	SetCollisionBounds(-Vector(7.0f, 7.0f, 7.0f), Vector(7.0f, 7.0f, 7.0f)); // make immo hits easier to land
+	UTIL_SetSize(this, -Vector( 6.0f, 6.0f, 6.0f ), Vector( 6.0f, 6.0f, 6.0f ));
 	SetSolid(SOLID_VPHYSICS);
 	SetGravity(0.05f);
 
-	DispatchParticleEffect("immo_beam_fire01", PATTACH_ABSORIGIN_FOLLOW, this);
 	SetTouch(&CImmolatorPlasmaBall::BoltTouch);
 }
 
 
 void CImmolatorPlasmaBall::Precache(void)
 {
-	PrecacheParticleSystem("immo_beam_fire01");
 	PrecacheModel("models/immolator_bolt.mdl");
 }
 
@@ -646,7 +678,15 @@ void CImmolatorPlasmaBall::IgniteOtherIfAllowed(CBaseEntity * pOther)
 			return;
 
 		// Burn this NPC
-		pNPC->IgniteLifetimeGreen(sk_immolator_rtbr_burn_seconds.GetInt());
+		if (FStrEq( pNPC->GetClassname(), "npc_zombie" ))
+		{
+			// Zombies should stay ignited until they die
+			pNPC->IgniteLifetimeGreen( 30 );
+		}
+		else
+		{
+			pNPC->IgniteLifetimeGreen( sk_immolator_rtbr_burn_seconds.GetInt() );
+		}
 	}
 
 	// If this is a breakable prop, ignite it!

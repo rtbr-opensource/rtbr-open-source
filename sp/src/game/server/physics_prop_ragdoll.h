@@ -42,6 +42,10 @@ public:
 
 	int ObjectCaps();
 
+#ifdef MAPBASE
+	void Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
+#endif
+
 	DECLARE_SERVERCLASS();
 	// Don't treat as a live target
 	virtual bool IsAlive( void ) { return false; }
@@ -71,7 +75,11 @@ public:
 
 	// locals
 	void InitRagdollAnimation( void );
+#ifdef MAPBASE
+	void InitRagdoll( const Vector& forceVector, int forceBone, const Vector& forcePos, matrix3x4_t* pPrevBones, matrix3x4_t* pBoneToWorld, float dt, int collisionGroup, bool activateRagdoll, bool bWakeRagdoll = true, bool bDeathPose = false );
+#else
 	void InitRagdoll( const Vector &forceVector, int forceBone, const Vector &forcePos, matrix3x4_t *pPrevBones, matrix3x4_t *pBoneToWorld, float dt, int collisionGroup, bool activateRagdoll, bool bWakeRagdoll = true );
+#endif
 	
 	void RecheckCollisionFilter( void );
 	void SetDebrisThink();
@@ -113,6 +121,8 @@ public:
 #ifdef MAPBASE
 	void			InputWake( inputdata_t &inputdata );
 	void			InputSleep( inputdata_t &inputdata );
+	void			InputAddToLRU( inputdata_t &inputdata );
+	void			InputRemoveFromLRU( inputdata_t &inputdata );
 #endif
 	void			InputTurnOn( inputdata_t &inputdata );
 	void			InputTurnOff( inputdata_t &inputdata );
@@ -157,6 +167,10 @@ private:
 
 	string_t			m_strSourceClassName;
 	bool				m_bHasBeenPhysgunned;
+
+#ifdef MAPBASE
+	COutputEvent		m_OnPlayerUse;
+#endif
 
 	// If not 1, then allow underlying sequence to blend in with simulated bone positions
 	CNetworkVar( float, m_flBlendWeight );

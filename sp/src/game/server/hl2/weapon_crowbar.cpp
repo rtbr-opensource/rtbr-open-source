@@ -237,10 +237,6 @@ void CWeaponCrowbar::HandleAnimEventMeleeHit( animevent_t *pEvent, CBaseCombatCh
 	}
 }
 
-
-
-
-
 //-----------------------------------------------------------------------------
 // Animation event
 //-----------------------------------------------------------------------------
@@ -261,7 +257,8 @@ void CWeaponCrowbar::Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatC
 void CWeaponCrowbar::KeyAttack() {
 	CBasePlayer* pPlayer = UTIL_GetLocalPlayer();
 
-	pPlayer->InputHolsterWeapon(inputdata_t());
+	inputdata_t data;
+	pPlayer->InputHolsterWeapon(data);
 }
 
 void FireSingleCrowbar() {
@@ -271,7 +268,6 @@ void FireSingleCrowbar() {
 		CWeaponCrowbar* pCrowbar = dynamic_cast<CWeaponCrowbar*>(pWeapon);
 		if (pCrowbar != NULL) {
 			pCrowbar->KeyAttack();
-
 		}
 	}
 }

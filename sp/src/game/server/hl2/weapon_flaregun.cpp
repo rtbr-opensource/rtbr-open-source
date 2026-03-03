@@ -18,7 +18,7 @@
 #include "rumble_shared.h"
 #include "grenade_ar2.h"
 #include "particle_parse.h"
-#include "particles\particles.h"
+#include "particles/particles.h"
 
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -575,10 +575,13 @@ void CFlare::Start( float lifeTime )
 //-----------------------------------------------------------------------------
 void CFlare::Die( float fadeTime )
 {
-	m_flTimeBurnOut = gpGlobals->curtime + fadeTime;
+	if (m_bInActiveList)
+	{
+		m_flTimeBurnOut = gpGlobals->curtime + fadeTime;
 
-	SetThink( &CFlare::FlareThink );
-	SetNextThink( gpGlobals->curtime + 0.1f );
+		SetThink(&CFlare::FlareThink);
+		SetNextThink(gpGlobals->curtime + 0.1f);
+	}
 }
 
 //-----------------------------------------------------------------------------

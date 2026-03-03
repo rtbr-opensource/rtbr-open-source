@@ -13,6 +13,7 @@
 #include "IEffects.h"
 #include "explode.h"
 #include "ai_route.h"
+#include "particle_parse.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -566,8 +567,15 @@ void CNPC_BaseScanner::Gib( void )
 	CBroadcastRecipientFilter filter;
 	te->DynamicLight( filter, 0.0, &WorldSpaceCenter(), 255, 180, 100, 0, 100, 0.1, 0 );
 
-	// Cover the gib spawn
-	ExplosionCreate( WorldSpaceCenter(), GetAbsAngles(), this, 64, 64, false );
+	if (FStrEq(GetScannerExplosionEffect(), ""))
+	{
+		// Cover the gib spawn
+		ExplosionCreate( WorldSpaceCenter(), GetAbsAngles(), this, 64, 64, false );
+	}
+	else
+	{
+		DispatchParticleEffect( GetScannerExplosionEffect(), WorldSpaceCenter(), GetAbsAngles() );
+	}
 
 	// Turn off any smoke trail
 	if ( m_pSmokeTrail )

@@ -59,6 +59,8 @@ enum propdata_interactions_t
 	PROPINTER_PHYSGUN_LAUNCH_SPIN_Z,	// "onlaunch"		"spin_zaxis"
 	PROPINTER_PHYSGUN_BREAK_EXPLODE,	// "onbreak"		"explode_fire"
 	PROPINTER_PHYSGUN_DAMAGE_NONE,		// "damage"			"none"
+	PROPINTER_PHYSGUN_BREAK_ANTLION,	// "onbreak"		"explode_antlion"
+	PROPINTER_PHYSGUN_BREAK_KINGSPIT,	// "onbreak"		"explode_kingspit"
 
 	PROPINTER_FIRE_FLAMMABLE,			// "flammable"			"yes"
 	PROPINTER_FIRE_EXPLOSIVE_RESIST,	// "explosive_resist"	"yes"
