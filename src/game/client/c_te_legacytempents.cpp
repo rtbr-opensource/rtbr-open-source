@@ -153,7 +153,7 @@ void C_LocalTempEntity::SetAcceleration( const Vector &vecVelocity )
 // Purpose: 
 // Output : int
 //-----------------------------------------------------------------------------
-int C_LocalTempEntity::DrawStudioModel( int flags )
+int C_LocalTempEntity::DrawStudioModel( int modelFlags )
 {
 	VPROF_BUDGET( "C_LocalTempEntity::DrawStudioModel", VPROF_BUDGETGROUP_MODEL_RENDERING );
 	int drawn = 0;
@@ -168,12 +168,12 @@ int C_LocalTempEntity::DrawStudioModel( int flags )
 
 	if ( m_pfnDrawHelper )
 	{
-		drawn = ( *m_pfnDrawHelper )( this, flags );
+		drawn = ( *m_pfnDrawHelper )( this, modelFlags);
 	}
 	else
 	{
 		drawn = modelrender->DrawModel( 
-			flags, 
+			modelFlags,
 			this,
 			MODEL_INSTANCE_INVALID,
 			index, 
@@ -191,7 +191,7 @@ int C_LocalTempEntity::DrawStudioModel( int flags )
 // Purpose: 
 // Input  : flags - 
 //-----------------------------------------------------------------------------
-int	C_LocalTempEntity::DrawModel( int flags )
+int	C_LocalTempEntity::DrawModel( int modelFlags )
 {
 	int drawn = 0;
 
@@ -238,7 +238,7 @@ int	C_LocalTempEntity::DrawModel( int flags )
 			);
 		break;
 	case mod_studio:
-		drawn = DrawStudioModel( flags );
+		drawn = DrawStudioModel( modelFlags );
 		break;
 	default:
 		break;
@@ -1097,32 +1097,61 @@ void CTempEnts::BreakModel( const Vector &pos, const QAngle &angles, const Vecto
 	}
 }
 
-void CTempEnts::PhysicsProp( int modelindex, int skin, const Vector& pos, const QAngle &angles, const Vector& vel, int flags, int effects )
+void CTempEnts::PhysicsProp( int modelindex, int skin, const Vector& pos, const QAngle& angles, const Vector& vel, int physFlags, int physEffects )
 {
-	C_PhysPropClientside *pEntity = C_PhysPropClientside::CreateNew();
-	
-	if ( !pEntity )
-		return;
-
-	const model_t *model = modelinfo->GetModel( modelindex );
-
+	const model_t* model = modelinfo->GetModel( modelindex );
 	if ( !model )
 	{
 		DevMsg("CTempEnts::PhysicsProp: model index %i not found\n", modelindex );
 		return;
 	}
 
+	PhysicsProp( model, skin, pos, angles, vel, physFlags, physEffects, modelindex );
+}
+
+C_PhysPropClientside *CTempEnts::PhysicsProp( const model_t *model, int skin, const Vector& pos, const QAngle &angles, const Vector& vel, int physFlags, int physEffects, int modelindex )
+{
+	C_PhysPropClientside *pEntity = C_PhysPropClientside::CreateNew();
+	
+	if ( !pEntity )
+		return NULL;
+
+	if ( !model )
+		return NULL;
+
 	pEntity->SetModelName( modelinfo->GetModelName(model) );
 	pEntity->m_nSkin = skin;
 	pEntity->SetAbsOrigin( pos );
 	pEntity->SetAbsAngles( angles );
 	pEntity->SetPhysicsMode( PHYSICS_MULTIPLAYER_CLIENTSIDE );
-	pEntity->SetEffects( effects );
+	pEntity->SetEffects( physEffects );
+
+	if ( physFlags & 1 )
+	{
+		if ( modelindex >= 0 )
+			pEntity->SetModelIndex( modelindex );
+
+		// We are not calling initialize on this entity here, so we need to manually set some of the required values otherwise set in initialize.
+		pEntity->SetCollisionGroup( COLLISION_GROUP_PUSHAWAY );
+		pEntity->SetAbsVelocity( vel );
+		const model_t *mod = pEntity->GetModel();
+		if ( mod )
+		{
+			Vector mins, maxs;
+			modelinfo->GetModelBounds( mod, mins, maxs );
+			pEntity->SetCollisionBounds( mins, maxs );
+		}
+
+		pEntity->Spawn();
+		pEntity->SetHealth( 0 );
+		pEntity->Break();
+		return pEntity;
+	}
 
 	if ( !pEntity->Initialize() )
 	{
 		pEntity->Release();
-		return;
+		return NULL;
 	}
 
 	IPhysicsObject *pPhysicsObject = pEntity->VPhysicsGetObject();
@@ -1135,14 +1164,16 @@ void CTempEnts::PhysicsProp( int modelindex, int skin, const Vector& pos, const 
 	{
 		// failed to create a physics object
 		pEntity->Release();
-		return;
+		return NULL;
 	}
 
-	if ( flags & 1 )
+	if ( physFlags & 1 )
 	{
 		pEntity->SetHealth( 0 );
 		pEntity->Break();
 	}
+
+	return pEntity;
 }
 
 //-----------------------------------------------------------------------------
@@ -1655,10 +1686,46 @@ void CTempEnts::EjectBrass( const Vector &pos1, const QAngle &angles, const QAng
 		return;
 
 	//Keep track of shell type
-	if ( type == 2 )
+	if (type == 1)
+	{
+		pTemp->hitSound = BOUNCE_RIFLESHELL;
+	}
+
+	else if (type == 2)
 	{
 		pTemp->hitSound = BOUNCE_SHOTSHELL;
 	}
+
+	else if (type == 3)
+	{
+		pTemp->hitSound = BOUNCE_REVOLVERSHELL;
+	}
+
+	else if (type == 4)
+	{
+		pTemp->hitSound = BOUNCE_FLARESHELL;
+	}
+
+	else if (type == 10)
+	{
+		pTemp->hitSound = BOUNCE_OICWMAG;
+	}
+
+	else if (type == 11)
+	{
+		pTemp->hitSound = BOUNCE_SMG1MAG;
+	}
+
+	else if (type == 12)
+	{
+		pTemp->hitSound = BOUNCE_PISTOLMAG;
+	}
+
+	else if (type == 13)
+	{
+		pTemp->hitSound = BOUNCE_GRENADEMAG;
+	}
+
 	else
 	{
 		pTemp->hitSound = BOUNCE_SHELL;
@@ -2405,6 +2472,12 @@ void CTempEnts::LevelInit()
 	m_pShells[0] = (model_t *) engine->LoadModel( "models/weapons/shell.mdl" );
 	m_pShells[1] = (model_t *) engine->LoadModel( "models/weapons/rifleshell.mdl" );
 	m_pShells[2] = (model_t *) engine->LoadModel( "models/weapons/shotgun_shell.mdl" );
+	m_pShells[3] = (model_t *)engine->LoadModel( "models/weapons/revolver_shell.mdl" );
+	m_pShells[4] = (model_t *)engine->LoadModel( "models/weapons/flare_shell.mdl" );
+	m_pShells[10] = (model_t *) engine->LoadModel( "models/weapons/oicw_magazine.mdl" );
+	m_pShells[11] = (model_t *) engine->LoadModel( "models/weapons/smg1_magazine.mdl" );
+	m_pShells[12] = (model_t *) engine->LoadModel( "models/weapons/pistol_magazine.mdl" );
+	m_pShells[13] = (model_t *)engine->LoadModel( "models/weapons/grenade_magazine.mdl" );
 #endif
 
 #if defined( HL1_CLIENT_DLL )
@@ -2941,7 +3014,6 @@ void CTempEnts::MuzzleFlash_Shotgun_NPC( ClientEntityHandle_t hEntity, int attac
 	QAngle	angles;
 
 	Vector	forward;
-	int		i;
 
 	// Setup the origin.
 	Vector	origin;
@@ -3008,7 +3080,7 @@ void CTempEnts::MuzzleFlash_Shotgun_NPC( ClientEntityHandle_t hEntity, int attac
 
 	int	numEmbers = random->RandomInt( 4, 8 );
 
-	for ( i = 0; i < numEmbers; i++ )
+	for ( int i = 0; i < numEmbers; i++ )
 	{
 		pTrailParticle = (TrailParticle *) pTrails->AddParticle( sizeof( TrailParticle ), g_Mat_SMG_Muzzleflash[0], origin );
 			

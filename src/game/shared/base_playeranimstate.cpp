@@ -18,12 +18,12 @@
 	#include "c_baseplayer.h"
 	#include "engine/ivdebugoverlay.h"
 
-	ConVar cl_showanimstate( "cl_showanimstate", "-1", FCVAR_CHEAT | FCVAR_DEVELOPMENTONLY, "Show the (client) animation state for the specified entity (-1 for none)." );
-	ConVar showanimstate_log( "cl_showanimstate_log", "0", FCVAR_CHEAT | FCVAR_DEVELOPMENTONLY, "1 to output cl_showanimstate to Msg(). 2 to store in AnimStateClient.log. 3 for both." );
+	ConVar cl_showanimstate( "cl_showanimstate", "-1", FCVAR_CHEAT /*| FCVAR_DEVELOPMENTONLY*/, "Show the (client) animation state for the specified entity (-1 for none)." );
+	ConVar showanimstate_log( "cl_showanimstate_log", "0", FCVAR_CHEAT /*| FCVAR_DEVELOPMENTONLY*/, "1 to output cl_showanimstate to Msg(). 2 to store in AnimStateClient.log. 3 for both." );
 #else
 	#include "player.h"
-	ConVar sv_showanimstate( "sv_showanimstate", "-1", FCVAR_CHEAT | FCVAR_DEVELOPMENTONLY, "Show the (server) animation state for the specified entity (-1 for none)." );
-	ConVar showanimstate_log( "sv_showanimstate_log", "0", FCVAR_CHEAT | FCVAR_DEVELOPMENTONLY, "1 to output sv_showanimstate to Msg(). 2 to store in AnimStateServer.log. 3 for both." );
+	ConVar sv_showanimstate( "sv_showanimstate", "-1", FCVAR_CHEAT /*| FCVAR_DEVELOPMENTONLY*/, "Show the (server) animation state for the specified entity (-1 for none)." );
+	ConVar showanimstate_log( "sv_showanimstate_log", "0", FCVAR_CHEAT /*| FCVAR_DEVELOPMENTONLY*/, "1 to output sv_showanimstate to Msg(). 2 to store in AnimStateServer.log. 3 for both." );
 #endif
 
 
@@ -378,11 +378,9 @@ void CBasePlayerAnimState::UpdateAimSequenceLayers(
 
 void CBasePlayerAnimState::OptimizeLayerWeights( int iFirstLayer, int nLayers )
 {
-	int i;
-
 	// Find the total weight of the blended layers, not including the idle layer (iFirstLayer)
 	float totalWeight = 0.0f;
-	for ( i=1; i < nLayers; i++ )
+	for ( int i=1; i < nLayers; i++ )
 	{
 		CAnimationLayer *pLayer = m_pOuter->GetAnimOverlay( iFirstLayer+i );
 		if ( pLayer->IsActive() && pLayer->m_flWeight > 0.0f )
@@ -392,11 +390,11 @@ void CBasePlayerAnimState::OptimizeLayerWeights( int iFirstLayer, int nLayers )
 	}
 
 	// Set the idle layer's weight to be 1 minus the sum of other layer weights
-	CAnimationLayer *pLayer = m_pOuter->GetAnimOverlay( iFirstLayer );
-	if ( pLayer->IsActive() && pLayer->m_flWeight > 0.0f )
+	CAnimationLayer *pLayerFirst = m_pOuter->GetAnimOverlay( iFirstLayer );
+	if ( pLayerFirst->IsActive() && pLayerFirst->m_flWeight > 0.0f )
 	{
-		pLayer->m_flWeight = 1.0f - totalWeight;
-		pLayer->m_flWeight = MAX( (float)pLayer->m_flWeight, 0.0f);
+		pLayerFirst->m_flWeight = 1.0f - totalWeight;
+		pLayerFirst->m_flWeight = MAX( (float)pLayerFirst->m_flWeight, 0.0f);
 	}
 
 	// This part is just an optimization. Since we have the walk/run animations weighted on top of 
@@ -405,7 +403,7 @@ void CBasePlayerAnimState::OptimizeLayerWeights( int iFirstLayer, int nLayers )
 	//
 	// So it saves us blending a couple animation layers whenever a guy is walking or running full speed.
 	int iLastOne = -1;
-	for ( i=0; i < nLayers; i++ )
+	for ( int i=0; i < nLayers; i++ )
 	{
 		CAnimationLayer *pLayer = m_pOuter->GetAnimOverlay( iFirstLayer+i );
 		if ( pLayer->IsActive() && pLayer->m_flWeight > 0.99 )
@@ -640,9 +638,11 @@ void CBasePlayerAnimState::ComputePoseParam_MoveYaw( CStudioHdr *pStudioHdr )
 	
 	if ( m_AnimConfig.m_LegAnimType == LEGANIM_9WAY )
 	{
+#ifndef MAPBASE // This causes problems with entities that rely on the player having a pitch (TODO: gate behind virtual function?)
 #ifndef CLIENT_DLL
 		//Adrian: Make the model's angle match the legs so the hitboxes match on both sides.
 		GetOuter()->SetLocalAngles( QAngle( 0, m_flCurrentFeetYaw, 0 ) );
+#endif
 #endif
 
 		int iMoveX = GetOuter()->LookupPoseParameter( pStudioHdr, "move_x" );
@@ -928,6 +928,15 @@ void CBasePlayerAnimState::GetOuterAbsVelocity( Vector& vel ) const
 #else
 	vel = GetOuter()->GetAbsVelocity();
 #endif
+
+#ifdef MAPBASE
+	if (GetOuter()->IsPlayer())
+	{
+		CBasePlayer *pPlayer = ToBasePlayer( GetOuter() );
+		if (pPlayer->GetLaggedMovementValue() != 1.0f)
+			vel *= pPlayer->GetLaggedMovementValue();
+	}
+#endif
 }
 
 
@@ -1010,9 +1019,15 @@ void CBasePlayerAnimState::DebugShowAnimState( int iStartLine )
 			(float)pLayer->m_flWeight );
 	}
 
+#ifdef MAPBASE
+	for ( int i=0; i < m_pOuter->GetNumAnimOverlays(); i++ )
+	{
+		CAnimationLayer *pLayer = m_pOuter->GetAnimOverlay( i );
+#else
 	for ( int i=0; i < m_pOuter->GetNumAnimOverlays()-1; i++ )
 	{
 		CAnimationLayer *pLayer = m_pOuter->GetAnimOverlay( AIMSEQUENCE_LAYER + i );
+#endif
 #ifdef CLIENT_DLL
 		AnimStatePrintf( iLine++, "%s(%d), weight: %.2f, cycle: %.2f, order (%d), aim (%d)", 
 			!pLayer->IsActive() ? "-- ": (pLayer->m_nSequence == 0 ? "-- " : GetSequenceName( m_pOuter->GetModelPtr(), pLayer->m_nSequence ) ), 
@@ -1049,21 +1064,23 @@ void CBasePlayerAnimState::DebugShowAnimState( int iStartLine )
 			m_angRender[YAW], g_flLastBodyYaw, g_flLastBodyPitch, m_vLastMovePose.x, m_vLastMovePose.y );
 	}
 
-	// Draw a red triangle on the ground for the eye yaw.
-	float flBaseSize = 10;
-	float flHeight = 80;
-	Vector vBasePos = GetOuter()->GetAbsOrigin() + Vector( 0, 0, 3 );
-	QAngle angles( 0, 0, 0 );
-	angles[YAW] = m_flEyeYaw;
-	Vector vForward, vRight, vUp;
-	AngleVectors( angles, &vForward, &vRight, &vUp );
-	debugoverlay->AddTriangleOverlay( vBasePos+vRight*flBaseSize/2, vBasePos-vRight*flBaseSize/2, vBasePos+vForward*flHeight, 255, 0, 0, 255, false, 0.01 );
+	if ( debugoverlay)
+	{
+		// Draw a red triangle on the ground for the eye yaw.
+		float flBaseSize = 10;
+		float flHeight = 80;
+		Vector vBasePos = GetOuter()->GetAbsOrigin() + Vector( 0, 0, 3 );
+		QAngle angles( 0, 0, 0 );
+		angles[YAW] = m_flEyeYaw;
+		Vector vForward, vRight, vUp;
+		AngleVectors( angles, &vForward, &vRight, &vUp );
+		debugoverlay->AddTriangleOverlay( vBasePos+vRight*flBaseSize/2, vBasePos-vRight*flBaseSize/2, vBasePos+vForward*flHeight, 255, 0, 0, 255, false, 0.01 );
 
-	// Draw a blue triangle on the ground for the body yaw.
-	angles[YAW] = m_angRender[YAW];
-	AngleVectors( angles, &vForward, &vRight, &vUp );
-	debugoverlay->AddTriangleOverlay( vBasePos+vRight*flBaseSize/2, vBasePos-vRight*flBaseSize/2, vBasePos+vForward*flHeight, 0, 0, 255, 255, false, 0.01 );
-
+		// Draw a blue triangle on the ground for the body yaw.
+		angles[YAW] = m_angRender[YAW];
+		AngleVectors( angles, &vForward, &vRight, &vUp );
+		debugoverlay->AddTriangleOverlay( vBasePos+vRight*flBaseSize/2, vBasePos-vRight*flBaseSize/2, vBasePos+vForward*flHeight, 0, 0, 255, 255, false, 0.01 );
+	}
 }
 
 // -----------------------------------------------------------------------------

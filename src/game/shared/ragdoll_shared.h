@@ -54,7 +54,7 @@ struct ragdollanimatedfriction_t
 
 struct ragdoll_t
 {
-	int						listCount;
+	int					listCount;
 	bool					allowStretch;
 	bool					unused;
 	IPhysicsConstraintGroup *pGroup;
@@ -79,6 +79,22 @@ struct ragdollparams_t
 	bool		fixedConstraints;
 };
 
+#ifdef MAPBASE // From Alien Swarm SDK
+class CRagdollEntry
+{
+public:
+	CRagdollEntry( CBaseAnimating *pRagdoll, float flForcedRetireTime ) : m_hRagdoll( pRagdoll ), m_flForcedRetireTime( flForcedRetireTime )
+	{
+	}
+	CBaseAnimating *Get() { return m_hRagdoll.Get(); }
+	float GetForcedRetireTime() { return m_flForcedRetireTime; }
+
+private:
+	CHandle<CBaseAnimating> m_hRagdoll;
+	float m_flForcedRetireTime;
+};
+#endif
+
 //-----------------------------------------------------------------------------
 // This hooks the main game systems callbacks to allow the AI system to manage memory
 //-----------------------------------------------------------------------------
@@ -94,7 +110,12 @@ public:
 	virtual void FrameUpdatePostEntityThink( void );
 
 	// Move it to the top of the LRU
+#ifdef MAPBASE
+	void MoveToTopOfLRU( CBaseAnimating *pRagdoll, bool bImportant = false, float flForcedRetireTime = 0.0f ); // From Alien Swarm SDK
+	void RemoveFromLRU( CBaseAnimating *pRagdoll );
+#else
 	void MoveToTopOfLRU( CBaseAnimating *pRagdoll, bool bImportant = false );
+#endif
 	void SetMaxRagdollCount( int iMaxCount ){ m_iMaxRagdolls = iMaxCount; }
 
 	virtual void LevelInitPreEntity( void );
@@ -102,8 +123,13 @@ public:
 
 private:
 	typedef CHandle<CBaseAnimating> CRagdollHandle;
-	CUtlLinkedList< CRagdollHandle > m_LRU; 
-	CUtlLinkedList< CRagdollHandle > m_LRUImportantRagdolls; 
+#ifdef MAPBASE
+	CUtlLinkedList< CRagdollEntry > m_LRU;
+	CUtlLinkedList< CRagdollEntry > m_LRUImportantRagdolls;
+#else
+	CUtlLinkedList< CRagdollHandle > m_LRU;
+	CUtlLinkedList< CRagdollHandle > m_LRUImportantRagdolls;
+#endif
 
 	int m_iMaxRagdolls;
 	int m_iSimulatedRagdollCount;

@@ -54,10 +54,15 @@
 #include "replay/replay_ragdoll.h"
 #include "studio_stats.h"
 #include "tier1/callqueue.h"
+#include "c_gib.h"
+#ifdef MAPBASE
+#include "viewrender.h"
+#endif
 
 #ifdef TF_CLIENT_DLL
 #include "c_tf_player.h"
 #include "c_baseobject.h"
+#include "tf_gamerules.h"
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -79,10 +84,6 @@ const float RUN_SPEED_ESTIMATE_SQR = 150.0f * 150.0f;
 static ConVar dbganimmodel( "dbganimmodel", "" );
 #endif
 
-#if defined( STAGING_ONLY )
-	static ConVar dbg_bonestack_perturb( "dbg_bonestack_perturb", "0", 0);
-	static CInterlockedInt dbg_bonestack_reentrant_count = 0;
-#endif // STAGING_ONLY
 
 mstudioevent_t *GetEventIndexForSequence( mstudioseqdesc_t &seqdesc );
 
@@ -261,6 +262,9 @@ LINK_ENTITY_TO_CLASS( client_ragdoll, C_ClientRagdoll );
 BEGIN_DATADESC( C_ClientRagdoll )
 	DEFINE_FIELD( m_bFadeOut, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_bImportant, FIELD_BOOLEAN ),
+#ifdef MAPBASE
+	DEFINE_FIELD( m_flForcedRetireTime, FIELD_FLOAT ),
+#endif
 	DEFINE_FIELD( m_iCurrentFriction, FIELD_INTEGER ),
 	DEFINE_FIELD( m_iMinFriction, FIELD_INTEGER ),
 	DEFINE_FIELD( m_iMaxFriction, FIELD_INTEGER ),
@@ -283,6 +287,94 @@ BEGIN_DATADESC( C_ClientRagdoll )
 
 END_DATADESC()
 
+#ifdef MAPBASE_VSCRIPT
+BEGIN_ENT_SCRIPTDESC( C_ClientRagdoll, C_BaseAnimating, "Client-side ragdolls" )
+
+	DEFINE_SCRIPTFUNC_NAMED( SUB_Remove, "FadeOut", "Fades out the ragdoll and removes it from the client." )
+
+	// TODO: Proper shared ragdoll funcs?
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetRagdollObject, "GetRagdollObject", "Gets the ragdoll object of the specified index." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetRagdollObjectCount, "GetRagdollObjectCount", "Gets the number of ragdoll objects on this ragdoll." )
+
+END_SCRIPTDESC();
+
+ScriptHook_t	C_BaseAnimating::g_Hook_OnClientRagdoll;
+ScriptHook_t	C_BaseAnimating::g_Hook_FireEvent;
+//ScriptHook_t	C_BaseAnimating::g_Hook_BuildTransformations;
+#endif
+
+BEGIN_ENT_SCRIPTDESC( C_BaseAnimating, C_BaseEntity, "Animating models client-side" )
+#ifdef MAPBASE_VSCRIPT
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetPoseParameter, "GetPoseParameter", "Get the specified pose parameter's value" )
+#endif
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetPoseParameter, "SetPoseParameter", "Set the specified pose parameter to the specified value"  )
+	DEFINE_SCRIPTFUNC( IsSequenceFinished, "Ask whether the main sequence is done playing" )
+#ifdef MAPBASE_VSCRIPT
+	DEFINE_SCRIPTFUNC_NAMED( ScriptLookupAttachment, "LookupAttachment", "Get the named attachement id" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetAttachmentOrigin, "GetAttachmentOrigin", "Get the attachement id's origin vector" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetAttachmentAngles, "GetAttachmentAngles", "Get the attachement id's angles as a p,y,r vector" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetAttachmentMatrix, "GetAttachmentMatrix", "Get the attachement id's matrix transform" )
+
+	DEFINE_SCRIPTFUNC( LookupBone, "Get the named bone id" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetBoneTransform, "GetBoneTransform", "Get the transform for the specified bone" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetBoneTransform, "SetBoneTransform", "Set the transform for the specified bone" )
+
+	DEFINE_SCRIPTFUNC_NAMED( ScriptAttachEntityToBone, "AttachEntityToBone", "Attaches this entity to the specified target and bone. Also allows for optional local position offset" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptRemoveBoneAttachment, "RemoveBoneAttachment", "Removes the specified bone attachment" )
+	//DEFINE_SCRIPTFUNC( RemoveBoneAttachments, "Removes all bone attachments" )
+	DEFINE_SCRIPTFUNC( DestroyBoneAttachments, "Destroys all bone attachments" )
+	DEFINE_SCRIPTFUNC( GetNumBoneAttachments, "Gets the number of bone attachments" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetBoneAttachment, "GetBoneAttachment", "Gets the specified bone attachment" )
+
+	DEFINE_SCRIPTFUNC( SetBodygroup, "Sets a bodygroup")
+	DEFINE_SCRIPTFUNC( GetBodygroup, "Gets a bodygroup" )
+	DEFINE_SCRIPTFUNC( GetBodygroupName, "Gets a bodygroup name" )
+	DEFINE_SCRIPTFUNC( FindBodygroupByName, "Finds a bodygroup by name" )
+	DEFINE_SCRIPTFUNC( GetBodygroupCount, "Gets the number of models in a bodygroup" )
+	DEFINE_SCRIPTFUNC( GetNumBodyGroups, "Gets the number of bodygroups" )
+
+	DEFINE_SCRIPTFUNC( GetSequence, "Gets the current sequence" )
+	DEFINE_SCRIPTFUNC( SetSequence, "Sets the current sequence" )
+	DEFINE_SCRIPTFUNC( SequenceLoops, "Does the current sequence loop?" )
+	DEFINE_SCRIPTFUNC( LookupSequence, "Gets the index of the specified sequence name" )
+	DEFINE_SCRIPTFUNC( LookupActivity, "Gets the ID of the specified activity name" )
+	DEFINE_SCRIPTFUNC( GetSequenceName, "Gets the name of the specified sequence index" )
+	DEFINE_SCRIPTFUNC( GetSequenceActivityName, "Gets the activity name of the specified sequence index" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetSequenceMoveDist, "GetSequenceMoveDist", "Gets the move distance of the specified sequence" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetSequenceActivity, "GetSequenceActivity", "Gets the activity ID of the specified sequence index" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSelectWeightedSequence, "SelectWeightedSequence", "Selects a sequence for the specified activity ID" )
+
+	DEFINE_SCRIPTFUNC( GetPlaybackRate, "" )
+	DEFINE_SCRIPTFUNC( SetPlaybackRate, "" )
+	DEFINE_SCRIPTFUNC( GetCycle, "" )
+	DEFINE_SCRIPTFUNC( SetCycle, "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetSkin, "GetSkin", "Gets the model's skin" )
+	DEFINE_SCRIPTFUNC( SetSkin, "Sets the model's skin" )
+
+	DEFINE_SCRIPTFUNC( GetForceBone, "Gets the entity's force bone, which is used to determine which bone a ragdoll should apply its force to." )
+	DEFINE_SCRIPTFUNC( SetForceBone, "Sets the entity's force bone, which is used to determine which bone a ragdoll should apply its force to." )
+	DEFINE_SCRIPTFUNC( GetRagdollForce, "Gets the entity's ragdoll force, which is used to apply velocity to a ragdoll." )
+	DEFINE_SCRIPTFUNC( SetRagdollForce, "Sets the entity's ragdoll force, which is used to apply velocity to a ragdoll." )
+
+	DEFINE_SCRIPTFUNC_NAMED( ScriptBecomeRagdollOnClient, "BecomeRagdollOnClient", "" )
+	DEFINE_SCRIPTFUNC( IsRagdoll, "" )
+
+	BEGIN_SCRIPTHOOK( C_BaseAnimating::g_Hook_OnClientRagdoll, "OnClientRagdoll", FIELD_VOID, "Called when this entity turns into a client-side ragdoll." )
+		DEFINE_SCRIPTHOOK_PARAM( "ragdoll", FIELD_HSCRIPT )
+	END_SCRIPTHOOK()
+
+	BEGIN_SCRIPTHOOK( C_BaseAnimating::g_Hook_FireEvent, "FireEvent", FIELD_BOOLEAN, "Called when handling animation events. Return false to cancel base handling." )
+		DEFINE_SCRIPTHOOK_PARAM( "origin", FIELD_VECTOR )
+		DEFINE_SCRIPTHOOK_PARAM( "angles", FIELD_VECTOR )
+		DEFINE_SCRIPTHOOK_PARAM( "event", FIELD_INTEGER )
+		DEFINE_SCRIPTHOOK_PARAM( "options", FIELD_CSTRING )
+	END_SCRIPTHOOK()
+
+	//BEGIN_SCRIPTHOOK( C_BaseAnimating::g_Hook_BuildTransformations, "BuildTransformations", FIELD_VOID, "Called when building bone transformations. Allows VScript to read/write any bone with Get/SetBoneTransform." )
+	//END_SCRIPTHOOK()
+#endif
+END_SCRIPTDESC();
+
 C_ClientRagdoll::C_ClientRagdoll( bool bRestoring )
 {
 	m_iCurrentFriction = 0;
@@ -291,6 +383,9 @@ C_ClientRagdoll::C_ClientRagdoll( bool bRestoring )
 	m_bFadeOut = false;
 	m_bFadingOut = false;
 	m_bImportant = false;
+#ifdef MAPBASE
+	m_flForcedRetireTime = 0.0f;
+#endif
 	m_bNoModelParticles = false;
 
 	SetClassname("client_ragdoll");
@@ -371,7 +466,11 @@ void C_ClientRagdoll::OnRestore( void )
 	
 	if ( m_bFadeOut == true )
 	{
+#ifdef MAPBASE
+		s_RagdollLRU.MoveToTopOfLRU( this, m_bImportant, m_flForcedRetireTime );
+#else
 		s_RagdollLRU.MoveToTopOfLRU( this, m_bImportant );
+#endif
 	}
 
 	NoteRagdollCreationTick( this );
@@ -573,7 +672,10 @@ void C_ClientRagdoll::ClientThink( void )
 		Vector origin = m_pRagdoll->GetRagdollOrigin();
 		m_pRagdoll->GetRagdollBounds( vMins, vMaxs );
 
-		debugoverlay->AddBoxOverlay( origin, vMins, vMaxs, QAngle( 0, 0, 0 ), 0, 255, 0, 16, 0 );
+		if ( debugoverlay )
+		{
+			debugoverlay->AddBoxOverlay( origin, vMins, vMaxs, QAngle( 0, 0, 0 ), 0, 255, 0, 16, 0 );
+		}
 	}
 
 	HandleAnimatedFriction();
@@ -639,12 +741,30 @@ void C_ClientRagdoll::Release( void )
 
 	if ( CollisionProp()->GetPartitionHandle() != PARTITION_INVALID_HANDLE )
 	{
-		partition->Remove( PARTITION_CLIENT_SOLID_EDICTS | PARTITION_CLIENT_RESPONSIVE_EDICTS | PARTITION_CLIENT_NON_STATIC_EDICTS, CollisionProp()->GetPartitionHandle() );
+		::partition->Remove( PARTITION_CLIENT_SOLID_EDICTS | PARTITION_CLIENT_RESPONSIVE_EDICTS | PARTITION_CLIENT_NON_STATIC_EDICTS, CollisionProp()->GetPartitionHandle() );
 	}
 	RemoveFromLeafSystem();
 
 	BaseClass::Release();
 }
+
+#ifdef MAPBASE_VSCRIPT
+HSCRIPT C_ClientRagdoll::ScriptGetRagdollObject( int iIndex )
+{
+	if (iIndex < 0 || iIndex > m_pRagdoll->RagdollBoneCount())
+	{
+		Warning("%s GetRagdollObject: Index %i not valid (%i objects)\n", GetDebugName(), iIndex, m_pRagdoll->RagdollBoneCount());
+		return NULL;
+	}
+
+	return g_pScriptVM->RegisterInstance( m_pRagdoll->GetElement(iIndex) );
+}
+
+int C_ClientRagdoll::ScriptGetRagdollObjectCount()
+{
+	return m_pRagdoll->RagdollBoneCount();
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Incremented each frame in InvalidateModelBones. Models compare this value to what it
@@ -683,6 +803,10 @@ C_BaseAnimating::C_BaseAnimating() :
 	m_nPrevSequence = -1;
 	m_nRestoreSequence = -1;
 	m_pRagdoll		= NULL;
+	m_pClientsideRagdoll = NULL;
+#ifdef MAPBASE
+	m_pServerRagdoll = NULL;
+#endif
 	m_builtRagdoll = false;
 	m_hitboxBoneCacheHandle = 0;
 	int i;
@@ -738,6 +862,9 @@ C_BaseAnimating::C_BaseAnimating() :
 	m_bDynamicModelAllowed = false;
 	m_bDynamicModelPending = false;
 	m_bResetSequenceInfoOnLoad = false;
+
+	m_bInitModelEffects = false;
+	m_bDelayInitModelEffects = false;
 
 	Q_memset(&m_mouth, 0, sizeof(m_mouth));
 	m_flCycle = 0;
@@ -954,7 +1081,7 @@ void C_BaseAnimating::LockStudioHdr()
 	
 	if ( pNewWrapper->GetVirtualModel() )
 	{
-		MDLHandle_t hVirtualModel = (MDLHandle_t)(int)(pStudioHdr->virtualModel)&0xffff;
+		MDLHandle_t hVirtualModel = VoidPtrToMDLHandle( pStudioHdr->VirtualModel() );
 		mdlcache->LockStudioHdr( hVirtualModel );
 	}
 
@@ -986,7 +1113,7 @@ void C_BaseAnimating::UnlockStudioHdr()
 			// Immediate-mode rendering, can unlock immediately
 			if ( pStudioHdr->GetVirtualModel() )
 			{
-				MDLHandle_t hVirtualModel = (MDLHandle_t)(int)pStudioHdr->virtualModel&0xffff;
+				MDLHandle_t hVirtualModel = VoidPtrToMDLHandle( pStudioHdr->VirtualModel() );
 				mdlcache->UnlockStudioHdr( hVirtualModel );
 			}
 			mdlcache->UnlockStudioHdr( m_hStudioHdr );
@@ -1089,6 +1216,9 @@ CStudioHdr *C_BaseAnimating::OnNewModel()
 		}
 	}
 	m_BoneAccessor.Init( this, m_CachedBoneData.Base() ); // Always call this in case the studiohdr_t has changed.
+
+	// Reset the accumulated bone mask.
+	m_iAccumulatedBoneMask = 0;
 
 	// Free any IK data
 	if (m_pIk)
@@ -1254,7 +1384,10 @@ int C_BaseAnimating::GetHitboxBone( int hitboxIndex )
 void C_BaseAnimating::InitModelEffects( void )
 {
 	m_bInitModelEffects = true;
+	m_bDelayInitModelEffects = true;
 	TermRopes();
+	ParticleProp()->StopParticlesInvolving( this );
+	m_bHasAttachedParticles = false;
 }
 
 //-----------------------------------------------------------------------------
@@ -1262,7 +1395,11 @@ void C_BaseAnimating::InitModelEffects( void )
 //-----------------------------------------------------------------------------
 void C_BaseAnimating::DelayedInitModelEffects( void )
 {
-	m_bInitModelEffects = false;
+	// don't create the effect if we're not visible
+	if ( !ShouldDraw() )
+		return;
+
+	m_bDelayInitModelEffects = false;
 
 	// Parse the keyvalues and see if they want to make ropes on this model.
 	KeyValues * modelKeyValues = new KeyValues("");
@@ -1313,21 +1450,24 @@ void C_BaseAnimating::DelayedInitModelEffects( void )
 							return;
 						}
 					}
-					#ifdef TF_CLIENT_DLL
+#ifdef TF_CLIENT_DLL
 					// Halloween Hack for Sentry Rockets
 					if ( !V_strcmp( "sentry_rocket", pszParticleEffect ) )
 					{
 						// Halloween Spell Effect Check
 						int iHalloweenSpell = 0;
-						// if the owner is a Sentry, Check its owner
-						CBaseObject *pSentry = dynamic_cast<CBaseObject*>( GetOwnerEntity() );
-						if ( pSentry )
+						if ( TF_IsHolidayActive( kHoliday_HalloweenOrFullMoon ) )
 						{
-							CALL_ATTRIB_HOOK_INT_ON_OTHER( pSentry->GetOwner(), iHalloweenSpell, halloween_pumpkin_explosions );
-						}
-						else
-						{
-							CALL_ATTRIB_HOOK_INT_ON_OTHER( GetOwnerEntity(), iHalloweenSpell, halloween_pumpkin_explosions );
+							// if the owner is a Sentry, Check its owner
+							if ( GetOwnerEntity() && GetOwnerEntity()->IsBaseObject() )
+							{
+								CBaseObject *pSentry = assert_cast< CBaseObject* >( GetOwnerEntity() );
+								CALL_ATTRIB_HOOK_INT_ON_OTHER( pSentry->GetOwner(), iHalloweenSpell, halloween_pumpkin_explosions );
+							}
+							else
+							{
+								CALL_ATTRIB_HOOK_INT_ON_OTHER( GetOwnerEntity(), iHalloweenSpell, halloween_pumpkin_explosions );
+							}
 						}
 
 						if ( iHalloweenSpell > 0 )
@@ -1335,9 +1475,10 @@ void C_BaseAnimating::DelayedInitModelEffects( void )
 							pszParticleEffect = "halloween_rockettrail";
 						}
 					}
-					#endif
+#endif // TF_CLIENT_DLL
 					// Spawn the particle effect
 					ParticleProp()->Create( pszParticleEffect, (ParticleAttachment_t)iAttachType, iAttachment );
+					m_bHasAttachedParticles = true;
 				}
 			}
 		}
@@ -1377,7 +1518,7 @@ float C_BaseAnimating::GetPoseParameter( int iPoseParameter )
 	if ( pStudioHdr->GetNumPoseParameters() < iPoseParameter )
 		return 0.0f;
 
-	if ( iPoseParameter < 0 )
+	if ( iPoseParameter < 0 || iPoseParameter >= MAXSTUDIOPOSEPARAM )
 		return 0.0f;
 
 	return m_flPoseParameter[iPoseParameter];
@@ -1432,6 +1573,112 @@ float C_BaseAnimating::ClampCycle( float flCycle, bool isLooping )
 	return flCycle;
 }
 
+#ifdef MAPBASE_VSCRIPT
+//-----------------------------------------------------------------------------
+// Purpose: Returns the world location and world angles of an attachment to vscript caller
+// Input  : attachment name
+// Output :	location and angles
+//-----------------------------------------------------------------------------
+const Vector& C_BaseAnimating::ScriptGetAttachmentOrigin( int iAttachment )
+{	
+	static Vector absOrigin;
+	QAngle qa;
+
+	C_BaseAnimating::GetAttachment( iAttachment, absOrigin, qa );
+
+	return absOrigin;
+}
+
+const QAngle& C_BaseAnimating::ScriptGetAttachmentAngles( int iAttachment )
+{	
+	static QAngle qa;
+	Vector absOrigin;
+
+	C_BaseAnimating::GetAttachment( iAttachment, absOrigin, qa );
+	return qa;
+}
+
+HSCRIPT_RC C_BaseAnimating::ScriptGetAttachmentMatrix( int iAttachment )
+{	
+	matrix3x4_t *matrix = new matrix3x4_t;
+
+	if ( C_BaseAnimating::GetAttachment( iAttachment, *matrix ) )
+		return g_pScriptVM->RegisterInstance( matrix, true );
+
+	delete matrix;
+	return NULL;
+}
+
+void C_BaseAnimating::ScriptGetBoneTransform( int iBone, HSCRIPT hTransform )
+{
+	matrix3x4_t *matTransform = HScriptToClass<matrix3x4_t>( hTransform );
+	if (matTransform == NULL)
+		return;
+
+	GetBoneTransform( iBone, *matTransform );
+}
+
+void C_BaseAnimating::ScriptSetBoneTransform( int iBone, HSCRIPT hTransform )
+{
+	matrix3x4_t *matTransform = HScriptToClass<matrix3x4_t>( hTransform );
+	if (matTransform == NULL)
+		return;
+
+	MatrixCopy( *matTransform, GetBoneForWrite( iBone ) );
+}
+
+void C_BaseAnimating::ScriptAttachEntityToBone( HSCRIPT attachTarget, int boneIndexAttached, const Vector &bonePosition, const QAngle &boneAngles )
+{
+	C_BaseEntity *pTarget = ToEnt( attachTarget );
+	if (pTarget == NULL)
+		return;
+
+	AttachEntityToBone( pTarget->GetBaseAnimating(), boneIndexAttached, bonePosition, boneAngles );
+}
+
+void C_BaseAnimating::ScriptRemoveBoneAttachment( HSCRIPT boneAttachment )
+{
+	C_BaseEntity *pTarget = ToEnt( boneAttachment );
+	if (pTarget == NULL)
+		return;
+
+	RemoveBoneAttachment( pTarget->GetBaseAnimating() );
+}
+
+HSCRIPT C_BaseAnimating::ScriptGetBoneAttachment( int i )
+{
+	return ToHScript( GetBoneAttachment( i ) );
+}
+
+HSCRIPT C_BaseAnimating::ScriptBecomeRagdollOnClient()
+{
+	C_BaseAnimating *pRagdoll = BecomeRagdollOnClient();
+	if (!pRagdoll)
+		return NULL;
+
+	return pRagdoll->GetScriptInstance();
+}
+
+float C_BaseAnimating::ScriptGetPoseParameter( const char* szName )
+{
+	CStudioHdr* pHdr = GetModelPtr();
+	if (pHdr == NULL)
+		return 0.0f;
+
+	int iPoseParam = LookupPoseParameter( pHdr, szName );
+	return GetPoseParameter( iPoseParam );
+}
+#endif
+
+void C_BaseAnimating::ScriptSetPoseParameter(const char* szName, float fValue)
+{
+	CStudioHdr* pHdr = GetModelPtr();
+	if (pHdr == NULL)
+		return;
+
+	int iPoseParam = LookupPoseParameter(pHdr, szName);
+	SetPoseParameter(pHdr, iPoseParam, fValue);
+}
 
 void C_BaseAnimating::GetCachedBoneMatrix( int boneIndex, matrix3x4_t &out )
 {
@@ -1569,7 +1816,7 @@ void C_BaseAnimating::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quater
 				}
 
 				// do jiggle physics
-				m_pJiggleBones->BuildJiggleTransformations( i, gpGlobals->realtime, jiggleInfo, goalMX, GetBoneForWrite( i ) );
+				m_pJiggleBones->BuildJiggleTransformations( i, gpGlobals->realtime, jiggleInfo, goalMX, GetBoneForWrite( i ), this->ShouldFlipViewModel() );
 
 			}
 			else if (hdr->boneParent(i) == -1) 
@@ -1589,7 +1836,23 @@ void C_BaseAnimating::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quater
 		}
 	}
 	
-	
+#ifdef MAPBASE_VSCRIPT
+	//if (m_ScriptScope.IsInitialized() && g_Hook_BuildTransformations.CanRunInScope(m_ScriptScope))
+	//{
+	//	int oldWritableBones = m_BoneAccessor.GetWritableBones();
+	//	int oldReadableBones = m_BoneAccessor.GetReadableBones();
+	//	m_BoneAccessor.SetWritableBones( BONE_USED_BY_ANYTHING );
+	//	m_BoneAccessor.SetReadableBones( BONE_USED_BY_ANYTHING );
+	//
+	//	// No parameters
+	//	//ScriptVariant_t args[] = {};
+	//	//ScriptVariant_t returnValue;
+	//	g_Hook_BuildTransformations.Call( m_ScriptScope, NULL, NULL /*&returnValue, args*/ );
+	//
+	//	m_BoneAccessor.SetWritableBones( oldWritableBones );
+	//	m_BoneAccessor.SetReadableBones( oldReadableBones );
+	//}
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -1795,6 +2058,10 @@ CollideType_t C_BaseAnimating::GetCollideType( void )
 	return BaseClass::GetCollideType();
 }
 
+#ifdef MAPBASE
+ConVar ai_death_pose_enabled( "ai_death_pose_enabled", "1", FCVAR_NONE, "Toggles the death pose fix code, which cancels sequence transitions while a NPC is ragdolling." );
+#endif
+
 //-----------------------------------------------------------------------------
 // Purpose: if the active sequence changes, keep track of the previous ones and decay them based on their decay rate
 //-----------------------------------------------------------------------------
@@ -1810,6 +2077,14 @@ void C_BaseAnimating::MaintainSequenceTransitions( IBoneSetup &boneSetup, float 
 		m_nPrevNewSequenceParity = m_nNewSequenceParity;
 		return;
 	}
+
+#ifdef MAPBASE
+	if ( IsAboutToRagdoll() && ai_death_pose_enabled.GetBool() )
+	{
+		m_nPrevNewSequenceParity = m_nNewSequenceParity;
+		return;
+	}
+#endif
 
 	m_SequenceTransitioner.CheckForSequenceChange( 
 		boneSetup.GetStudioHdr(),
@@ -2015,16 +2290,24 @@ bool C_BaseAnimating::PutAttachment( int number, const matrix3x4_t &attachmentTo
 		return false;
 
 	CAttachmentData *pAtt = &m_Attachments[number-1];
-	if ( gpGlobals->frametime > 0 && pAtt->m_nLastFramecount > 0 && pAtt->m_nLastFramecount == gpGlobals->framecount - 1 )
+	if ( gpGlobals->frametime > 0 && pAtt->m_nLastFramecount > 0 && pAtt->m_nLastFramecount < gpGlobals->framecount )
 	{
 		Vector vecPreviousOrigin, vecOrigin;
 		MatrixPosition( pAtt->m_AttachmentToWorld, vecPreviousOrigin );
 		MatrixPosition( attachmentToWorld, vecOrigin );
-		pAtt->m_vOriginVelocity = (vecOrigin - vecPreviousOrigin) / gpGlobals->frametime;
+
+		// compensate for the fact that the previous origin could have been multiple frames behind
+		pAtt->m_vOriginVelocity = (vecOrigin - vecPreviousOrigin) / (gpGlobals->frametime * (gpGlobals->framecount - pAtt->m_nLastFramecount));
+		// only update the frame count if the position changed, so we don't have to recompute attachments
+		if ( !pAtt->m_vOriginVelocity.IsZero( 0.00001f ) )
+		{
+			pAtt->m_nLastFramecount = gpGlobals->framecount;
+		}
 	}
 	else
 	{
 		pAtt->m_vOriginVelocity.Init();
+		pAtt->m_nLastFramecount = gpGlobals->framecount;
 	}
 	pAtt->m_nLastFramecount = gpGlobals->framecount;
 	pAtt->m_bAnglesComputed = false;
@@ -2037,6 +2320,20 @@ bool C_BaseAnimating::PutAttachment( int number, const matrix3x4_t &attachmentTo
 	return true;
 }
 
+bool C_BaseAnimating::GetAttachmentDeferred( int number, matrix3x4_t& matrix )
+{
+	if ( number < 1 || number > m_Attachments.Count() )
+		return false;
+
+	// allow visual effects (eg. particles) to be a frame behind bone setup so that there are not messy dependencies.
+	CAttachmentData* pAtt = &m_Attachments[number - 1];
+	const bool bShouldUpdate = pAtt->m_nLastFramecount < gpGlobals->framecount - 1;
+	if ( bShouldUpdate && !CalcAttachments() )
+		return false;
+
+	matrix = pAtt->m_AttachmentToWorld;
+	return true;
+}
 
 bool C_BaseAnimating::SetupBones_AttachmentHelper( CStudioHdr *hdr )
 {
@@ -2080,6 +2377,18 @@ bool C_BaseAnimating::CalcAttachments()
 	return SetupBones( NULL, -1, BONE_USED_BY_ATTACHMENT, gpGlobals->curtime );
 }
 
+bool C_BaseAnimating::ShouldFlipViewModel()
+{
+	if ( GetMoveParent() )
+	{
+		C_BaseAnimating *pParent = GetMoveParent()->GetBaseAnimating();
+		if ( pParent && pParent->ShouldFlipViewModel() )
+			return true;
+	}
+
+	return false;
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: Returns the world location and world angles of an attachment
 // Input  : attachment name
@@ -2109,10 +2418,10 @@ bool C_BaseAnimating::GetAttachment( int number, Vector &origin, QAngle &angles 
 	}
 
 	CAttachmentData *pData = &m_Attachments[number-1];
-	if ( !pData->m_bAnglesComputed )
+	if ( pData->m_bAnglesComputed == 0 )
 	{
 		MatrixAngles( pData->m_AttachmentToWorld, pData->m_angRotation );
-		pData->m_bAnglesComputed = true;
+		pData->m_bAnglesComputed = -1;
 	}
 	angles = pData->m_angRotation;
 	MatrixPosition( pData->m_AttachmentToWorld, origin );
@@ -2419,8 +2728,8 @@ void C_BaseAnimating::CalculateIKLocks( float currentTime )
 	// In TF, we might be attaching a player's view to a walking model that's using IK. If we are, it can
 	// get in here during the view setup code, and it's not normally supposed to be able to access the spatial
 	// partition that early in the rendering loop. So we allow access right here for that special case.
-	SpatialPartitionListMask_t curSuppressed = partition->GetSuppressedLists();
-	partition->SuppressLists( PARTITION_ALL_CLIENT_EDICTS, false );
+	SpatialPartitionListMask_t curSuppressed = ::partition->GetSuppressedLists();
+	::partition->SuppressLists( PARTITION_ALL_CLIENT_EDICTS, false );
 	CBaseEntity::PushEnableAbsRecomputations( false );
 
 	Ray_t ray;
@@ -2610,14 +2919,29 @@ void C_BaseAnimating::CalculateIKLocks( float currentTime )
 
 					// debugoverlay->AddBoxOverlay( origin, Vector( -1, -1, -1 ), Vector( 1, 1, 1 ), QAngle( 0, 0, 0 ), 255, 0, 0, 0, 0 );
 
-					float d = (pTarget->est.pos - origin).Length();
+					Vector vecDelta = (origin - pTarget->est.pos);
+					float d = vecDelta.Length();
 
 					if ( d >= flDist)
 						continue;
 
 					flDist = d;
-					pTarget->SetPos( origin );
-					pTarget->SetAngles( angles );
+#ifdef MAPBASE
+					// For blending purposes, IK attachments should obey weight
+					if ( pTarget->est.flWeight < 1.0f )
+					{
+						Quaternion qTarget;
+						AngleQuaternion( angles, qTarget );
+
+						QuaternionSlerp( pTarget->est.q, qTarget, pTarget->est.flWeight, pTarget->est.q );
+						pTarget->SetPos( pTarget->est.pos + (vecDelta * pTarget->est.flWeight) );
+					}
+					else
+#endif
+					{
+						pTarget->SetPos( origin );
+						pTarget->SetAngles( angles );
+					}
 					// debugoverlay->AddBoxOverlay( pTarget->est.pos, Vector( -pTarget->est.radius, -pTarget->est.radius, -pTarget->est.radius ), Vector( pTarget->est.radius, pTarget->est.radius, pTarget->est.radius), QAngle( 0, 0, 0 ), 0, 255, 0, 0, 0 );
 				}
 
@@ -2640,18 +2964,18 @@ void C_BaseAnimating::CalculateIKLocks( float currentTime )
 #endif
 
 	CBaseEntity::PopEnableAbsRecomputations();
-	partition->SuppressLists( curSuppressed, true );
+	::partition->SuppressLists( curSuppressed, true );
 }
 
-bool C_BaseAnimating::GetPoseParameterRange( int index, float &minValue, float &maxValue )
+bool C_BaseAnimating::GetPoseParameterRange( int index_, float &minValue, float &maxValue )
 {
 	CStudioHdr *pStudioHdr = GetModelPtr();
 
 	if (pStudioHdr)
 	{
-		if (index >= 0 && index < pStudioHdr->GetNumPoseParameters())
+		if ( index_ >= 0 && index_ < pStudioHdr->GetNumPoseParameters())
 		{
-			const mstudioposeparamdesc_t &pose = pStudioHdr->pPoseParameter( index );
+			const mstudioposeparamdesc_t &pose = pStudioHdr->pPoseParameter( index_ );
 			minValue = pose.start;
 			maxValue = pose.end;
 			return true;
@@ -2674,9 +2998,9 @@ void C_BaseAnimating::ControlMouth( CStudioHdr *pstudiohdr )
 	if ( !pstudiohdr )
 		  return;
 
-	int index = LookupPoseParameter( pstudiohdr, LIPSYNC_POSEPARAM_NAME );
+	int index_ = LookupPoseParameter( pstudiohdr, LIPSYNC_POSEPARAM_NAME );
 
-	if ( index != -1 )
+	if ( index_ != -1 )
 	{
 		float value = GetMouth()->mouthopen / 64.0;
 
@@ -2686,15 +3010,15 @@ void C_BaseAnimating::ControlMouth( CStudioHdr *pstudiohdr )
 			 value = 1.0;
 
 		float start, end;
-		GetPoseParameterRange( index, start, end );
+		GetPoseParameterRange( index_, start, end );
 
 		value = (1.0 - value) * start + value * end;
 
 		//Adrian - Set the pose parameter value. 
 		//It has to be called "mouth".
-		SetPoseParameter( pstudiohdr, index, value ); 
+		SetPoseParameter( pstudiohdr, index_, value );
 		// Reset interpolation here since the client is controlling this rather than the server...
-		m_iv_flPoseParameter.SetHistoryValuesForItem( index, raw );
+		m_iv_flPoseParameter.SetHistoryValuesForItem( index_, raw );
 	}
 }
 
@@ -2703,10 +3027,19 @@ CMouthInfo *C_BaseAnimating::GetMouth( void )
 	return &m_mouth;
 }
 
+// Enable by default in staging and debug builds
+#if !defined( DEBUG_BONE_SETUP_THREADING ) && ( defined( _DEBUG ) || defined( STAGING_ONLY ) )
+	#define DEBUG_BONE_SETUP_THREADING
+#endif
+
 #ifdef DEBUG_BONE_SETUP_THREADING
 ConVar cl_warn_thread_contested_bone_setup("cl_warn_thread_contested_bone_setup", "0" );
 #endif
-ConVar cl_threaded_bone_setup("cl_threaded_bone_setup", "0", 0, "Enable parallel processing of C_BaseAnimating::SetupBones()" );
+
+// Marked this developmentonly because it currently crashes, and users are enabling it and complaining because of
+// course.  Once this actually works it should just be FCVAR_INTERNAL_USE.
+ConVar cl_threaded_bone_setup("cl_threaded_bone_setup", "0", FCVAR_DEVELOPMENTONLY | FCVAR_INTERNAL_USE,
+                              "Enable parallel processing of C_BaseAnimating::SetupBones()" );
 
 //-----------------------------------------------------------------------------
 // Purpose: Do the default sequence blending rules as done in HL1
@@ -2733,7 +3066,7 @@ static bool g_bDoThreadedBoneSetup;
 
 void C_BaseAnimating::InitBoneSetupThreadPool()
 {
-}				 
+}
 
 void C_BaseAnimating::ShutdownBoneSetupThreadPool()
 {
@@ -2815,6 +3148,22 @@ bool C_BaseAnimating::SetupBones( matrix3x4_t *pBoneToWorldOut, int nMaxBones, i
 		}
 	}
 
+	// If we're setting up LOD N, we have set up all lower LODs also
+	// because lower LODs always use subsets of the bones of higher LODs.
+	int nLOD = 0;
+	int nMask = BONE_USED_BY_VERTEX_LOD0;
+
+	for ( ; nLOD < MAX_NUM_LODS; ++nLOD, nMask <<= 1 )
+	{
+		if ( boneMask & nMask )
+			break;
+	}
+
+	for ( ; nLOD < MAX_NUM_LODS; ++nLOD, nMask <<= 1 )
+	{
+		boneMask |= nMask;
+	}
+
 #ifdef DEBUG_BONE_SETUP_THREADING
 	if ( cl_warn_thread_contested_bone_setup.GetBool() )
 	{
@@ -2847,7 +3196,9 @@ bool C_BaseAnimating::SetupBones( matrix3x4_t *pBoneToWorldOut, int nMaxBones, i
 			m_flLastBoneSetupTime = currentTime;
 		}
 		m_iPrevBoneMask = m_iAccumulatedBoneMask;
-		m_iAccumulatedBoneMask = 0;
+
+		// Keep record of the fact that we've used attachments. Because of deferred attachments, we can't keep track from the previous frame.
+		m_iAccumulatedBoneMask = m_iAccumulatedBoneMask & BONE_USED_BY_ATTACHMENT;
 
 #ifdef STUDIO_ENABLE_PERF_COUNTERS
 		CStudioHdr *hdr = GetModelPtr();
@@ -2882,7 +3233,7 @@ bool C_BaseAnimating::SetupBones( matrix3x4_t *pBoneToWorldOut, int nMaxBones, i
 			return false;
 
 		// Setup our transform based on render angles and origin.
-		matrix3x4_t parentTransform;
+		ALIGN16 matrix3x4_t parentTransform ALIGN16_POST;
 		AngleMatrix( GetRenderAngles(), GetRenderOrigin(), parentTransform );
 
 		// Load the boneMask with the total of what was asked for last frame.
@@ -3123,6 +3474,25 @@ bool C_BaseAnimating::ShouldDraw()
 	return !IsDynamicModelLoading() && BaseClass::ShouldDraw();
 }
 
+void C_BaseAnimating::UpdateVisibility()
+{
+	BaseClass::UpdateVisibility();
+
+	if ( ShouldDraw() )
+	{
+		if ( !m_bInitModelEffects )
+		{
+			InitModelEffects();
+		}
+	}
+	else if ( m_bHasAttachedParticles )
+	{
+		ParticleProp()->StopParticlesInvolving( this );
+		m_bHasAttachedParticles = false;
+		m_bInitModelEffects = false;
+	}
+}
+
 ConVar r_drawothermodels( "r_drawothermodels", "1", FCVAR_CHEAT, "0=Off, 1=Normal, 2=Wireframe" );
 
 //-----------------------------------------------------------------------------
@@ -3136,6 +3506,17 @@ int C_BaseAnimating::DrawModel( int flags )
 		return 0;
 
 	int drawn = 0;
+
+#ifdef MAPBASE
+	if (m_iViewHideFlags > 0)
+	{
+		// Hide this entity if it's not supposed to be drawn in this view.
+		if (m_iViewHideFlags & (1 << CurrentViewID()))
+		{
+			return 0;
+		}
+	}
+#endif
 
 #ifdef TF_CLIENT_DLL
 	ValidateModelIndex();
@@ -3165,6 +3546,11 @@ int C_BaseAnimating::DrawModel( int flags )
 			g_pStudioStatsEntity != NULL && g_pStudioStatsEntity == GetClientRenderable() )
 		{
 			extraFlags |= STUDIO_GENERATE_STATS;
+		}
+
+		if ( flags & ( STUDIO_NO_OVERRIDE_FOR_ATTACH ) ) 
+		{
+			extraFlags |= STUDIO_NO_OVERRIDE_FOR_ATTACH;
 		}
 
 		// Necessary for lighting blending
@@ -3281,7 +3667,6 @@ void C_BaseAnimating::DoInternalDrawModel( ClientModelRenderInfo_t *pInfo, DrawM
 				if ( VPhysicsGetObject() )
 				{
 					static color32 debugColorPhys = {255,0,0,0};
-					matrix3x4_t matrix;
 					VPhysicsGetObject()->GetPositionMatrix( &matrix );
 					engine->DebugDrawPhysCollide( pCollide->solids[0], NULL, matrix, debugColorPhys );
 				}
@@ -3290,6 +3675,38 @@ void C_BaseAnimating::DoInternalDrawModel( ClientModelRenderInfo_t *pInfo, DrawM
 	}
 }
 
+#ifdef TF_CLIENT_DLL
+// Move this elsewhere if we ever need it again.
+class MaterialOverrideRestore
+{
+public:
+	MaterialOverrideRestore() 
+	: m_bRestore( false )
+	, m_pOverrideMaterial( NULL )
+	, m_nOverrideType( OVERRIDE_NORMAL )
+	{ }
+
+	~MaterialOverrideRestore()
+	{
+		if ( m_bRestore )
+		{
+			modelrender->ForcedMaterialOverride( m_pOverrideMaterial, m_nOverrideType );
+		}
+	}
+
+	void RestoreOverride( IMaterial* pRestoreOverride, OverrideType_t overType )
+	{
+		m_bRestore = true;
+		m_pOverrideMaterial = pRestoreOverride;
+		m_nOverrideType = overType;
+	}
+
+private:
+	bool m_bRestore;
+	IMaterial* m_pOverrideMaterial;
+	OverrideType_t m_nOverrideType;
+};
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: Draws the object
@@ -3298,6 +3715,57 @@ void C_BaseAnimating::DoInternalDrawModel( ClientModelRenderInfo_t *pInfo, DrawM
 int C_BaseAnimating::InternalDrawModel( int flags )
 {
 	VPROF( "C_BaseAnimating::InternalDrawModel" );
+
+#ifdef TF_CLIENT_DLL
+	MaterialOverrideRestore overrideRestore;
+	// TODO: We should listen for TF_COND_TAUNTING changing and then just do this then, 
+	// rather than every frame.
+	bool bIgnoreOverride = false;
+
+	C_TFPlayer *pOwner = ToTFPlayer( GetOwnerEntity() );
+	if ( pOwner )
+	{
+		CTFPlayerInventory *pInv = pOwner->Inventory();
+		if ( pInv )
+		{
+			if ( pOwner->m_Shared.InCond( TF_COND_TAUNTING ) )
+			{
+				int iClass = pOwner->GetPlayerClass()->GetClassIndex();
+				CEconItemView *pMiscItemView = pInv->GetItemInLoadout( iClass, pOwner->GetActiveTauntSlot() );
+				if ( pMiscItemView && pMiscItemView->IsValid() )
+				{
+					if ( pMiscItemView->GetStaticData()->GetTauntData() )
+					{
+						bIgnoreOverride = pMiscItemView->GetStaticData()->GetTauntData()->GetProp( iClass ) != NULL;
+					}
+				}
+			}
+		}
+	}
+
+	if ( !bIgnoreOverride )
+	{
+		// If there is some other material override, it's probably the client asking for us to render invuln or the 
+		// spy cloaking. Those are way more important than ours, so do them instead.
+		IMaterial* pOverrideMaterial = NULL;
+		OverrideType_t nDontcare = OVERRIDE_NORMAL;
+		modelrender->GetMaterialOverride( &pOverrideMaterial, &nDontcare );
+
+		bIgnoreOverride = ( pOverrideMaterial != NULL );
+	}
+
+	IMaterial* pOverrideMaterial = GetEconWeaponMaterialOverride( GetTeamNumber() );
+
+	bool bUseOverride = !bIgnoreOverride && pOverrideMaterial != NULL;
+	if ( bUseOverride && ( flags & STUDIO_RENDER ) )
+	{
+		// Set us up to restore properly on exit
+		overrideRestore.RestoreOverride( NULL, OVERRIDE_NORMAL );
+
+		modelrender->ForcedMaterialOverride( pOverrideMaterial );
+		flags |= STUDIO_NO_OVERRIDE_FOR_ATTACH; // Don't apply override materials to attachments. 
+	}
+#endif
 
 	if ( !GetModel() )
 		return 0;
@@ -3454,8 +3922,10 @@ void C_BaseAnimating::DoAnimationEvents( CStudioHdr *pStudioHdr )
 	int nSeqNum = GetSequence();
 	if ( nSeqNum >= nStudioNumSeq )
 	{
+#ifndef HL2MP
 		// This can happen e.g. while reloading Heavy's shotgun, switch to the minigun.
 		Warning( "%s[%d]: Playing sequence %d but there's only %d in total?\n", GetDebugName(), entindex(), nSeqNum, nStudioNumSeq );
+#endif
 		return;
 	}
 
@@ -3551,7 +4021,11 @@ void C_BaseAnimating::DoAnimationEvents( CStudioHdr *pStudioHdr )
 					flEventCycle,
 					gpGlobals->curtime );
 			}
-				
+
+#ifdef MAPBASE_VSCRIPT
+			if (ScriptHookFireEvent( GetAbsOrigin(), GetAbsAngles(), pevent[ i ].event, pevent[ i ].pszOptions() ) == false)
+				continue;
+#endif
 				
 			FireEvent( GetAbsOrigin(), GetAbsAngles(), pevent[ i ].event, pevent[ i ].pszOptions() );
 		}
@@ -3584,12 +4058,37 @@ void C_BaseAnimating::DoAnimationEvents( CStudioHdr *pStudioHdr )
 					gpGlobals->curtime );
 			}
 
+#ifdef MAPBASE_VSCRIPT
+			if (ScriptHookFireEvent( GetAbsOrigin(), GetAbsAngles(), pevent[ i ].event, pevent[ i ].pszOptions() ) == false)
+				continue;
+#endif
+
 			FireEvent( GetAbsOrigin(), GetAbsAngles(), pevent[ i ].event, pevent[ i ].pszOptions() );
 		}
 	}
 
 	m_flPrevEventCycle = flEventCycle;
 }
+
+#ifdef MAPBASE_VSCRIPT
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+bool C_BaseAnimating::ScriptHookFireEvent( const Vector& origin, const QAngle& angles, int event, const char *options )
+{
+	if (m_ScriptScope.IsInitialized() && g_Hook_FireEvent.CanRunInScope(m_ScriptScope))
+	{
+		// origin, angles, event, options
+		ScriptVariant_t args[] = { origin, angles, event, options };
+		ScriptVariant_t returnValue = true;
+		g_Hook_FireEvent.Call( m_ScriptScope, &returnValue, args );
+
+		return returnValue.Get<bool>();
+	}
+
+	return true;
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: Parses a muzzle effect event and sends it out for drawing
@@ -3604,7 +4103,7 @@ bool C_BaseAnimating::DispatchMuzzleEffect( const char *options, bool isFirstPer
 	int			weaponType = 0;
 
 	// Get the first parameter
-	p = nexttoken( token, p, ' ' );
+	p = nexttoken( token, sizeof( token ), p, ' ' );
 
 	// Find the weapon type
 	if ( token[0] ) 
@@ -3648,7 +4147,7 @@ bool C_BaseAnimating::DispatchMuzzleEffect( const char *options, bool isFirstPer
 	}
 
 	// Get the second parameter
-	p = nexttoken( token, p, ' ' );
+	p = nexttoken( token, sizeof( token ), p, ' ' );
 
 	int	attachmentIndex = -1;
 
@@ -3676,6 +4175,92 @@ bool C_BaseAnimating::DispatchMuzzleEffect( const char *options, bool isFirstPer
 	tempents->MuzzleFlash( weaponType, GetRefEHandle(), attachmentIndex, isFirstPerson );
 
 	return true;
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void C_BaseAnimating::DispatchMagThrow( const char *options )
+{
+
+	const char *p = options;
+	char		token[128];
+	char *pModel = 0;
+
+	p = nexttoken( token, sizeof( token ), p, ' ' );
+
+	if ( token )
+	{
+		if ( Q_stricmp( token, "OICW" ) == 0 )
+		{
+			pModel = "models/weapons/oicw/m_oicw.mdl";
+		}
+		else if ( Q_stricmp( token, "AKM" ) == 0 )
+		{
+			pModel = "models/weapons/akm/m_akm.mdl";
+		}
+		else if ( Q_stricmp( token, "SMG1" ) == 0 )
+		{
+			pModel = "models/weapons/smg1/m_smg1.mdl";
+		}
+		else if ( Q_stricmp( token, "MP5K" ) == 0 )
+		{
+			pModel = "models/weapons/mp5k/m_mp5k.mdl";
+		}
+		else if ( Q_stricmp( token, "HMG" ) == 0 )
+		{
+			pModel = "models/weapons/hmg/m_hmg.mdl";
+		}
+		else if ( Q_stricmp( token, "PISTOL" ) == 0 )
+		{
+			pModel = "models/weapons/pistol/m_pistol.mdl";
+		}
+		else if ( Q_stricmp( token, "ALYXGUN" ) == 0 )
+		{
+			pModel = "models/weapons/alyxgun/m_alyxgun.mdl";
+		}
+		else if ( Q_stricmp( token, "357" ) == 0 )
+		{
+			pModel = "models/weapons/357/m_357.mdl";
+		}
+	}
+
+	if ( pModel == 0 )
+	{
+		Assert( 0 );
+		return;
+	}
+
+	p = nexttoken( token, sizeof( token ), p, ' ' );
+
+	int	attachmentIndex = -1;
+
+	if ( token )
+	{
+		attachmentIndex = LookupAttachment( token );
+
+		if ( attachmentIndex <= 0 )
+		{
+			Assert( 0 );
+			return;
+		}
+	}
+	else
+	{
+		Assert( 0 );
+		return;
+	}
+
+	Vector origin, velocity;
+	QAngle angles;
+	GetAttachment( attachmentIndex, origin, angles );
+
+	AngleVectors( angles, &velocity );
+	AngularImpulse impulse = AngularImpulse( angles.x, angles.y, angles.z );
+
+	C_Gib *pGib = C_Gib::CreateClientsideGib( pModel, origin, velocity, impulse, 20.f );
+
+	if ( pGib )
+		pGib->SetBodygroup( pGib->FindBodygroupByName( "bullet" ), 1 );
 }
 
 //-----------------------------------------------------------------------------
@@ -3745,50 +4330,48 @@ void MaterialFootstepSound( C_BaseAnimating *pEnt, bool bLeftFoot, float flVolum
 //-----------------------------------------------------------------------------
 void C_BaseAnimating::FireEvent( const Vector& origin, const QAngle& angles, int event, const char *options )
 {
-	Vector attachOrigin;
-	QAngle attachAngles; 
-
 	switch( event )
 	{
 	case AE_CL_CREATE_PARTICLE_EFFECT:
 		{
 			int iAttachment = -1;
 			int iAttachType = PATTACH_ABSORIGIN_FOLLOW;
-			char token[256];
 			char szParticleEffect[256];
+			CSplitString splitString( options, " " );
+
+			if ( splitString.Count() < 2 )
+			{
+				Warning( "Invalid options specified for AE_CL_CREATE_PARTICLE_EFFECT event. Must specify \"<particle effect name> <attachment type> <attachment point>\"\n" );
+				return;
+			}
 
 			// Get the particle effect name
-			const char *p = options;
-			p = nexttoken(token, p, ' ');
-
-			const char* mtoken = ModifyEventParticles( token );
+			const char* mtoken = ModifyEventParticles( splitString[0] );
 			if ( !mtoken || mtoken[0] == '\0' )
 				return;
-			Q_strncpy( szParticleEffect, mtoken, sizeof(szParticleEffect) );
+			V_strncpy( szParticleEffect, mtoken, sizeof(szParticleEffect) );
 
-			// Get the attachment type
-			p = nexttoken(token, p, ' ');
-
-			iAttachType = GetAttachTypeFromString( token );
+			const char *pszAttachType = splitString[1];
+			iAttachType = GetAttachTypeFromString( pszAttachType );
 			if ( iAttachType == -1 )
 			{
-				Warning("Invalid attach type specified for particle effect anim event. Trying to spawn effect '%s' with attach type of '%s'\n", szParticleEffect, token );
+				Warning( "Invalid attach type specified for AE_CL_CREATE_PARTICLE_EFFECT event. Trying to spawn effect '%s' with attach type of '%s'\n", szParticleEffect, pszAttachType );
 				return;
 			}
 
 			// Get the attachment point index
-			p = nexttoken(token, p, ' ');
-			if ( token[0] )
+			if ( splitString.Count() > 2 )
 			{
-				iAttachment = atoi(token);
+				const char *pszAttachment = splitString[2];
+				iAttachment = atoi( pszAttachment );
 
 				// See if we can find any attachment points matching the name
-				if ( token[0] != '0' && iAttachment == 0 )
+				if ( pszAttachment[0] != '0' && iAttachment == 0 )
 				{
-					iAttachment = LookupAttachment( token );
+					iAttachment = LookupAttachment( pszAttachment );
 					if ( iAttachment <= 0 )
 					{
-						Warning( "Failed to find attachment point specified for particle effect anim event. Trying to spawn effect '%s' on attachment named '%s'\n", szParticleEffect, token );
+						Warning( "Failed to find attachment point specified for AE_CL_CREATE_PARTICLE_EFFECT event. Trying to spawn effect '%s' on attachment named '%s'\n", szParticleEffect, pszAttachment );
 						return;
 					}
 				}
@@ -3799,9 +4382,56 @@ void C_BaseAnimating::FireEvent( const Vector& origin, const QAngle& angles, int
 		}
 		break;
 
+	case AE_CL_REMOVE_PARTICLE_EFFECT:
+		{
+			int iAttachment = -1;
+			char szParticleEffect[256];
+			CSplitString splitString( options, " " );
+			if ( splitString.Count() < 1 )
+			{
+				Warning( "Invalid options specified for AE_CL_REMOVE_PARTICLE_EFFECT event. Must specify \"<particle effect name> <attachment point>\"\n" );
+				return;
+			}
+
+			const char* mtoken = ModifyEventParticles( splitString[0] );
+			if ( !mtoken || mtoken[0] == '\0' )
+				return;
+			V_strncpy( szParticleEffect, mtoken, sizeof(szParticleEffect) );
+
+			if ( splitString.Count() > 1 )
+			{
+				const char *pszAttachment = splitString[1];
+				iAttachment = atoi( pszAttachment );
+
+				// See if we can find any attachment points matching the name
+				if ( pszAttachment[0] != '0' && iAttachment == 0 )
+				{
+					iAttachment = LookupAttachment( pszAttachment );
+					if ( iAttachment <= 0 )
+					{
+						Warning( "Failed to find attachment point specified for AE_CL_REMOVE_PARTICLE_EFFECT event. Trying to spawn effect '%s' on attachment named '%s'\n", szParticleEffect, pszAttachment );
+						return;
+					}
+				}
+			}
+			
+			if ( iAttachment != -1 )
+			{
+				ParticleProp()->StopParticlesWithNameAndAttachment( szParticleEffect, iAttachment );
+			}
+			else
+			{
+				// if no attachment specicied, just remove all particles with specified name from this entity
+				ParticleProp()->StopParticlesNamed( szParticleEffect );
+			}
+		}
+		break;
+
 	case AE_CL_PLAYSOUND:
 		{
 			CLocalPlayerFilter filter;
+			Vector attachOrigin;
+			QAngle attachAngles; 
 
 			if ( m_Attachments.Count() > 0)
 			{
@@ -3822,7 +4452,13 @@ void C_BaseAnimating::FireEvent( const Vector& origin, const QAngle& angles, int
 
 	case CL_EVENT_FOOTSTEP_LEFT:
 		{
-#ifndef HL2MP
+#if !defined(HL2MP) || defined(MAPBASE_MP)
+#ifdef MAPBASE_MP
+			// NPCs should still use footstep sounds in MP
+			if (!IsNPC())
+				break;
+#endif
+
 			char pSoundName[256];
 			if ( !options || !options[0] )
 			{
@@ -3848,7 +4484,13 @@ void C_BaseAnimating::FireEvent( const Vector& origin, const QAngle& angles, int
 
 	case CL_EVENT_FOOTSTEP_RIGHT:
 		{
-#ifndef HL2MP
+#if !defined(HL2MP) || defined(MAPBASE_MP)
+#ifdef MAPBASE_MP
+			// NPCs should still use footstep sounds in MP
+			if (!IsNPC())
+				break;
+#endif
+
 			char pSoundName[256];
 			if ( !options || !options[0] )
 			{
@@ -3897,18 +4539,33 @@ void C_BaseAnimating::FireEvent( const Vector& origin, const QAngle& angles, int
 
 	// Eject brass
 	case CL_EVENT_EJECTBRASS1:
-		if ( m_Attachments.Count() > 0 )
 		{
-			if ( MainViewOrigin().DistToSqr( GetAbsOrigin() ) < (256 * 256) )
+			// Check if we're a weapon, if we belong to the local player, and if the local player is in third person - if all are true, don't do a muzzleflash in this instance, because
+			// we're using the view models dispatch for smoothness.
+			if ( dynamic_cast< C_BaseCombatWeapon *>(this) != NULL )
 			{
-				Vector attachOrigin;
-				QAngle attachAngles; 
-				
-				if( GetAttachment( 2, attachOrigin, attachAngles ) )
+				C_BaseCombatWeapon *pWeapon = dynamic_cast< C_BaseCombatWeapon *>(this);
+				if ( pWeapon && pWeapon->GetOwner() == C_BasePlayer::GetLocalPlayer() && ::input->CAM_IsThirdPerson() )
+					break;
+			}
+
+			if ( ( prediction->InPrediction() && !prediction->IsFirstTimePredicted() ) )
+				break;
+
+			if ( m_Attachments.Count() > 0 )
+			{
+				if ( MainViewOrigin().DistToSqr( GetAbsOrigin() ) < (256 * 256) )
 				{
-					tempents->EjectBrass( attachOrigin, attachAngles, GetAbsAngles(), atoi( options ) );
+					Vector attachOrigin;
+					QAngle attachAngles;
+
+					if( GetAttachment( 2, attachOrigin, attachAngles ) )
+					{
+						tempents->EjectBrass( attachOrigin, attachAngles, GetAbsAngles(), atoi( options ) );
+					}
 				}
 			}
+			break;
 		}
 		break;
 
@@ -3922,7 +4579,43 @@ void C_BaseAnimating::FireEvent( const Vector& origin, const QAngle& angles, int
 	case AE_NPC_MUZZLEFLASH:
 		{
 			// Send out the effect for an NPC
+#if defined ( HL2MP ) || defined ( SDK_DLL ) // works for the modified CSS weapons included in the new template sdk.
+			// HL2MP - Make third person muzzleflashes as reliable as the first person ones
+			// while in third person the view model dispatches the muzzleflash event - note: the weapon models dispatch them too, but not frequently.
+			if ( IsViewModel() )
+			{
+				C_BasePlayer *pPlayer = ToBasePlayer( dynamic_cast<C_BaseViewModel *>(this)->GetOwner() );
+				if ( pPlayer && pPlayer == C_BasePlayer::GetLocalPlayer())
+				{
+					if ( ::input->CAM_IsThirdPerson() )
+					{
+						// Dispatch on the weapon - the player model doesn't have the attachments in hl2mp.
+						C_BaseCombatWeapon *pWeapon = pPlayer->GetActiveWeapon();
+						if ( !pWeapon )
+							break;
+						pWeapon->DispatchMuzzleEffect( options, false );
+						break;
+					}
+				}
+			}
+
+			// Check if we're a weapon, if we belong to the local player, and if the local player is in third person - if all are true, don't do a muzzleflash in this instance, because
+			// we're using the view models dispatch for smoothness.
+			if ( dynamic_cast< C_BaseCombatWeapon *>(this) != NULL )
+			{
+				C_BaseCombatWeapon *pWeapon = dynamic_cast< C_BaseCombatWeapon *>(this);
+				if ( pWeapon && pWeapon->GetOwner() == C_BasePlayer::GetLocalPlayer() && ::input->CAM_IsThirdPerson() )
+					break;
+			}
+
+#endif
 			DispatchMuzzleEffect( options, false );
+			break;
+		}
+
+	case AE_WPN_THROWMAG:
+		{
+			DispatchMagThrow( options );
 			break;
 		}
 
@@ -3954,20 +4647,20 @@ void C_BaseAnimating::FireEvent( const Vector& origin, const QAngle& angles, int
 
 	case AE_CL_ENABLE_BODYGROUP:
 		{
-			int index = FindBodygroupByName( options );
-			if ( index >= 0 )
+			int index_ = FindBodygroupByName( options );
+			if ( index_ >= 0 )
 			{
-				SetBodygroup( index, 1 );
+				SetBodygroup( index_, 1 );
 			}
 		}
 		break;
 
 	case AE_CL_DISABLE_BODYGROUP:
 		{
-			int index = FindBodygroupByName( options );
-			if ( index >= 0 )
+			int index_ = FindBodygroupByName( options );
+			if ( index_ >= 0 )
 			{
-				SetBodygroup( index, 0 );
+				SetBodygroup( index_, 0 );
 			}
 		}
 		break;
@@ -3981,20 +4674,36 @@ void C_BaseAnimating::FireEvent( const Vector& origin, const QAngle& angles, int
 			const char *p = options;
 
 			// Bodygroup Name
-			p = nexttoken(token, p, ' ');
+			p = nexttoken( token, sizeof( token ), p, ' ' );
 			Q_strncpy( szBodygroupName, token, sizeof(szBodygroupName) );
 
 			// Get the desired value
-			p = nexttoken(token, p, ' ');
+			p = nexttoken( token, sizeof( token ), p, ' ' );
 			value = token[0] ? atoi( token ) : 0;
 
-			int index = FindBodygroupByName( szBodygroupName );
-			if ( index >= 0 )
+			int index_ = FindBodygroupByName( szBodygroupName );
+			if ( index_ >= 0 )
 			{
-				SetBodygroup( index, value );
+				SetBodygroup( index_, value );
 			}
 		}
 		break;
+
+#ifdef MAPBASE
+	case AE_VSCRIPT_RUN:
+		{
+			if (!RunScript( options ))
+				Warning( "%s failed to run AE_VSCRIPT_RUN on client with \"%s\"\n", GetDebugName(), options );
+		}
+		break;
+		
+	case AE_VSCRIPT_RUN_FILE:
+		{
+			if (!RunScriptFile( options ))
+				Warning( "%s failed to run AE_VSCRIPT_RUN_FILE on client with \"%s\"\n", GetDebugName(), options );
+		}
+		break;
+#endif
 
 	default:
 		break;
@@ -4022,13 +4731,13 @@ void C_BaseAnimating::FireObsoleteEvent( const Vector& origin, const QAngle& ang
 
 			const char *p = options;
 
-			p = nexttoken(token, p, ' ');
+			p = nexttoken( token, sizeof( token ), p, ' ' );
 			Q_strncpy( effectFunc, token, sizeof(effectFunc) );
-
-			p = nexttoken(token, p, ' ');
+			
+			p = nexttoken( token, sizeof( token ), p, ' ' );
 			iAttachment = token[0] ? atoi(token) : -1;
-
-			p = nexttoken(token, p, ' ');
+			
+			p = nexttoken( token, sizeof( token ), p, ' ' );
 			iParam = token[0] ? atoi(token) : 0;
 
 			if ( iAttachment != -1 && m_Attachments.Count() >= iAttachment )
@@ -4611,19 +5320,25 @@ bool C_BaseAnimating::GetRagdollInitBoneArrays( matrix3x4_t *pDeltaBones0, matri
 	return bSuccess;
 }
 
+C_ClientRagdoll *C_BaseAnimating::CreateClientRagdoll( bool bRestoring )
+{
+	//DevMsg( "Creating ragdoll at tick %d\n", gpGlobals->tickcount );
+	return new C_ClientRagdoll( bRestoring );
+}
+
 C_BaseAnimating *C_BaseAnimating::CreateRagdollCopy()
 {
 	//Adrian: We now create a separate entity that becomes this entity's ragdoll.
 	//That way the server side version of this entity can go away. 
 	//Plus we can hook save/restore code to these ragdolls so they don't fall on restore anymore.
-	C_ClientRagdoll *pRagdoll = new C_ClientRagdoll( false );
+	C_ClientRagdoll *pRagdoll = CreateClientRagdoll( false );
 	if ( pRagdoll == NULL )
 		return NULL;
 
 	TermRopes();
 
-	const model_t *model = GetModel();
-	const char *pModelName = modelinfo->GetModelName( model );
+	const model_t *pModel = GetModel();
+	const char *pModelName = modelinfo->GetModelName( pModel );
 
 	if ( pRagdoll->InitializeAsClientEntity( pModelName, RENDER_GROUP_OPAQUE_ENTITY ) == false )
 	{
@@ -4667,6 +5382,14 @@ C_BaseAnimating *C_BaseAnimating::CreateRagdollCopy()
 	pRagdoll->m_nForceBone = m_nForceBone;
 	pRagdoll->SetNextClientThink( CLIENT_THINK_ALWAYS );
 
+#ifdef MAPBASE
+	pRagdoll->m_iViewHideFlags = m_iViewHideFlags;
+
+	pRagdoll->m_fadeMinDist = m_fadeMinDist;
+	pRagdoll->m_fadeMaxDist = m_fadeMaxDist;
+	pRagdoll->m_flFadeScale = m_flFadeScale;
+#endif
+
 	pRagdoll->SetModelName( AllocPooledString(pModelName) );
 	pRagdoll->SetModelScale( GetModelScale() );
 	return pRagdoll;
@@ -4677,8 +5400,8 @@ C_BaseAnimating *C_BaseAnimating::BecomeRagdollOnClient()
 	MoveToLastReceivedPosition( true );
 	GetAbsOrigin();
 
-	C_BaseAnimating *pRagdoll = CreateRagdollCopy();
-	if ( pRagdoll )
+	m_pClientsideRagdoll = CreateRagdollCopy();
+	if ( m_pClientsideRagdoll )
 	{
 		matrix3x4_t boneDelta0[MAXSTUDIOBONES];
 		matrix3x4_t boneDelta1[MAXSTUDIOBONES];
@@ -4690,19 +5413,29 @@ C_BaseAnimating *C_BaseAnimating::BecomeRagdollOnClient()
 
 		if ( bInitBoneArrays )
 		{
-			bInitAsClient = pRagdoll->InitAsClientRagdoll( boneDelta0, boneDelta1, currentBones, boneDt );
+			bInitAsClient = m_pClientsideRagdoll->InitAsClientRagdoll( boneDelta0, boneDelta1, currentBones, boneDt );
 		}
 
 		if ( !bInitAsClient || !bInitBoneArrays )
 		{
 			Warning( "C_BaseAnimating::BecomeRagdollOnClient failed. pRagdoll:%p bInitBoneArrays:%d bInitAsClient:%d\n",
-					 pRagdoll, bInitBoneArrays, bInitAsClient );
-			pRagdoll->Release();
+					 m_pClientsideRagdoll, bInitBoneArrays, bInitAsClient );
+			m_pClientsideRagdoll->Release();
 			return NULL;
 		}
+
+#ifdef MAPBASE_VSCRIPT
+		// Hook for ragdolling
+		if (m_ScriptScope.IsInitialized() && g_Hook_OnClientRagdoll.CanRunInScope( m_ScriptScope ))
+		{
+			// ragdoll
+			ScriptVariant_t args[] = { ScriptVariant_t( m_pClientsideRagdoll->GetScriptInstance() ) };
+			g_Hook_OnClientRagdoll.Call( m_ScriptScope, NULL, args );
+		}
+#endif
 	}
 
-	return pRagdoll;
+	return m_pClientsideRagdoll;
 }
 
 bool C_BaseAnimating::InitAsClientRagdoll( const matrix3x4_t *pDeltaBones0, const matrix3x4_t *pDeltaBones1, const matrix3x4_t *pCurrentBonePosition, float boneDt, bool bFixedConstraints )
@@ -4966,7 +5699,7 @@ void C_BaseAnimating::UpdateClientSideAnimation()
 
 void C_BaseAnimating::Simulate()
 {
-	if ( m_bInitModelEffects )
+	if ( m_bDelayInitModelEffects )
 	{
 		DelayedInitModelEffects();
 	}
@@ -5069,10 +5802,13 @@ bool C_BaseAnimating::TestHitboxes( const Ray_t &ray, unsigned int fContentsMask
 //-----------------------------------------------------------------------------
 float C_BaseAnimating::GetSequenceCycleRate( CStudioHdr *pStudioHdr, int iSequence )
 {
-	if ( !pStudioHdr )
-		return 0.0f;
+	float t = SequenceDuration( pStudioHdr, iSequence );
 
-	return Studio_CPS( pStudioHdr, pStudioHdr->pSeqdesc(iSequence), iSequence, m_flPoseParameter );
+	if ( t != 0.0f )
+	{
+		return 1.0f / t;
+	}
+	return t;
 }
 
 float C_BaseAnimating::GetAnimTimeInterval( void ) const
@@ -5168,6 +5904,11 @@ void C_BaseAnimating::StudioFrameAdvance()
 
 	if ( flNewCycle < 0.0f || flNewCycle >= 1.0f ) 
 	{
+		if (flNewCycle >= 1.0f)
+		{
+			ReachedEndOfSequence();
+		}
+
 		if ( IsSequenceLooping( hdr, GetSequence() ) )
 		{
 			 flNewCycle -= (int)(flNewCycle);
@@ -5405,6 +6146,11 @@ float C_BaseAnimating::SequenceDuration( CStudioHdr *pStudioHdr, int iSequence )
 		return 0.1f;
 	}
 
+	if ( !pStudioHdr->SequencesAvailable() )
+	{
+		return 0.1;
+	}
+
 	if (iSequence >= pStudioHdr->GetNumSeq() || iSequence < 0 )
 	{
 		DevWarning( 2, "C_BaseAnimating::SequenceDuration( %d ) out of range\n", iSequence );
@@ -5596,7 +6342,10 @@ void C_BaseAnimating::DrawClientHitboxes( float duration /*= 0.0f*/, bool monoco
 			b = ( int ) ( 255.0f * hullcolor[j][2] );
 		}
 
-		debugoverlay->AddBoxOverlay( position, pbox->bbmin, pbox->bbmax, angles, r, g, b, 0 ,duration );
+		if ( debugoverlay )
+		{
+			debugoverlay->AddBoxOverlay( position, pbox->bbmin, pbox->bbmax, angles, r, g, b, 0 ,duration );
+		}
 	}
 }
 
@@ -5655,7 +6404,7 @@ float C_BaseAnimating::SetPoseParameter( CStudioHdr *pStudioHdr, int iParameter,
 		return flValue;
 	}
 
-	if (iParameter >= 0)
+	if (iParameter >= 0 && iParameter < MAXSTUDIOPOSEPARAM)
 	{
 		float flNewValue;
 		flValue = Studio_SetPoseParameter( pStudioHdr, iParameter, flValue, flNewValue );

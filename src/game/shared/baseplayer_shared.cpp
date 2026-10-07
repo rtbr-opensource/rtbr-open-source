@@ -19,6 +19,7 @@
 	#include "prediction.h"
 	#include "c_basedoor.h"
 	#include "c_world.h"
+	#include "c_env_zoom.h"
 	#include "view.h"
 	#include "client_virtualreality.h"
 	#define CRecipientFilter C_RecipientFilter
@@ -696,8 +697,7 @@ void CBasePlayer::PlayStepSound( Vector &vecOrigin, surfacedata_t *psurface, flo
 	}
 	else
 	{
-		IPhysicsSurfaceProps *physprops = MoveHelper()->GetSurfaceProps();
-		const char *pSoundName = physprops->GetString( stepSoundName );
+		const char *pSoundName = MoveHelper()->GetSurfaceProps()->GetString( stepSoundName );
 
 		// Give child classes an opportunity to override.
 		pSoundName = GetOverrideStepSound( pSoundName );
@@ -870,6 +870,41 @@ void CBasePlayer::SelectLastItem(void)
 
 	SelectItem( m_hLastWeapon.Get()->GetClassname(), m_hLastWeapon.Get()->GetSubType() );
 }
+
+
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+Activity CBasePlayer::Weapon_TranslateActivity( Activity baseAct, bool *pRequired )
+{
+	Activity weaponTranslation = BaseClass::Weapon_TranslateActivity( baseAct, pRequired );
+	
+#ifdef CLIENT_DLL
+	// Since other players' weapons have invisible viewmodels
+	bool bWeaponNotVisible = (GetActiveWeapon() && GetActiveWeapon()->IsEffectActive( EF_NODRAW )) ? true : false;
+#else
+	bool bWeaponNotVisible = (GetActiveWeapon() && !GetActiveWeapon()->IsWeaponVisible()) ? true : false;
+#endif
+	
+	if ( bWeaponNotVisible && baseAct != ACT_ARM )
+	{
+		// Our weapon is holstered. Use the base activity.
+		return baseAct;
+	}
+	if ( GetModelPtr() && (!GetModelPtr()->HaveSequenceForActivity(weaponTranslation) || baseAct == weaponTranslation) )
+	{
+		// This is used so players can fall back to backup activities in the same way NPCs in Mapbase can
+		Activity backupActivity = Weapon_BackupActivity(baseAct, pRequired ? *pRequired : false);
+		if ( baseAct != backupActivity && GetModelPtr()->HaveSequenceForActivity(backupActivity) )
+			return backupActivity;
+
+		return baseAct;
+	}
+
+	return weaponTranslation;
+}
+#endif
 
 
 //-----------------------------------------------------------------------------
@@ -1065,6 +1100,10 @@ float IntervalDistance( float x, float x0, float x1 )
 	return 0;
 }
 
+#if !defined(CLIENT_DLL) && defined(MAPBASE_VSCRIPT)
+extern ScriptHook_t g_Hook_FindUseEntity;
+#endif
+
 CBaseEntity *CBasePlayer::FindUseEntity()
 {
 	Vector forward, up;
@@ -1156,7 +1195,24 @@ CBaseEntity *CBasePlayer::FindUseEntity()
 				
 				// if this is directly under the cursor just return it now
 				if ( i == 0 )
+				{
+#if !defined(CLIENT_DLL) && defined(MAPBASE_VSCRIPT)
+					if (m_ScriptScope.IsInitialized() && g_Hook_FindUseEntity.CanRunInScope( m_ScriptScope ))
+					{
+						// entity, is_radius
+						ScriptVariant_t functionReturn;
+						ScriptVariant_t args[] = { ToHScript( pNearest ), false };
+						if (g_Hook_FindUseEntity.Call( m_ScriptScope, &functionReturn, args ))
+						{
+							pObject = ToEnt( functionReturn.m_hScript );
+							pNearest = pObject;
+						}
+					}
+
+					if (pObject)
+#endif
 					return pObject;
+				}
 			}
 		}
 	}
@@ -1241,6 +1297,19 @@ CBaseEntity *CBasePlayer::FindUseEntity()
 	{
 		pNearest = DoubleCheckUseNPC( pNearest, searchCenter, forward );
 	}
+	
+#ifdef MAPBASE_VSCRIPT
+	if (m_ScriptScope.IsInitialized() && g_Hook_FindUseEntity.CanRunInScope(m_ScriptScope))
+	{
+		// entity, is_radius
+		ScriptVariant_t functionReturn;
+		ScriptVariant_t args[] = { ToHScript( pNearest ), true };
+		if (g_Hook_FindUseEntity.Call( m_ScriptScope, &functionReturn, args ))
+		{
+			pNearest = ToEnt( functionReturn.m_hScript );
+		}
+	}
+#endif
 
 	if ( sv_debug_player_use.GetBool() )
 	{
@@ -1797,7 +1866,6 @@ float CBasePlayer::GetFOVDistanceAdjustFactor()
 	// If FOV is lower, then we're "zoomed" in and this will give a factor < 1 so apparent LOD distances can be
 	//  shorted accordingly
 	return localFOV / defaultFOV;
-
 }
 
 //-----------------------------------------------------------------------------
@@ -1855,6 +1923,20 @@ void CBasePlayer::SharedSpawn()
 	if(IsLocalPlayer() &&haptics)
 		haptics->LocalPlayerReset();
 #endif
+}
+
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+bool CBasePlayer::IsLerpingFOV( void ) const
+{
+	// If it's immediate, just do it
+	if (m_Local.m_flFOVRate == 0.0f)
+		return false;
+
+	float deltaTime = (float)(gpGlobals->curtime - m_flFOVTime) / m_Local.m_flFOVRate;
+	return deltaTime < 1.f;
 }
 
 
@@ -1941,9 +2023,7 @@ bool CBasePlayer::SetFOV( CBaseEntity *pRequester, int FOV, float zoomRate, int 
 	// If we already have an owner, we only allow requests from that owner
 	if ( ( m_hZoomOwner.Get() != NULL ) && ( m_hZoomOwner.Get() != pRequester ) )
 	{
-#ifdef GAME_DLL
 		if ( CanOverrideEnvZoomOwner( m_hZoomOwner.Get() ) == false )
-#endif
 			return false;
 	}
 	else
@@ -1967,7 +2047,15 @@ bool CBasePlayer::SetFOV( CBaseEntity *pRequester, int FOV, float zoomRate, int 
 	}
 	else
 	{
-		m_iFOVStart = GetFOV();
+		float flStartFOV = GetFOV();
+#ifdef CLIENT_DLL
+		if ( prediction->InPrediction() && m_Local.m_flFOVRate > 0.0f )
+		{
+			float flFraction = ( gpGlobals->curtime - m_flFOVTime ) / m_Local.m_flFOVRate;
+			flStartFOV = SimpleSplineRemapValClamped( flFraction, 0.0f, 1.0f, m_iFOVStart, flStartFOV );
+		}
+#endif
+		m_iFOVStart = flStartFOV;
 	}
 
 	m_flFOVTime = gpGlobals->curtime;
@@ -2065,6 +2153,7 @@ bool fogparams_t::operator !=( const fogparams_t& other ) const
 {
 	if ( this->enable != other.enable ||
 		this->blend != other.blend ||
+		this->radial != other.radial ||
 		!VectorsAreEqual(this->dirPrimary, other.dirPrimary, 0.01f ) || 
 		this->colorPrimary.Get() != other.colorPrimary.Get() ||
 		this->colorSecondary.Get() != other.colorSecondary.Get() ||

@@ -1,6 +1,6 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: 
+// Purpose: Hud element that indicates the direction of damage taken by the player
 //
 //=============================================================================//
 
@@ -20,24 +20,22 @@
 #include "IEffects.h"
 #include "hudelement.h"
 #include "clienteffectprecachesystem.h"
-#include "sourcevr/isourcevirtualreality.h"
 
 using namespace vgui;
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-
 //-----------------------------------------------------------------------------
-// Purpose: HDU Damage indication
+// Purpose: 
 //-----------------------------------------------------------------------------
 class CHudDamageIndicator : public CHudElement, public vgui::Panel
 {
 	DECLARE_CLASS_SIMPLE( CHudDamageIndicator, vgui::Panel );
-
 public:
 	CHudDamageIndicator( const char *pElementName );
 	void Init( void );
+	void VidInit( void );
 	void Reset( void );
 	virtual bool ShouldDraw( void );
 
@@ -45,27 +43,40 @@ public:
 	void MsgFunc_Damage( bf_read &msg );
 
 private:
+	virtual void OnThink();
 	virtual void Paint();
 	virtual void ApplySchemeSettings(vgui::IScheme *pScheme);
 
+	// Painting
+	void GetDamagePosition( const Vector &vecDelta, float flRadius, float *xpos, float *ypos, float *flRotation );
+	void DrawDamageIndicator(int x0, int y0, int x1, int y1, float alpha, float flRotation );
+
 private:
-	CPanelAnimationVarAliasType( float, m_flDmgX, "dmg_xpos", "10", "proportional_float" );
-	CPanelAnimationVarAliasType( float, m_flDmgY, "dmg_ypos", "80", "proportional_float" );
-	CPanelAnimationVarAliasType( float, m_flDmgWide, "dmg_wide", "30", "proportional_float" );
-	CPanelAnimationVarAliasType( float, m_flDmgTall1, "dmg_tall1", "300", "proportional_float" );
-	CPanelAnimationVarAliasType( float, m_flDmgTall2, "dmg_tall2", "240", "proportional_float" );
+	// Indication times
 
-	CPanelAnimationVar( Color, m_DmgColorLeft, "DmgColorLeft", "255 0 0 0" );
-	CPanelAnimationVar( Color, m_DmgColorRight, "DmgColorRight", "255 0 0 0" );
+	CPanelAnimationVarAliasType( float, m_flMinimumWidth, "MinimumWidth", "10", "proportional_float" );
+	CPanelAnimationVarAliasType( float, m_flMaximumWidth, "MaximumWidth", "100", "proportional_float" );
+	CPanelAnimationVarAliasType( float, m_flMinimumHeight, "MinimumHeight", "20", "proportional_float" );
+	CPanelAnimationVarAliasType( float, m_flMaximumHeight, "MaximumHeight", "100", "proportional_float" );
+	CPanelAnimationVarAliasType( float, m_flStartRadius, "StartRadius", "140", "proportional_float" );
+	CPanelAnimationVarAliasType( float, m_flEndRadius, "EndRadius", "120", "proportional_float" );
 
-	CPanelAnimationVar( Color, m_DmgHighColorLeft, "DmgHighColorLeft", "255 0 0 0" );
-	CPanelAnimationVar( Color, m_DmgHighColorRight, "DmgHighColorRight", "255 0 0 0" );
+	CPanelAnimationVar( float, m_iMaximumDamage, "MaximumDamage", "60" );
+	CPanelAnimationVar( float, m_flMinimumTime, "MinimumTime", "0.75" );
+	CPanelAnimationVar( float, m_flMaximumTime, "MaximumTime", "2.5" );
+	CPanelAnimationVar( float, m_flTravelTime, "TravelTime", ".1" );
+	CPanelAnimationVar( float, m_flFadeOutPercentage, "FadeOutPercentage", "0.7" );
+	CPanelAnimationVar( float, m_flNoise, "Noise", "0.1" );
 
-	CPanelAnimationVar( Color, m_DmgFullscreenColor, "DmgFullscreenColor", "255 0 0 0" );
-
-	void DrawDamageIndicator(int side);
-	void DrawFullscreenDamageIndicator();
-	void GetDamagePosition( const Vector &vecDelta, float *flRotation );
+	// List of damages we've taken
+	struct damage_t
+	{
+		int		iScale;
+		float	flLifeTime;
+		float	flStartTime;
+		Vector	vecDelta;	// Damage origin relative to the player
+	};
+	CUtlVector<damage_t>	m_vecDamages;
 
 	CMaterialReference m_WhiteAdditiveMaterial;
 };
@@ -73,61 +84,27 @@ private:
 DECLARE_HUDELEMENT( CHudDamageIndicator );
 DECLARE_HUD_MESSAGE( CHudDamageIndicator, Damage );
 
-enum
-{
-	DAMAGE_ANY,
-	DAMAGE_LOW,
-	DAMAGE_HIGH,
-};
-
-#define ANGLE_ANY	0.0f
-#define DMG_ANY		0
-
-struct DamageAnimation_t
-{
-	const char *name;
-	int bitsDamage;
-	float angleMinimum;
-	float angleMaximum;
-	int damage; 
-};
-
 //-----------------------------------------------------------------------------
-// Purpose: List of damage animations, finds first that matches criteria
+// Purpose: 
 //-----------------------------------------------------------------------------
-static DamageAnimation_t g_DamageAnimations[] =
-{
-	{ "HudTakeDamageDrown",		DMG_DROWN,	ANGLE_ANY,	ANGLE_ANY,	DAMAGE_ANY },
-	{ "HudTakeDamagePoison",	DMG_POISON,	ANGLE_ANY,	ANGLE_ANY,	DAMAGE_ANY },
-	{ "HudTakeDamageBurn",		DMG_BURN,	ANGLE_ANY,	ANGLE_ANY,	DAMAGE_ANY },
-	{ "HudTakeDamageRadiation",	DMG_RADIATION,	ANGLE_ANY,	ANGLE_ANY,	DAMAGE_ANY },
-	{ "HudTakeDamageRadiation",	DMG_ACID,	ANGLE_ANY,	ANGLE_ANY,	DAMAGE_ANY },
-
-	{ "HudTakeDamageHighLeft",	DMG_ANY,	45.0f,		135.0f,		DAMAGE_HIGH },
-	{ "HudTakeDamageHighRight",	DMG_ANY,	225.0f,		315.0f,		DAMAGE_HIGH },
-	{ "HudTakeDamageHigh",		DMG_ANY,	ANGLE_ANY,	ANGLE_ANY,	DAMAGE_HIGH },
-	
-	{ "HudTakeDamageLeft",		DMG_ANY,	45.0f,		135.0f,		DAMAGE_ANY },
-	{ "HudTakeDamageRight",		DMG_ANY,	225.0f,		315.0f,		DAMAGE_ANY },
-	{ "HudTakeDamageBehind",	DMG_ANY,	135.0f,		225.0f,		DAMAGE_ANY },
-
-	// fall through to front damage
-	{ "HudTakeDamageFront",		DMG_ANY,	ANGLE_ANY,	ANGLE_ANY,	DAMAGE_ANY },
-	{ NULL },
-};
-
-
-//-----------------------------------------------------------------------------
-// Purpose: Constructor
-//-----------------------------------------------------------------------------
-CHudDamageIndicator::CHudDamageIndicator( const char *pElementName ) : CHudElement( pElementName ), BaseClass(NULL, "HudDamageIndicator")
+CHudDamageIndicator::CHudDamageIndicator( const char *pElementName ) :
+	CHudElement( pElementName ), BaseClass(NULL, "HudDamageIndicator")
 {
 	vgui::Panel *pParent = g_pClientMode->GetViewport();
 	SetParent( pParent );
 
-	m_WhiteAdditiveMaterial.Init( "vgui/white_additive", TEXTURE_GROUP_VGUI ); 
-	
 	SetHiddenBits( HIDEHUD_HEALTH );
+
+	m_WhiteAdditiveMaterial.Init( "VGUI/damageindicator", TEXTURE_GROUP_VGUI ); 
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CHudDamageIndicator::Init( void )
+{
+	HOOK_HUD_MESSAGE( CHudDamageIndicator, Damage );
+	Reset();
 }
 
 //-----------------------------------------------------------------------------
@@ -135,280 +112,43 @@ CHudDamageIndicator::CHudDamageIndicator( const char *pElementName ) : CHudEleme
 //-----------------------------------------------------------------------------
 void CHudDamageIndicator::Reset( void )
 {
-	m_DmgColorLeft[3] = 0;
-	m_DmgColorRight[3] = 0;
-	m_DmgHighColorLeft[3] = 0;
-	m_DmgHighColorRight[3] = 0;
-	m_DmgFullscreenColor[3] = 0;
-}
-
-void CHudDamageIndicator::Init( void )
-{
-	HOOK_HUD_MESSAGE( CHudDamageIndicator, Damage );
+	m_vecDamages.Purge();
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Save CPU cycles by letting the HUD system early cull
-// costly traversal.  Called per frame, return true if thinking and 
-// painting need to occur.
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CHudDamageIndicator::VidInit( void )
+{
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CHudDamageIndicator::OnThink()
+{
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
 //-----------------------------------------------------------------------------
 bool CHudDamageIndicator::ShouldDraw( void )
 {
-	bool bNeedsDraw = m_DmgColorLeft[3] || 
-						m_DmgColorRight[3] || 
-						m_DmgHighColorLeft[3] || 
-						m_DmgHighColorRight[3] ||
-						m_DmgFullscreenColor[3];
+	if ( !CHudElement::ShouldDraw() )
+		return false;
 
-	return ( bNeedsDraw && CHudElement::ShouldDraw() );
-}
+	// Don't draw if we don't have any damage to indicate
+	if ( !m_vecDamages.Count() )
+		return false;
 
-//-----------------------------------------------------------------------------
-// Purpose: Draws a damage quad
-//-----------------------------------------------------------------------------
-void CHudDamageIndicator::DrawDamageIndicator(int side)
-{
-	CMatRenderContextPtr pRenderContext( materials );
-	IMesh *pMesh = pRenderContext->GetDynamicMesh( true, NULL, NULL, m_WhiteAdditiveMaterial );
-
-	CMeshBuilder meshBuilder;
-	meshBuilder.Begin( pMesh, MATERIAL_QUADS, 1 );
-
-	int insetY = (m_flDmgTall1 - m_flDmgTall2) / 2;
-
-	int x1 = m_flDmgX;
-	int x2 = m_flDmgX + m_flDmgWide;
-	int y[4] = { (int)m_flDmgY, (int)(m_flDmgY + insetY), (int)(m_flDmgY + m_flDmgTall1 - insetY), (int)(m_flDmgY + m_flDmgTall1) };
-	int alpha[4] = { 0.0f, 1.0f, 1.0f, 0.0f };
-
-	// see if we're high damage
-	bool bHighDamage = false;
-	if ( m_DmgHighColorRight[3] > m_DmgColorRight[3] || m_DmgHighColorLeft[3] > m_DmgColorLeft[3] )
-	{
-		// make more of the screen be covered by damage
-		x1 = GetWide() * 0.0f;
-		x2 = GetWide() * 0.5f;
-		y[0] = 0.0f;
-		y[1] = 0.0f;
-		y[2] = GetTall();
-		y[3] = GetTall();
-		alpha[0] = 1.0f;
-		alpha[1] = 0.0f;
-		alpha[2] = 0.0f;
-		alpha[3] = 1.0f;
-		bHighDamage = true;
-	}
-
-	int r, g, b, a;
-	if (side == 1)
-	{
-		if ( bHighDamage )
-		{
-			r = m_DmgHighColorRight[0], g = m_DmgHighColorRight[1], b = m_DmgHighColorRight[2], a = m_DmgHighColorRight[3];
-		}
-		else
-		{
-			r = m_DmgColorRight[0], g = m_DmgColorRight[1], b = m_DmgColorRight[2], a = m_DmgColorRight[3];
-		}
-
-		// realign x coords
-		x1 = GetWide() - x1;
-		x2 = GetWide() - x2;
-
-		meshBuilder.Color4ub( r, g, b, a * alpha[0]);
-		meshBuilder.TexCoord2f( 0,0,0 );
-		meshBuilder.Position3f( x1, y[0], 0 );
-		meshBuilder.AdvanceVertex();
-
-		meshBuilder.Color4ub( r, g, b, a * alpha[3] );
-		meshBuilder.TexCoord2f( 0,0,1 );
-		meshBuilder.Position3f( x1, y[3], 0 );
-		meshBuilder.AdvanceVertex();
-
-		meshBuilder.Color4ub( r, g, b, a * alpha[2] );
-		meshBuilder.TexCoord2f( 0,1,1 );
-		meshBuilder.Position3f( x2, y[2], 0 );
-		meshBuilder.AdvanceVertex();
-
-		meshBuilder.Color4ub( r, g, b, a * alpha[1] );
-		meshBuilder.TexCoord2f( 0,1,0 );
-		meshBuilder.Position3f( x2, y[1], 0 );
-		meshBuilder.AdvanceVertex();
-	}
-	else
-	{
-		if ( bHighDamage )
-		{
-			r = m_DmgHighColorLeft[0], g = m_DmgHighColorLeft[1], b = m_DmgHighColorLeft[2], a = m_DmgHighColorLeft[3];
-		}
-		else
-		{
-			r = m_DmgColorLeft[0], g = m_DmgColorLeft[1], b = m_DmgColorLeft[2], a = m_DmgColorLeft[3];
-		}
-
-		meshBuilder.Color4ub( r, g, b, a * alpha[0] );
-		meshBuilder.TexCoord2f( 0,0,0 );
-		meshBuilder.Position3f( x1, y[0], 0 );
-		meshBuilder.AdvanceVertex();
-
-		meshBuilder.Color4ub( r, g, b, a * alpha[1] );
-		meshBuilder.TexCoord2f( 0,1,0 );
-		meshBuilder.Position3f( x2, y[1], 0 );
-		meshBuilder.AdvanceVertex();
-
-		meshBuilder.Color4ub( r, g, b, a * alpha[2] );
-		meshBuilder.TexCoord2f( 0,1,1 );
-		meshBuilder.Position3f( x2, y[2], 0 );
-		meshBuilder.AdvanceVertex();
-
-		meshBuilder.Color4ub( r, g, b, a * alpha[3] );
-		meshBuilder.TexCoord2f( 0,0,1 );
-		meshBuilder.Position3f( x1, y[3], 0 );
-		meshBuilder.AdvanceVertex();
-	}
-
-	meshBuilder.End();
-	pMesh->Draw();
-}
-
-//-----------------------------------------------------------------------------
-// Purpose: Draws full screen damage fade
-//-----------------------------------------------------------------------------
-void CHudDamageIndicator::DrawFullscreenDamageIndicator()
-{
-	CMatRenderContextPtr pRenderContext( materials );
-	IMesh *pMesh = pRenderContext->GetDynamicMesh( true, NULL, NULL, m_WhiteAdditiveMaterial );
-
-	CMeshBuilder meshBuilder;
-	meshBuilder.Begin( pMesh, MATERIAL_QUADS, 1 );
-	int r = m_DmgFullscreenColor[0], g = m_DmgFullscreenColor[1], b = m_DmgFullscreenColor[2], a = m_DmgFullscreenColor[3];
-
-	float wide = GetWide(), tall = GetTall();
-
-	meshBuilder.Color4ub( r, g, b, a );
-	meshBuilder.TexCoord2f( 0,0,0 );
-	meshBuilder.Position3f( 0.0f, 0.0f, 0 );
-	meshBuilder.AdvanceVertex();
-
-	meshBuilder.Color4ub( r, g, b, a );
-	meshBuilder.TexCoord2f( 0,1,0 );
-	meshBuilder.Position3f( wide, 0.0f, 0 );
-	meshBuilder.AdvanceVertex();
-
-	meshBuilder.Color4ub( r, g, b, a );
-	meshBuilder.TexCoord2f( 0,1,1 );
-	meshBuilder.Position3f( wide, tall, 0 );
-	meshBuilder.AdvanceVertex();
-
-	meshBuilder.Color4ub( r, g, b, a );
-	meshBuilder.TexCoord2f( 0,0,1 );
-	meshBuilder.Position3f( 0.0f, tall, 0 );
-	meshBuilder.AdvanceVertex();
-
-	meshBuilder.End();
-	pMesh->Draw();
-}
-
-//-----------------------------------------------------------------------------
-// Purpose: Paints the damage display
-//-----------------------------------------------------------------------------
-void CHudDamageIndicator::Paint()
-{
-	// draw fullscreen damage indicators
-	DrawFullscreenDamageIndicator();
-
-	// draw side damage indicators
-	DrawDamageIndicator(0);
-	DrawDamageIndicator(1);
-}
-
-//-----------------------------------------------------------------------------
-// Purpose: Message handler for Damage message
-//-----------------------------------------------------------------------------
-void CHudDamageIndicator::MsgFunc_Damage( bf_read &msg )
-{
-	int armor = msg.ReadByte();	// armor
-	int damageTaken = msg.ReadByte();	// health
-	long bitsDamage = msg.ReadLong(); // damage bits
-
-	Vector vecFrom;
-
-	vecFrom.x = msg.ReadFloat();
-	vecFrom.y = msg.ReadFloat();
-	vecFrom.z = msg.ReadFloat();
-
-	C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
-	if ( !pPlayer )
-		return;
-
-	// player has just died, just run the dead damage animation
-	if ( pPlayer->GetHealth() <= 0 )
-	{
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "HudPlayerDeath" );
-		return;
-	}
-
-	// ignore damage without direction
-	// this should never happen, unless it's drowning damage, 
-	// or the player is forcibly killed, handled above
-	if ( vecFrom == vec3_origin && !(bitsDamage & DMG_DROWN))
-		return;
-
-	Vector vecDelta = (vecFrom - MainViewOrigin());
-	VectorNormalize( vecDelta );
-
-	int highDamage = DAMAGE_LOW;
-	if ( damageTaken > 25 )
-	{
-		highDamage = DAMAGE_HIGH;
-	}
-
-	// if we have no suit, all damage is high
-	if ( !pPlayer->IsSuitEquipped() )
-	{
-		highDamage = DAMAGE_HIGH;
-	}
-
-	if ( damageTaken > 0 || armor > 0 )
-	{
-		// see which quandrant the effect is in
-		float angle;
-		GetDamagePosition( vecDelta, &angle );
-
-		// see which effect to play
-		DamageAnimation_t *dmgAnim = g_DamageAnimations;
-		for ( ; dmgAnim->name != NULL; ++dmgAnim )
-		{
-			if ( dmgAnim->bitsDamage && !(bitsDamage & dmgAnim->bitsDamage) )
-				continue;
-
-			if ( dmgAnim->angleMinimum && angle < dmgAnim->angleMinimum )
-				continue;
-
-			if ( dmgAnim->angleMaximum && angle > dmgAnim->angleMaximum )
-				continue;
-
-			if ( dmgAnim->damage && dmgAnim->damage != highDamage )
-				continue;
-
-			// we have a match, break
-			break;
-		}
-
-		if ( dmgAnim->name )
-		{
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( dmgAnim->name );
-		}
-	}
+	return true;
 }
 
 //-----------------------------------------------------------------------------
 // Purpose: Convert a damage position in world units to the screen's units
 //-----------------------------------------------------------------------------
-void CHudDamageIndicator::GetDamagePosition( const Vector &vecDelta, float *flRotation )
+void CHudDamageIndicator::GetDamagePosition( const Vector &vecDelta, float flRadius, float *xpos, float *ypos, float *flRotation )
 {
-	float flRadius = 360.0f;
-
 	// Player Data
 	Vector playerPosition = MainViewOrigin();
 	QAngle playerAngles = MainViewAngles();
@@ -420,11 +160,11 @@ void CHudDamageIndicator::GetDamagePosition( const Vector &vecDelta, float *flRo
 	CrossProduct( up, forward, right );
 	float front = DotProduct(vecDelta, forward);
 	float side = DotProduct(vecDelta, right);
-	float xpos = flRadius * -side;
-	float ypos = flRadius * -front;
+	*xpos = flRadius * -side;
+	*ypos = flRadius * -front;
 
 	// Get the rotation (yaw)
-	*flRotation = atan2(xpos, ypos) + M_PI;
+	*flRotation = atan2(*xpos,*ypos) + M_PI;
 	*flRotation *= 180 / M_PI;
 
 	float yawRadians = -(*flRotation) * M_PI / 180.0f;
@@ -432,8 +172,145 @@ void CHudDamageIndicator::GetDamagePosition( const Vector &vecDelta, float *flRo
 	float sa = sin( yawRadians );
 				 
 	// Rotate it around the circle
-	xpos = (int)((GetWide() / 2) + (flRadius * sa));
-	ypos = (int)((GetTall() / 2) - (flRadius * ca));
+	*xpos = (int)((ScreenWidth() / 2) + (flRadius * sa));
+	*ypos = (int)((ScreenHeight() / 2) - (flRadius * ca));
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Draw a single damage indicator
+//-----------------------------------------------------------------------------
+void CHudDamageIndicator::DrawDamageIndicator(int x0, int y0, int x1, int y1, float alpha, float flRotation )
+{
+	CMatRenderContextPtr pRenderContext( materials );
+	IMesh *pMesh = pRenderContext->GetDynamicMesh( true, NULL, NULL, m_WhiteAdditiveMaterial );
+
+	// Get the corners, since they're being rotated
+	int wide = x1 - x0;
+	int tall = y1 - y0;
+	Vector2D vecCorners[4];
+	Vector2D center( x0 + (wide * 0.5f), y0 + (tall * 0.5f) );
+	float yawRadians = -flRotation * M_PI / 180.0f;
+	Vector2D axis[2];
+	axis[0].x = cos(yawRadians);
+	axis[0].y = sin(yawRadians);
+	axis[1].x = -axis[0].y;
+	axis[1].y = axis[0].x;
+	Vector2DMA( center, -0.5f * wide, axis[0], vecCorners[0] );
+	Vector2DMA( vecCorners[0], -0.5f * tall, axis[1], vecCorners[0] );
+	Vector2DMA( vecCorners[0], wide, axis[0], vecCorners[1] );
+	Vector2DMA( vecCorners[1], tall, axis[1], vecCorners[2] );
+	Vector2DMA( vecCorners[0], tall, axis[1], vecCorners[3] );
+
+	// Draw the sucker
+	CMeshBuilder meshBuilder;
+	meshBuilder.Begin( pMesh, MATERIAL_QUADS, 1 );
+
+	int iAlpha = alpha * 255;
+	meshBuilder.Color4ub( 255,255,255, iAlpha );
+	meshBuilder.TexCoord2f( 0,0,0 );
+	meshBuilder.Position3f( vecCorners[0].x,vecCorners[0].y,0 );
+	meshBuilder.AdvanceVertex();
+
+	meshBuilder.Color4ub( 255,255,255, iAlpha );
+	meshBuilder.TexCoord2f( 0,1,0 );
+	meshBuilder.Position3f( vecCorners[1].x,vecCorners[1].y,0 );
+	meshBuilder.AdvanceVertex();
+
+	meshBuilder.Color4ub( 255,255,255, iAlpha );
+	meshBuilder.TexCoord2f( 0,1,1 );
+	meshBuilder.Position3f( vecCorners[2].x,vecCorners[2].y,0 );
+	meshBuilder.AdvanceVertex();
+
+	meshBuilder.Color4ub( 255,255,255, iAlpha );
+	meshBuilder.TexCoord2f( 0,0,1 );
+	meshBuilder.Position3f( vecCorners[3].x,vecCorners[3].y,0 );
+	meshBuilder.AdvanceVertex();
+
+	meshBuilder.End();
+	pMesh->Draw();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CHudDamageIndicator::Paint()
+{
+	// Iterate backwards, because we might remove them as we go
+	int iSize = m_vecDamages.Count();
+	for (int i = iSize-1; i >= 0; i--)
+	{
+		// Scale size to the damage
+		float clampedDamage = clamp( (float) m_vecDamages[i].iScale, 0.f, m_iMaximumDamage );
+
+		int iWidth = RemapVal(clampedDamage, 0, m_iMaximumDamage, m_flMinimumWidth, m_flMaximumWidth) * 0.5;
+		int iHeight = RemapVal(clampedDamage, 0, m_iMaximumDamage, m_flMinimumHeight, m_flMaximumHeight) * 0.5;
+
+		// Find the place to draw it
+		float xpos, ypos;
+		float flRotation;
+		float flTimeSinceStart = ( gpGlobals->curtime - m_vecDamages[i].flStartTime );
+		float flRadius = RemapVal( MIN( flTimeSinceStart, m_flTravelTime ), 0, m_flTravelTime, m_flStartRadius, m_flEndRadius );
+		GetDamagePosition( m_vecDamages[i].vecDelta, flRadius, &xpos, &ypos, &flRotation );
+
+		// Calculate life left
+		float flLifeLeft = ( m_vecDamages[i].flLifeTime - gpGlobals->curtime );
+		if ( flLifeLeft > 0 )
+		{
+			float flPercent = flTimeSinceStart / (m_vecDamages[i].flLifeTime - m_vecDamages[i].flStartTime);
+			float alpha;
+			if ( flPercent <= m_flFadeOutPercentage )
+			{
+				alpha = 1.0;
+			}
+			else
+			{
+				alpha = 1.0 - RemapVal( flPercent, m_flFadeOutPercentage, 1.0, 0.0, 1.0 );
+			}
+			DrawDamageIndicator( xpos-iWidth, ypos-iHeight, xpos+iWidth, ypos+iHeight, alpha, flRotation );
+		}
+		else
+		{
+			m_vecDamages.Remove(i);
+		}
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Message handler for Damage message
+//-----------------------------------------------------------------------------
+void CHudDamageIndicator::MsgFunc_Damage( bf_read &msg )
+{
+	damage_t damage;
+	damage.iScale = msg.ReadShort();
+	msg.ReadLong();	// Read & ignored
+	if ( !msg.ReadOneBit() )
+		return;
+
+	if ( damage.iScale > m_iMaximumDamage )
+	{
+		damage.iScale = m_iMaximumDamage;
+	}
+	Vector vecOrigin;
+	msg.ReadBitVec3Coord( vecOrigin );
+
+	damage.flStartTime = gpGlobals->curtime;
+	damage.flLifeTime = gpGlobals->curtime + RemapVal(damage.iScale, 0, m_iMaximumDamage, m_flMinimumTime, m_flMaximumTime);
+
+	if ( vecOrigin == vec3_origin )
+	{
+		vecOrigin = MainViewOrigin();
+	}
+
+	damage.vecDelta = (vecOrigin - MainViewOrigin());
+	VectorNormalize( damage.vecDelta );
+
+	// Add some noise
+	damage.vecDelta[0] += random->RandomFloat( -m_flNoise, m_flNoise );
+	damage.vecDelta[1] += random->RandomFloat( -m_flNoise, m_flNoise );
+	damage.vecDelta[2] += random->RandomFloat( -m_flNoise, m_flNoise );
+	VectorNormalize( damage.vecDelta );
+
+	m_vecDamages.AddToTail( damage );
 }
 
 //-----------------------------------------------------------------------------
@@ -444,18 +321,10 @@ void CHudDamageIndicator::ApplySchemeSettings(vgui::IScheme *pScheme)
 	BaseClass::ApplySchemeSettings(pScheme);
 	SetPaintBackgroundEnabled(false);
 
-	int vx, vy, vw, vh;
-	vgui::surface()->GetFullscreenViewport( vx, vy, vw, vh );
-
-	SetForceStereoRenderToFrameBuffer( true );
-
-	if( UseVR() )
-	{
-		m_flDmgY = 0.125f * (float)vh;
-		m_flDmgTall1 = 0.625f * (float)vh;
-		m_flDmgTall2 = 0.4f * (float)vh;
-		m_flDmgWide = 0.1f * (float)vw;
-	}
-
-	SetSize(vw, vh);
+	// set our size
+	int screenWide, screenTall;
+	int x, y;
+	GetPos(x, y);
+	GetHudSize(screenWide, screenTall);
+	SetBounds(0, y, screenWide, screenTall - y);
 }

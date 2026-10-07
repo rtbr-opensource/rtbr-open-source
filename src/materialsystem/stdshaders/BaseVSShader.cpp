@@ -49,6 +49,14 @@
 
 static ConVar mat_fullbright( "mat_fullbright","0", FCVAR_CHEAT );
 
+#ifdef MAPBASE
+// This constant should change with each Mapbase update
+ConVar mapbase_version_shaders( "mapbase_version_shaders", MAPBASE_VERSION, FCVAR_NONE, "The version of Mapbase currently being used in this mod's game_shader_dx9.dll" );
+
+ConVar mat_specular_disable_on_missing( "mat_specular_disable_on_missing", "1", FCVAR_ARCHIVE, "Disables specular reflections on a material when the envmap cannot be found." );
+#endif
+
+
 // These functions are to be called from the shaders.
 
 //-----------------------------------------------------------------------------
@@ -535,7 +543,7 @@ void CBaseVSShader::LoadProjectionMatrixIntoVertexShaderConstant( int vertexReg 
 //-----------------------------------------------------------------------------
 void CBaseVSShader::LoadModelViewMatrixIntoVertexShaderConstant( int vertexReg )
 {
-	VMatrix view, model, modelView, transpose;
+	VMatrix view, model, modelView;
 	s_pShaderAPI->GetMatrix( MATERIAL_MODEL, model.m[0] );
 	MatrixTranspose( model, model );
 	s_pShaderAPI->GetMatrix( MATERIAL_VIEW, view.m[0] );

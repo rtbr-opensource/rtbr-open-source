@@ -133,7 +133,7 @@ const char *AI_CriteriaSet::GetValue( int index ) const
 		return "";
 
 	const CritEntry_t *entry = &m_Lookup[ index ];
-	return entry->value ? entry->value : "";
+	return entry->value;
 }
 
 //-----------------------------------------------------------------------------
@@ -161,11 +161,11 @@ void AI_CriteriaSet::Describe()
 
 		if ( entry->weight != 1.0f )
 		{
-			DevMsg( "  %20s = '%s' (weight %f)\n", entry->criterianame.String(), entry->value ? entry->value : "", entry->weight );
+			DevMsg( "  %20s = '%s' (weight %f)\n", entry->criterianame.String(), entry->value, entry->weight );
 		}
 		else
 		{
-			DevMsg( "  %20s = '%s'\n", entry->criterianame.String(), entry->value ? entry->value : "" );
+			DevMsg( "  %20s = '%s'\n", entry->criterianame.String(), entry->value );
 		}
 	}
 }
@@ -196,6 +196,9 @@ AI_Response::AI_Response()
 	m_szMatchingRule[0] = 0;
 
 	m_pCriteria = NULL;
+#ifdef MAPBASE
+	m_iContextFlags = 0;
+#else
 	m_bApplyContextToWorld = false;
 }
 
@@ -205,6 +208,10 @@ AI_Response::AI_Response( const AI_Response &from )
 {
 	m_pCriteria = NULL;
 	*this = from;
+#ifdef MAPBASE
+	m_iContextFlags = from.m_iContextFlags;
+#else
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -238,9 +245,12 @@ AI_Response &AI_Response::operator=( const AI_Response &from )
 
 	m_Params = from.m_Params;
 
+#ifdef MAPBASE
+	m_iContextFlags = from.m_iContextFlags;
+#else
 	m_szContext = from.m_szContext;
 	m_bApplyContextToWorld = from.m_bApplyContextToWorld;
-
+#endif
 	return *this;
 }
 
@@ -265,6 +275,9 @@ void AI_Response::Init( ResponseType_t type, const char *responseName, const AI_
 	m_Params = responseparams;
 
 	m_szContext = applyContext;
+#ifdef MAPBASE
+	bApplyContextToWorld ? m_iContextFlags = APPLYCONTEXT_WORLD : m_iContextFlags = 0;
+#else
 	m_bApplyContextToWorld = bApplyContextToWorld;
 }
 
@@ -282,6 +295,18 @@ void AI_Response::Describe()
 		DevMsg( "Matched rule '%s', ", m_szMatchingRule );
 	if ( m_szContext.Length() )
 		DevMsg( "Contexts to set '%s' on %s, ", m_szContext.Get(), m_bApplyContextToWorld ? "world" : "speaker" );
+#ifdef MAPBASE
+		DevMsg( "Contexts to set '%s' on ", m_szContext );
+		if (m_iContextFlags & APPLYCONTEXT_WORLD)
+			DevMsg("world, ");
+		else if (m_iContextFlags & APPLYCONTEXT_SQUAD)
+			DevMsg("squad, ");
+		else if (m_iContextFlags & APPLYCONTEXT_ENEMY)
+			DevMsg("enemy, ");
+		else
+			DevMsg("speaker, ");
+#else
+#endif
 
 	DevMsg( "response %s = '%s'\n", DescribeResponse( (ResponseType_t)m_Type ), m_szResponseName );
 }

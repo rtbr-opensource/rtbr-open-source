@@ -7,13 +7,21 @@
 
 #include "cbase.h"
 #include "npcevent.h"
+#include "weapon_stunstick.h"
 #include "weapon_hl2mpbasebasebludgeon.h"
 #include "IEffects.h"
 #include "debugoverlay_shared.h"
+#include "in_buttons.h"
+#ifdef RTBMP
+#include "rtbr_shareddefs.h"
+#endif
 
 #ifndef CLIENT_DLL
 	#include "npc_metropolice.h"
 	#include "te_effect_dispatch.h"
+#ifdef RTBMP
+	#include "rtbmp_player.h"
+#endif
 #endif
 
 #ifdef CLIENT_DLL
@@ -25,8 +33,9 @@
 	#include "c_te_effect_dispatch.h"
 	#include "fx_quad.h"
 	#include "fx.h"
+	#include "beamdraw.h"
+	#include "prediction.h"
 
-	extern void DrawHalo( IMaterial* pMaterial, const Vector &source, float scale, float const *color, float flHDRColorScale );
 	extern void FormatViewModelAttachment( Vector &vOrigin, bool bInverse );
 
 #endif
@@ -36,97 +45,10 @@
 
 extern ConVar metropolice_move_and_melee;
 
-#define	STUNSTICK_RANGE				75.0f
-#define	STUNSTICK_REFIRE			0.8f
-#define	STUNSTICK_BEAM_MATERIAL		"sprites/lgtning.vmt"
-#define STUNSTICK_GLOW_MATERIAL		"sprites/light_glow02_add"
-#define STUNSTICK_GLOW_MATERIAL2	"effects/blueflare1"
-#define STUNSTICK_GLOW_MATERIAL_NOZ	"sprites/light_glow02_add_noz"
-
-#ifdef CLIENT_DLL
-#define CWeaponStunStick C_WeaponStunStick
+#ifdef MAPBASE
+ConVar    sk_plr_dmg_stunstick	( "sk_plr_dmg_stunstick","0");
+ConVar    sk_npc_dmg_stunstick	( "sk_npc_dmg_stunstick","0");
 #endif
-
-class CWeaponStunStick : public CBaseHL2MPBludgeonWeapon
-{
-	DECLARE_CLASS( CWeaponStunStick, CBaseHL2MPBludgeonWeapon );
-	
-public:
-
-	CWeaponStunStick();
-
-	DECLARE_NETWORKCLASS(); 
-	DECLARE_PREDICTABLE();
-
-#ifndef CLIENT_DLL
-	DECLARE_ACTTABLE();
-#endif
-
-#ifdef CLIENT_DLL
-	virtual int				DrawModel( int flags );
-	virtual void			ClientThink( void );
-	virtual void			OnDataChanged( DataUpdateType_t updateType );
-	virtual RenderGroup_t	GetRenderGroup( void );
-	virtual void			ViewModelDrawn( C_BaseViewModel *pBaseViewModel );
-	
-#endif
-
-	virtual void Precache();
-
-	void		Spawn();
-
-	float		GetRange( void )		{ return STUNSTICK_RANGE; }
-	float		GetFireRate( void )		{ return STUNSTICK_REFIRE; }
-
-
-	bool		Deploy( void );
-	bool		Holster( CBaseCombatWeapon *pSwitchingTo = NULL );
-	
-	void		Drop( const Vector &vecVelocity );
-	void		ImpactEffect( trace_t &traceHit );
-	void		SecondaryAttack( void )	{}
-	void		SetStunState( bool state );
-	bool		GetStunState( void );
-
-#ifndef CLIENT_DLL
-	void		Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatCharacter *pOperator );
-	int			WeaponMeleeAttack1Condition( float flDot, float flDist );
-#endif
-	
-	float		GetDamageForActivity( Activity hitActivity );
-
-	CWeaponStunStick( const CWeaponStunStick & );
-
-private:
-
-#ifdef CLIENT_DLL
-
-	#define	NUM_BEAM_ATTACHMENTS	9
-
-	struct stunstickBeamInfo_t
-	{
-		int IDs[2];		// 0 - top, 1 - bottom
-	};
-
-	stunstickBeamInfo_t		m_BeamAttachments[NUM_BEAM_ATTACHMENTS];	// Lookup for arc attachment points on the head of the stick
-	int						m_BeamCenterAttachment;						// "Core" of the effect (center of the head)
-
-	void	SetupAttachmentPoints( void );
-	void	DrawFirstPersonEffects( void );
-	void	DrawThirdPersonEffects( void );
-	void	DrawEffects( void );
-	bool	InSwing( void );
-
-	bool	m_bSwungLastFrame;
-
-	#define	FADE_DURATION	0.25f
-
-	float	m_flFadeTime;
-
-#endif
-
-	CNetworkVar( bool, m_bActive );
-};
 
 //-----------------------------------------------------------------------------
 // CWeaponStunStick
@@ -136,37 +58,109 @@ IMPLEMENT_NETWORKCLASS_ALIASED( WeaponStunStick, DT_WeaponStunStick )
 BEGIN_NETWORK_TABLE( CWeaponStunStick, DT_WeaponStunStick )
 #ifdef CLIENT_DLL
 	RecvPropInt( RECVINFO( m_bActive ) ),
+	RecvPropFloat( RECVINFO( m_flChargeLevel ) ),
+	RecvPropBool( RECVINFO( m_bSwinging ) ),
 #else
 	SendPropInt( SENDINFO( m_bActive ), 1, SPROP_UNSIGNED ),
+	SendPropFloat( SENDINFO( m_flChargeLevel ), -1, SPROP_PROXY_ALWAYS_YES ),
+	SendPropBool( SENDINFO( m_bSwinging ) ),
 #endif
 
 END_NETWORK_TABLE()
 
+#ifdef CLIENT_DLL
 BEGIN_PREDICTION_DATA( CWeaponStunStick )
+DEFINE_PRED_FIELD( m_bActive, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
+DEFINE_PRED_FIELD( m_flChargeLevel, FIELD_FLOAT, FTYPEDESC_INSENDTABLE ),
+DEFINE_PRED_FIELD( m_bSwinging, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
+DEFINE_PRED_FIELD( m_bIsCharging, FIELD_BOOLEAN, 0 ),
+DEFINE_PRED_FIELD( m_flChargeStartTime, FIELD_FLOAT, 0 ),
 END_PREDICTION_DATA()
+#endif
 
 LINK_ENTITY_TO_CLASS( weapon_stunstick, CWeaponStunStick );
 PRECACHE_WEAPON_REGISTER( weapon_stunstick );
 
 
-#ifndef CLIENT_DLL
-
 acttable_t	CWeaponStunStick::m_acttable[] = 
 {
-	{ ACT_RANGE_ATTACK1,				ACT_RANGE_ATTACK_SLAM, true },
-	{ ACT_HL2MP_IDLE,					ACT_HL2MP_IDLE_MELEE,					false },
-	{ ACT_HL2MP_RUN,					ACT_HL2MP_RUN_MELEE,					false },
-	{ ACT_HL2MP_IDLE_CROUCH,			ACT_HL2MP_IDLE_CROUCH_MELEE,			false },
-	{ ACT_HL2MP_WALK_CROUCH,			ACT_HL2MP_WALK_CROUCH_MELEE,			false },
-	{ ACT_HL2MP_GESTURE_RANGE_ATTACK,	ACT_HL2MP_GESTURE_RANGE_ATTACK_MELEE,	false },
-	{ ACT_HL2MP_GESTURE_RELOAD,			ACT_HL2MP_GESTURE_RELOAD_MELEE,			false },
-	{ ACT_HL2MP_JUMP,					ACT_HL2MP_JUMP_MELEE,					false },
+	{ ACT_MELEE_ATTACK1,				ACT_MELEE_ATTACK_SWING,	true },
+	{ ACT_IDLE_ANGRY,					ACT_IDLE_ANGRY_MELEE,	true },
+#if EXPANDED_HL2_WEAPON_ACTIVITIES
+	{ ACT_IDLE,							ACT_IDLE_MELEE,		false },
+	{ ACT_RUN,							ACT_RUN_MELEE,		false },
+	{ ACT_WALK,							ACT_WALK_MELEE,		false },
+#endif
+
+#ifdef MAPBASE
+	// HL2:DM activities (for third-person animations in SP)
+	{ ACT_RANGE_ATTACK1,                ACT_RANGE_ATTACK_SLAM, true },
+	{ ACT_HL2MP_IDLE,                    ACT_HL2MP_IDLE_MELEE,                    false },
+	{ ACT_HL2MP_RUN,                    ACT_HL2MP_RUN_MELEE,                    false },
+	{ ACT_HL2MP_IDLE_CROUCH,            ACT_HL2MP_IDLE_CROUCH_MELEE,            false },
+	{ ACT_HL2MP_WALK_CROUCH,            ACT_HL2MP_WALK_CROUCH_MELEE,            false },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK,    ACT_HL2MP_GESTURE_RANGE_ATTACK_MELEE,    false },
+	{ ACT_HL2MP_GESTURE_RELOAD,            ACT_HL2MP_GESTURE_RELOAD_MELEE,            false },
+	{ ACT_HL2MP_JUMP,                    ACT_HL2MP_JUMP_MELEE,                    false },
+#if EXPANDED_HL2DM_ACTIVITIES
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK2,	ACT_HL2MP_GESTURE_RANGE_ATTACK2_MELEE,		false },
+	{ ACT_HL2MP_WALK,					ACT_HL2MP_WALK_MELEE,						false },
+#endif
+#endif
 };
 
 IMPLEMENT_ACTTABLE(CWeaponStunStick);
 
-#endif
 
+//-----------------------------------------------------------------------------
+// Purpose: Fidget Animation Stuff
+//-----------------------------------------------------------------------------
+void CWeaponStunStick::ItemPostFrame( void )
+{
+	if (!m_bIsCharging) {
+		m_flChargeStartTime = gpGlobals->curtime;
+	}
+
+	CBasePlayer *pPlayer = ToBasePlayer( GetOwner() );
+	float	ChargeTime = (gpGlobals->curtime - m_flChargeStartTime);
+	float chargeLevel = ChargeTime / STUNSTICK_MAX_CHARGE;
+	m_flChargeLevel = chargeLevel;
+
+	if (pPlayer->m_nButtons & IN_ATTACK2 && m_flNextSecondaryAttack <= gpGlobals->curtime)
+	{
+		m_flNextPrimaryAttack = gpGlobals->curtime + 0.25;
+		if (!m_bIsCharging && GetActivity() != ACT_VM_FIRSTDRAW) {
+			m_flChargeStartTime = gpGlobals->curtime;
+			m_bIsCharging = true;
+			m_bSwinging = false;
+			WeaponSound( WPN_DOUBLE );
+			SendWeaponAnim( ACT_VM_HAULBACK );
+#if !defined(CLIENT_DLL) && defined(RTBMP)
+			CRTBMP_Player *pMPPlayer = ToRTBMPPlayer( pPlayer );
+			if (pMPPlayer)
+				pMPPlayer->DisableSpawnProtection();
+#endif
+		}
+
+		pPlayer->m_nButtons &= ~IN_ATTACK3;
+	}
+
+	if (pPlayer->m_afButtonReleased & IN_ATTACK2 && m_bIsCharging && GetActivity() != ACT_VM_FIRSTDRAW)
+	{
+		ChargedAttack();
+	}
+
+	if (ChargeTime >= STUNSTICK_MAX_CHARGE && m_bIsCharging && GetActivity() != ACT_VM_FIRSTDRAW)
+	{
+		ChargedAttack();
+	}
+
+	if (GetActivity() == ACT_VM_IDLE){
+		m_bSwinging = false;
+	}
+
+	BaseClass::ItemPostFrame();
+}
 
 //-----------------------------------------------------------------------------
 // Constructor
@@ -177,9 +171,21 @@ CWeaponStunStick::CWeaponStunStick( void )
 	//  any players are connected which is a bug
 	m_bActive = false;
 
+//#ifdef CLIENT_DLL
+//	m_bSwungLastFrame = false;
+//	m_flFadeTime = FADE_DURATION;	// Start off past the fade point
+//#endif
+}
+
+CWeaponStunStick::~CWeaponStunStick( void )
+{
 #ifdef CLIENT_DLL
-	m_bSwungLastFrame = false;
-	m_flFadeTime = FADE_DURATION;	// Start off past the fade point
+	// kill particles here since OnDataChanged/ClientThink doesn't get called
+	// because this gets removed on the player's death
+	ParticleProp()->StopEmissionAndDestroyImmediately( m_hStunstickParticle );
+	m_hStunstickParticle = NULL;
+	ParticleProp()->StopEmissionAndDestroyImmediately( m_hStunstickSwing );
+	m_hStunstickSwing = NULL;
 #endif
 }
 
@@ -199,10 +205,14 @@ void CWeaponStunStick::Precache()
 
 	PrecacheScriptSound( "Weapon_StunStick.Activate" );
 	PrecacheScriptSound( "Weapon_StunStick.Deactivate" );
+	PrecacheParticleSystem( "weapon_stunstick_impact" );
+	PrecacheParticleSystem( "weapon_stunstick_charge" );
+	PrecacheParticleSystem( "weapon_stunstick_swing" );
 
 	PrecacheModel( STUNSTICK_BEAM_MATERIAL );
-	PrecacheModel( "sprites/light_glow02_add.vmt" );
-	PrecacheModel( "effects/blueflare1.vmt" );
+	PrecacheModel( STUNSTICK_GLOW_MATERIAL );
+	PrecacheModel( STUNSTICK_GLOW_MATERIAL2 );
+	PrecacheModel( STUNSTICK_EFFECT_MATERIAL );
 	PrecacheModel( "sprites/light_glow02_add_noz.vmt" );
 }
 
@@ -213,7 +223,10 @@ void CWeaponStunStick::Precache()
 //-----------------------------------------------------------------------------
 float CWeaponStunStick::GetDamageForActivity( Activity hitActivity )
 {
-	return 40.0f;
+	if ((GetOwner() != NULL) && (GetOwner()->IsPlayer()))
+		return 40.0f;
+
+	return 25.0f;
 }
 
 //-----------------------------------------------------------------------------
@@ -221,25 +234,86 @@ float CWeaponStunStick::GetDamageForActivity( Activity hitActivity )
 //-----------------------------------------------------------------------------
 extern ConVar sk_crowbar_lead_time;
 
+void CWeaponStunStick::PrimaryAttack() {
+	if (m_flNextPrimaryAttack <= gpGlobals->curtime) {
+		m_flChargeLevel = 0.0f;
+		m_bSwinging = true;
+		BaseClass::PrimaryAttack();
+	}
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
 void CWeaponStunStick::ImpactEffect( trace_t &traceHit )
 {
-	
-//#ifndef CLIENT_DLL
-	
+	CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
+
+	if (pOwner == NULL) {
+		return;
+	}
+
 	CEffectData	data;
 
 	data.m_vNormal = traceHit.plane.normal;
-	data.m_vOrigin = traceHit.endpos + ( data.m_vNormal * 4.0f );
+	data.m_vOrigin = traceHit.endpos + (data.m_vNormal * 4.0f);
 
-	DispatchEffect( "StunstickImpact", data );
+	Vector vecDir;
 
-//#endif
+	AngleVectors( pOwner->EyeAngles(), &vecDir );
 
-	//FIXME: need new decals
+	QAngle EyeAngle = pOwner->EyeAngles();
+	Vector vecAbsStart = pOwner->EyePosition();
+	Vector vecAbsEnd = vecAbsStart + ( vecDir * 72 );
+
+	trace_t tr;
+	UTIL_TraceLine( vecAbsStart, vecAbsEnd, MASK_ALL, pOwner, COLLISION_GROUP_NONE, &tr );
+
+	cplane_t impactPlane = tr.plane;
+	Vector impactNormal = impactPlane.normal;
+	QAngle impactAngles;
+	VectorAngles( impactNormal, impactAngles );
+
+	//DispatchParticleEffect("weapon_stunstick_impact", PATTACH_POINT_FOLLOW, pOwner->GetViewModel(), "1", true);
+	if ( tr.DidHit() ) {
+		DispatchParticleEffect( "weapon_stunstick_impact", tr.endpos, impactAngles, this );
+	}
+
 	UTIL_ImpactTrace( &traceHit, DMG_CLUB );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Calculates stunstick charge damage
+//-----------------------------------------------------------------------------
+
+float CWeaponStunStick::GetChargedDmg( void ) {
+	float	ChargeTime = ( gpGlobals->curtime - m_flChargeStartTime );
+	if ( ChargeTime < ( STUNSTICK_MAX_CHARGE ) ) {
+		return ChargeTime * 30;
+	}
+	else {
+		return STUNSTICK_MAX_CHARGE_DAMAGE;
+	}
+}
+
+void CWeaponStunStick::ChargedAttack() {
+#ifdef RTBMP
+	float	ChargeTime = ( gpGlobals->curtime - m_flChargeStartTime );
+	if ( ChargeTime >= 0.5f ) {
+#ifndef CLIENT_DLL
+		CHL2MP_Player *pPlayer = ToHL2MPPlayer( GetPlayerOwner() );
+		pPlayer->NoteWeaponFired();
+#endif
+		BaseClass::PrimaryAttack( GetChargedDmg(), DMG_STUNSTICK );
+		m_flNextSecondaryAttack = gpGlobals->curtime + 1;
+		m_bSwinging = true;
+	}
+	else {
+		StopWeaponSound( WPN_DOUBLE );  // stop sound so it doesn't keep playing when we stop early
+		SendWeaponAnim( ACT_VM_IDLE );
+	}
+	m_bIsCharging = false;
+#endif
 }
 
 #ifndef CLIENT_DLL
@@ -419,24 +493,55 @@ void CWeaponStunStick::Operator_HandleAnimEvent( animevent_t *pEvent, CBaseComba
 void CWeaponStunStick::SetStunState( bool state )
 {
 	m_bActive = state;
-
-	if ( m_bActive )
+	CBaseCombatCharacter *pOwner = GetOwner();
+	if (m_bActive)
 	{
 		//FIXME: START - Move to client-side
-
+		//if (pOwner->IsNPC()) {
 		Vector vecAttachment;
 		QAngle vecAttachmentAngles;
+		GetAttachment( "1", vecAttachment, vecAttachmentAngles );
+		if (pOwner->IsNPC()) {
+			g_pEffects->Sparks( vecAttachment );
+		}
 
-		GetAttachment( 1, vecAttachment, vecAttachmentAngles );
-		g_pEffects->Sparks( vecAttachment );
-
+		//}
 		//FIXME: END - Move to client-side
-
-		EmitSound( "Weapon_StunStick.Activate" );
+#ifdef CLIENT_DLL
+		if ( prediction->IsFirstTimePredicted() )
+#endif
+		{
+#ifdef MAPBASE
+			// Support for weapon sound alternative
+			if ( *GetShootSound( SPECIAL1 ) )
+			{
+				WeaponSound( SPECIAL1 );
+			}
+			else
+#endif
+			{
+				EmitSound( "Weapon_StunStick.Activate" );
+			}
+		}
 	}
 	else
 	{
-		EmitSound( "Weapon_StunStick.Deactivate" );
+#ifdef CLIENT_DLL
+		if ( prediction->IsFirstTimePredicted() )
+#endif
+		{
+#ifdef MAPBASE
+			// Support for weapon sound alternative
+			if ( *GetShootSound( SPECIAL2 ) )
+			{
+				WeaponSound( SPECIAL2 );
+			}
+			else
+#endif
+			{
+				EmitSound( "Weapon_StunStick.Deactivate" );
+			}
+		}
 	}
 }
 
@@ -446,9 +551,12 @@ void CWeaponStunStick::SetStunState( bool state )
 //-----------------------------------------------------------------------------
 bool CWeaponStunStick::Deploy( void )
 {
+	if ( BaseClass::Deploy() == false )
+		return false;
+
 	SetStunState( true );
 
-	return BaseClass::Deploy();
+	return true;
 }
 
 //-----------------------------------------------------------------------------
@@ -456,6 +564,11 @@ bool CWeaponStunStick::Deploy( void )
 //-----------------------------------------------------------------------------
 bool CWeaponStunStick::Holster( CBaseCombatWeapon *pSwitchingTo )
 {
+	SendWeaponAnim( ACT_VM_HOLSTER );
+
+	m_bIsCharging = false;
+	StopWeaponSound( WPN_DOUBLE );
+
 	if ( BaseClass::Holster( pSwitchingTo ) == false )
 		return false;
 
@@ -518,10 +631,11 @@ bool UTIL_GetWeaponAttachment( C_BaseCombatWeapon *pWeapon, int attachmentID, Ve
 
 #define	BEAM_ATTACH_CORE_NAME	"sparkrear"
 
+#ifdef CLIENT_DLL
 //-----------------------------------------------------------------------------
 // Purpose: Sets up the attachment point lookup for the model
 //-----------------------------------------------------------------------------
-void C_WeaponStunStick::SetupAttachmentPoints( void )
+void CWeaponStunStick::SetupAttachmentPoints( void )
 {
 	// Setup points for both types of views
 	if ( ShouldDrawUsingViewModel() )
@@ -560,7 +674,7 @@ void C_WeaponStunStick::SetupAttachmentPoints( void )
 //-----------------------------------------------------------------------------
 // Purpose: Draws the stunstick model (with extra effects)
 //-----------------------------------------------------------------------------
-int C_WeaponStunStick::DrawModel( int flags )
+int CWeaponStunStick::DrawModel( int flags )
 {
 	if ( ShouldDraw() == false )
 		return 0;
@@ -568,7 +682,7 @@ int C_WeaponStunStick::DrawModel( int flags )
 	// Only render these on the transparent pass
 	if ( flags & STUDIO_TRANSPARENCY )
 	{
-		DrawEffects();
+		//DrawEffects();
 		return 1;
 	}
 
@@ -578,82 +692,127 @@ int C_WeaponStunStick::DrawModel( int flags )
 //-----------------------------------------------------------------------------
 // Purpose: Randomly adds extra effects
 //-----------------------------------------------------------------------------
-void C_WeaponStunStick::ClientThink( void )
+void CWeaponStunStick::ClientThink( void )
 {
-	if ( InSwing() == false )
-	{
-		if ( m_bSwungLastFrame )
-		{
-			// Start fading
-			m_flFadeTime = gpGlobals->curtime;
-			m_bSwungLastFrame = false;
-		}
+	CBaseCombatCharacter *pOwner = GetOwner();
 
+	if (!GetStunState() || m_flChargeLevel == 0.0f) {
+		if (m_bStunChargeActive) {
+			m_bStunChargeActive = false;
+			ParticleProp()->StopEmissionAndDestroyImmediately( m_hStunstickParticle );
+		}
+	}
+
+	if (GetStunState()) {
+		if (!m_bStunChargeActive && m_flChargeLevel > 0.0f && ShouldDrawUsingViewModel()) {
+			m_bStunChargeActive = true;
+
+			CNewParticleEffect *pChargedParticle = ParticleProp()->Create( "weapon_stunstick_charge", PATTACH_ABSORIGIN_FOLLOW );
+
+			m_hStunstickParticle = pChargedParticle;
+		}
+		if (m_bStunChargeActive && ShouldDrawUsingViewModel()) {
+			Vector vecAttachment;
+			QAngle vecAttachmentAngles;
+
+			GetAttachment( "1", vecAttachment, vecAttachmentAngles );
+
+			ParticleProp()->AddControlPoint( m_hStunstickParticle, 0, ToBasePlayer( pOwner )->GetViewModel(), PATTACH_POINT_FOLLOW, "2" );
+			ParticleProp()->AddControlPoint( m_hStunstickParticle, 1, null, PATTACH_WORLDORIGIN, 0, Vector( m_flChargeLevel, 0, 0 ) );
+		}
+	}
+	if (!m_bSwinging)
+	{
+		m_hStunstickSwing = NULL;
+		return;
+	}
+	else{
+		if (!m_hStunstickSwing && ShouldDrawUsingViewModel()){
+			m_hStunstickSwing = ParticleProp()->Create( "weapon_stunstick_swing", PATTACH_ABSORIGIN_FOLLOW );
+			ParticleProp()->AddControlPoint( m_hStunstickSwing, 0, ToBasePlayer( pOwner )->GetViewModel(), PATTACH_POINT_FOLLOW, "2" );
+			m_hStunstickSwing->SetControlPoint( 1, Vector( m_flChargeLevel, 0, 0 ) );
+		}
 		return;
 	}
 
-	// Remember if we were swinging last frame
-	m_bSwungLastFrame = InSwing();
-
-	if ( IsEffectActive( EF_NODRAW ) )
+	if (IsEffectActive( EF_NODRAW ))
 		return;
 
-	if ( ShouldDrawUsingViewModel() )
-	{
-		// Update our effects
-		if ( gpGlobals->frametime != 0.0f && ( random->RandomInt( 0, 3 ) == 0 ) )
-		{		
-			Vector	vecOrigin;
-			QAngle	vecAngles;
+	//if ( InSwing() == false )
+	//{
+	//	if ( m_bSwungLastFrame )
+	//	{
+	//		// Start fading
+	//		m_flFadeTime = gpGlobals->curtime;
+	//		m_bSwungLastFrame = false;
+	//	}
 
-			// Inner beams
-			BeamInfo_t beamInfo;
+	//	return;
+	//}
 
-			int attachment = random->RandomInt( 0, 15 );
+	//// Remember if we were swinging last frame
+	//m_bSwungLastFrame = InSwing();
 
-			UTIL_GetWeaponAttachment( this, attachment, vecOrigin, vecAngles );
-			::FormatViewModelAttachment( vecOrigin, false );
+	//if ( IsEffectActive( EF_NODRAW ) )
+	//	return;
 
-			CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
-			CBaseEntity *pBeamEnt = pOwner->GetViewModel();
+	//if ( ShouldDrawUsingViewModel() )
+	//{
+	//	// Update our effects
+	//	if ( gpGlobals->frametime != 0.0f && ( random->RandomInt( 0, 3 ) == 0 ) )
+	//	{		
+	//		Vector	vecOrigin;
+	//		QAngle	vecAngles;
 
-			beamInfo.m_vecStart = vec3_origin;
-			beamInfo.m_pStartEnt= pBeamEnt;
-			beamInfo.m_nStartAttachment = attachment;
+	//		// Inner beams
+	//		BeamInfo_t beamInfo;
 
-			beamInfo.m_pEndEnt	= NULL;
-			beamInfo.m_nEndAttachment = -1;
-			beamInfo.m_vecEnd = vecOrigin + RandomVector( -8, 8 );
+	//		int attachment = random->RandomInt( 0, 15 );
 
-			beamInfo.m_pszModelName = STUNSTICK_BEAM_MATERIAL;
-			beamInfo.m_flHaloScale = 0.0f;
-			beamInfo.m_flLife = 0.05f;
-			beamInfo.m_flWidth = random->RandomFloat( 1.0f, 2.0f );
-			beamInfo.m_flEndWidth = 0;
-			beamInfo.m_flFadeLength = 0.0f;
-			beamInfo.m_flAmplitude = random->RandomFloat( 16, 32 );
-			beamInfo.m_flBrightness = 255.0;
-			beamInfo.m_flSpeed = 0.0;
-			beamInfo.m_nStartFrame = 0.0;
-			beamInfo.m_flFrameRate = 1.0f;
-			beamInfo.m_flRed = 255.0f;;
-			beamInfo.m_flGreen = 255.0f;
-			beamInfo.m_flBlue = 255.0f;
-			beamInfo.m_nSegments = 16;
-			beamInfo.m_bRenderable = true;
-			beamInfo.m_nFlags = 0;
-			
-			beams->CreateBeamEntPoint( beamInfo );
-		}
-	}
+	//		UTIL_GetWeaponAttachment( this, attachment, vecOrigin, vecAngles );
+	//		::FormatViewModelAttachment( vecOrigin, false );
+
+	//		CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
+	//		CBaseEntity *pBeamEnt = pOwner->GetViewModel();
+
+	//		beamInfo.m_vecStart = vec3_origin;
+	//		beamInfo.m_pStartEnt= pBeamEnt;
+	//		beamInfo.m_nStartAttachment = attachment;
+
+	//		beamInfo.m_pEndEnt	= NULL;
+	//		beamInfo.m_nEndAttachment = -1;
+	//		beamInfo.m_vecEnd = vecOrigin + RandomVector( -8, 8 );
+
+	//		beamInfo.m_pszModelName = STUNSTICK_BEAM_MATERIAL;
+	//		beamInfo.m_flHaloScale = 0.0f;
+	//		beamInfo.m_flLife = 0.05f;
+	//		beamInfo.m_flWidth = random->RandomFloat( 1.0f, 2.0f );
+	//		beamInfo.m_flEndWidth = 0;
+	//		beamInfo.m_flFadeLength = 0.0f;
+	//		beamInfo.m_flAmplitude = random->RandomFloat( 16, 32 );
+	//		beamInfo.m_flBrightness = 255.0;
+	//		beamInfo.m_flSpeed = 0.0;
+	//		beamInfo.m_nStartFrame = 0.0;
+	//		beamInfo.m_flFrameRate = 1.0f;
+	//		beamInfo.m_flRed = 255.0f;;
+	//		beamInfo.m_flGreen = 255.0f;
+	//		beamInfo.m_flBlue = 255.0f;
+	//		beamInfo.m_nSegments = 16;
+	//		beamInfo.m_bRenderable = true;
+	//		beamInfo.m_nFlags = 0;
+	//		
+	//		beams->CreateBeamEntPoint( beamInfo );
+	//	}
+	//}
 }
 
-//-----------------------------------------------------------------------------
-// Purpose: Starts the client-side version thinking
-//-----------------------------------------------------------------------------
-void C_WeaponStunStick::OnDataChanged( DataUpdateType_t updateType )
+////-----------------------------------------------------------------------------
+//// Purpose: Starts the client-side version thinking
+////-----------------------------------------------------------------------------
+void CWeaponStunStick::OnDataChanged( DataUpdateType_t updateType )
 {
 	BaseClass::OnDataChanged( updateType );
+
 	if ( updateType == DATA_UPDATE_CREATED )
 	{
 		SetNextClientThink( CLIENT_THINK_ALWAYS );
@@ -664,15 +823,30 @@ void C_WeaponStunStick::OnDataChanged( DataUpdateType_t updateType )
 //-----------------------------------------------------------------------------
 // Purpose: Tells us we're always a translucent entity
 //-----------------------------------------------------------------------------
-RenderGroup_t C_WeaponStunStick::GetRenderGroup( void )
+RenderGroup_t CWeaponStunStick::GetRenderGroup( void )
 {
 	return RENDER_GROUP_TWOPASS;
 }
 
 //-----------------------------------------------------------------------------
+// Purpose: Viewmodel was drawn
+//-----------------------------------------------------------------------------
+void CWeaponStunStick::ViewModelDrawn( C_BaseViewModel *pBaseViewModel )
+{
+	//// Don't bother when we're not deployed
+	//if (IsWeaponVisible())
+	//{
+	//	// Do all our special effects
+	//	DrawEffects();
+	//}
+
+	BaseClass::ViewModelDrawn( pBaseViewModel );
+}
+
+//-----------------------------------------------------------------------------
 // Purpose: Tells us we're always a translucent entity
 //-----------------------------------------------------------------------------
-bool C_WeaponStunStick::InSwing( void )
+bool CWeaponStunStick::InSwing( void )
 {
 	int activity = GetActivity();
 
@@ -690,187 +864,172 @@ bool C_WeaponStunStick::InSwing( void )
 	return false;
 }
 
-//-----------------------------------------------------------------------------
-// Purpose: Draw our special effects
-//-----------------------------------------------------------------------------
-void C_WeaponStunStick::DrawThirdPersonEffects( void )
-{
-	Vector	vecOrigin;
-	QAngle	vecAngles;
-	float	color[3];
-	float	scale;
-
-	CMatRenderContextPtr pRenderContext( materials );
-	IMaterial *pMaterial = materials->FindMaterial( STUNSTICK_GLOW_MATERIAL, NULL, false );
-	pRenderContext->Bind( pMaterial );
-
-	// Get bright when swung
-	if ( InSwing() )
-	{
-		color[0] = color[1] = color[2] = 0.4f;
-		scale = 22.0f;
-	}
-	else
-	{
-		color[0] = color[1] = color[2] = 0.1f;
-		scale = 20.0f;
-	}
-	
-	// Draw an all encompassing glow around the entire head
-	UTIL_GetWeaponAttachment( this, m_BeamCenterAttachment, vecOrigin, vecAngles );
-	DrawHalo( pMaterial, vecOrigin, scale, color );
-
-	if ( InSwing() )
-	{
-		pMaterial = materials->FindMaterial( STUNSTICK_GLOW_MATERIAL2, NULL, false );
-		pRenderContext->Bind( pMaterial );
-
-		color[0] = color[1] = color[2] = random->RandomFloat( 0.6f, 0.8f );
-		scale = random->RandomFloat( 4.0f, 6.0f );
-
-		// Draw an all encompassing glow around the entire head
-		UTIL_GetWeaponAttachment( this, m_BeamCenterAttachment, vecOrigin, vecAngles );
-		DrawHalo( pMaterial, vecOrigin, scale, color );
-
-		// Update our effects
-		if ( gpGlobals->frametime != 0.0f && ( random->RandomInt( 0, 5 ) == 0 ) )
-		{
-			Vector	vecOrigin;
-			QAngle	vecAngles;
-
-			GetAttachment( 1, vecOrigin, vecAngles );
-
-			Vector	vForward;
-			AngleVectors( vecAngles, &vForward );
-
-			Vector vEnd = vecOrigin - vForward * 1.0f;
-
-			// Inner beams
-			BeamInfo_t beamInfo;
-
-			beamInfo.m_vecStart = vEnd;
-			Vector	offset = RandomVector( -12, 8 );
-
-			offset += Vector(4,4,4);
-			beamInfo.m_vecEnd = vecOrigin + offset;
-
-			beamInfo.m_pStartEnt= cl_entitylist->GetEnt( BEAMENT_ENTITY( entindex() ) );
-			beamInfo.m_pEndEnt	= cl_entitylist->GetEnt( BEAMENT_ENTITY( entindex() ) );
-			beamInfo.m_nStartAttachment = 1;
-			beamInfo.m_nEndAttachment = -1;
-			
-			beamInfo.m_nType = TE_BEAMTESLA;
-			beamInfo.m_pszModelName = STUNSTICK_BEAM_MATERIAL;
-			beamInfo.m_flHaloScale = 0.0f;
-			beamInfo.m_flLife = 0.01f;
-			beamInfo.m_flWidth = random->RandomFloat( 1.0f, 3.0f );
-			beamInfo.m_flEndWidth = 0;
-			beamInfo.m_flFadeLength = 0.0f;
-			beamInfo.m_flAmplitude = random->RandomFloat( 1, 2 );
-			beamInfo.m_flBrightness = 255.0;
-			beamInfo.m_flSpeed = 0.0;
-			beamInfo.m_nStartFrame = 0.0;
-			beamInfo.m_flFrameRate = 1.0f;
-			beamInfo.m_flRed = 255.0f;;
-			beamInfo.m_flGreen = 255.0f;
-			beamInfo.m_flBlue = 255.0f;
-			beamInfo.m_nSegments = 16;
-			beamInfo.m_bRenderable = true;
-			beamInfo.m_nFlags = FBEAM_SHADEOUT;
-			
-			beams->CreateBeamPoints( beamInfo );
-		}
-	}
-}
-
-//-----------------------------------------------------------------------------
-// Purpose: Draw our special effects
-//-----------------------------------------------------------------------------
-void C_WeaponStunStick::DrawFirstPersonEffects( void )
-{
-	Vector	vecOrigin;
-	QAngle	vecAngles;
-	float	color[3];
-	float	scale;
-
-	CMatRenderContextPtr pRenderContext( materials );
-	IMaterial *pMaterial = materials->FindMaterial( STUNSTICK_GLOW_MATERIAL_NOZ, NULL, false );
-	// FIXME: Needs to work with new IMaterial system!
-	pRenderContext->Bind( pMaterial );
-
-	// Find where we are in the fade
-	float fadeAmount = RemapValClamped( gpGlobals->curtime, m_flFadeTime, m_flFadeTime + FADE_DURATION, 1.0f, 0.1f );
-
-	// Get bright when swung
-	if ( InSwing() )
-	{
-		color[0] = color[1] = color[2] = 0.4f;
-		scale = 22.0f;
-	}
-	else
-	{
-		color[0] = color[1] = color[2] = 0.4f * fadeAmount;
-		scale = 20.0f;
-	}
-	
-	if ( color[0] > 0.0f )
-	{
-		// Draw an all encompassing glow around the entire head
-		UTIL_GetWeaponAttachment( this, m_BeamCenterAttachment, vecOrigin, vecAngles );
-		DrawHalo( pMaterial, vecOrigin, scale, color );
-	}
-
-	// Draw bright points at each attachment location
-	for ( int i = 0; i < (NUM_BEAM_ATTACHMENTS*2)+1; i++ )
-	{
-		if ( InSwing() )
-		{
-			color[0] = color[1] = color[2] = random->RandomFloat( 0.05f, 0.5f );
-			scale = random->RandomFloat( 4.0f, 5.0f );
-		}
-		else
-		{
-			color[0] = color[1] = color[2] = random->RandomFloat( 0.05f, 0.5f ) * fadeAmount;
-			scale = random->RandomFloat( 4.0f, 5.0f ) * fadeAmount;
-		}
-
-		if ( color[0] > 0.0f )
-		{
-			UTIL_GetWeaponAttachment( this, i, vecOrigin, vecAngles );
-			DrawHalo( pMaterial, vecOrigin, scale, color );
-		}
-	}
-}
+////-----------------------------------------------------------------------------
+//// Purpose: Draw our special effects
+////-----------------------------------------------------------------------------
+//void CWeaponStunStick::DrawThirdPersonEffects( void )
+//{
+//	Vector	vecOrigin;
+//	QAngle	vecAngles;
+//	float	color[3];
+//	float	scale;
+//
+//	CMatRenderContextPtr pRenderContext( materials );
+//	IMaterial *pMaterial = materials->FindMaterial( STUNSTICK_GLOW_MATERIAL, NULL, false );
+//	pRenderContext->Bind( pMaterial );
+//
+//	// Get bright when swung
+//	if ( InSwing() )
+//	{
+//		color[0] = color[1] = color[2] = 0.4f;
+//		scale = 22.0f;
+//	}
+//	else
+//	{
+//		color[0] = color[1] = color[2] = 0.1f;
+//		scale = 20.0f;
+//	}
+//	
+//	// Draw an all encompassing glow around the entire head
+//	UTIL_GetWeaponAttachment( this, m_BeamCenterAttachment, vecOrigin, vecAngles );
+//	DrawHalo( pMaterial, vecOrigin, scale, color );
+//
+//	if ( InSwing() )
+//	{
+//		pMaterial = materials->FindMaterial( STUNSTICK_GLOW_MATERIAL2, NULL, false );
+//		pRenderContext->Bind( pMaterial );
+//
+//		color[0] = color[1] = color[2] = random->RandomFloat( 0.6f, 0.8f );
+//		scale = random->RandomFloat( 4.0f, 6.0f );
+//
+//		// Draw an all encompassing glow around the entire head
+//		UTIL_GetWeaponAttachment( this, m_BeamCenterAttachment, vecOrigin, vecAngles );
+//		DrawHalo( pMaterial, vecOrigin, scale, color );
+//
+//		// Update our effects
+//		if ( gpGlobals->frametime != 0.0f && ( random->RandomInt( 0, 5 ) == 0 ) )
+//		{
+//			Vector	vecOrigin;
+//			QAngle	vecAngles;
+//
+//			GetAttachment( 1, vecOrigin, vecAngles );
+//
+//			Vector	vForward;
+//			AngleVectors( vecAngles, &vForward );
+//
+//			Vector vEnd = vecOrigin - vForward * 1.0f;
+//
+//			// Inner beams
+//			BeamInfo_t beamInfo;
+//
+//			beamInfo.m_vecStart = vEnd;
+//			Vector	offset = RandomVector( -12, 8 );
+//
+//			offset += Vector(4,4,4);
+//			beamInfo.m_vecEnd = vecOrigin + offset;
+//
+//			beamInfo.m_pStartEnt= cl_entitylist->GetEnt( BEAMENT_ENTITY( entindex() ) );
+//			beamInfo.m_pEndEnt	= cl_entitylist->GetEnt( BEAMENT_ENTITY( entindex() ) );
+//			beamInfo.m_nStartAttachment = 1;
+//			beamInfo.m_nEndAttachment = -1;
+//			
+//			beamInfo.m_nType = TE_BEAMTESLA;
+//			beamInfo.m_pszModelName = STUNSTICK_BEAM_MATERIAL;
+//			beamInfo.m_flHaloScale = 0.0f;
+//			beamInfo.m_flLife = 0.01f;
+//			beamInfo.m_flWidth = random->RandomFloat( 1.0f, 3.0f );
+//			beamInfo.m_flEndWidth = 0;
+//			beamInfo.m_flFadeLength = 0.0f;
+//			beamInfo.m_flAmplitude = random->RandomFloat( 1, 2 );
+//			beamInfo.m_flBrightness = 255.0;
+//			beamInfo.m_flSpeed = 0.0;
+//			beamInfo.m_nStartFrame = 0.0;
+//			beamInfo.m_flFrameRate = 1.0f;
+//			beamInfo.m_flRed = 255.0f;;
+//			beamInfo.m_flGreen = 255.0f;
+//			beamInfo.m_flBlue = 255.0f;
+//			beamInfo.m_nSegments = 16;
+//			beamInfo.m_bRenderable = true;
+//			beamInfo.m_nFlags = FBEAM_SHADEOUT;
+//			
+//			beams->CreateBeamPoints( beamInfo );
+//		}
+//	}
+//}
 
 //-----------------------------------------------------------------------------
 // Purpose: Draw our special effects
 //-----------------------------------------------------------------------------
-void C_WeaponStunStick::DrawEffects( void )
-{
-	if ( ShouldDrawUsingViewModel() )
-	{
-		DrawFirstPersonEffects();
-	}
-	else
-	{
-		DrawThirdPersonEffects();
-	}
-}
+//void CWeaponStunStick::DrawFirstPersonEffects( void )
+//{
+//	Vector	vecOrigin;
+//	QAngle	vecAngles;
+//	float	color[3];
+//	float	scale;
+//
+//	CMatRenderContextPtr pRenderContext( materials );
+//	IMaterial *pMaterial = materials->FindMaterial( STUNSTICK_GLOW_MATERIAL_NOZ, NULL, false );
+//	// FIXME: Needs to work with new IMaterial system!
+//	pRenderContext->Bind( pMaterial );
+//
+//	// Find where we are in the fade
+//	float fadeAmount = RemapValClamped( gpGlobals->curtime, m_flFadeTime, m_flFadeTime + FADE_DURATION, 1.0f, 0.1f );
+//
+//	// Get bright when swung
+//	if ( InSwing() )
+//	{
+//		color[0] = color[1] = color[2] = 0.4f;
+//		scale = 22.0f;
+//	}
+//	else
+//	{
+//		color[0] = color[1] = color[2] = 0.4f * fadeAmount;
+//		scale = 20.0f;
+//	}
+//	
+//	if ( color[0] > 0.0f )
+//	{
+//		// Draw an all encompassing glow around the entire head
+//		UTIL_GetWeaponAttachment( this, m_BeamCenterAttachment, vecOrigin, vecAngles );
+//		DrawHalo( pMaterial, vecOrigin, scale, color );
+//	}
+//
+//	// Draw bright points at each attachment location
+//	for ( int i = 0; i < (NUM_BEAM_ATTACHMENTS*2)+1; i++ )
+//	{
+//		if ( InSwing() )
+//		{
+//			color[0] = color[1] = color[2] = random->RandomFloat( 0.05f, 0.5f );
+//			scale = random->RandomFloat( 4.0f, 5.0f );
+//		}
+//		else
+//		{
+//			color[0] = color[1] = color[2] = random->RandomFloat( 0.05f, 0.5f ) * fadeAmount;
+//			scale = random->RandomFloat( 4.0f, 5.0f ) * fadeAmount;
+//		}
+//
+//		if ( color[0] > 0.0f )
+//		{
+//			UTIL_GetWeaponAttachment( this, i, vecOrigin, vecAngles );
+//			DrawHalo( pMaterial, vecOrigin, scale, color );
+//		}
+//	}
+//}
 
-//-----------------------------------------------------------------------------
-// Purpose: Viewmodel was drawn
-//-----------------------------------------------------------------------------
-void C_WeaponStunStick::ViewModelDrawn( C_BaseViewModel *pBaseViewModel )
-{
-	// Don't bother when we're not deployed
-	if ( IsWeaponVisible() )
-	{
-		// Do all our special effects
-		DrawEffects();
-	}
-
-	BaseClass::ViewModelDrawn( pBaseViewModel );
-}
+////-----------------------------------------------------------------------------
+//// Purpose: Draw our special effects
+////-----------------------------------------------------------------------------
+//void CWeaponStunStick::DrawEffects( void )
+//{
+//	if ( ShouldDrawUsingViewModel() )
+//	{
+//		DrawFirstPersonEffects();
+//	}
+//	else
+//	{
+//		DrawThirdPersonEffects();
+//	}
+//}
 
 //-----------------------------------------------------------------------------
 // Purpose: Draw a cheap glow quad at our impact point (with sparks)
@@ -899,4 +1058,5 @@ void StunstickImpactCallback( const CEffectData &data )
 
 DECLARE_CLIENT_EFFECT( "StunstickImpact", StunstickImpactCallback );
 
+#endif
 #endif

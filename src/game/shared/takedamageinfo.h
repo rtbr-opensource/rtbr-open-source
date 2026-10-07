@@ -14,6 +14,10 @@
 
 #include "networkvar.h" // todo: change this when DECLARE_CLASS is moved into a better location.
 
+#ifdef MAPBASE_VSCRIPT
+#include "vscript/ivscript.h"
+#endif
+
 // Used to initialize m_flBaseDamage to something that we know pretty much for sure
 // hasn't been modified by a user. 
 #define BASEDAMAGE_NOT_SPECIFIED	FLT_MAX
@@ -24,6 +28,15 @@ class CBaseEntity;
 class CTakeDamageInfo
 {
 public:
+
+	enum ECritType
+	{
+		CRIT_NONE = 0,
+		CRIT_MINI,
+		CRIT_FULL,
+	};
+
+
 	DECLARE_CLASS_NOBASE( CTakeDamageInfo );
 
 					CTakeDamageInfo();
@@ -105,6 +118,20 @@ public:
 	// For designer debug output.
 	static void		DebugGetDamageTypeString(unsigned int DamageType, char *outbuf, int outbuflength );
 
+	void			SetCritType( ECritType eType ); 
+
+	ECritType		GetCritType() const { return m_eCritType; }
+#ifdef MAPBASE_VSCRIPT
+	HSCRIPT			ScriptGetInflictor() const;
+	void			ScriptSetInflictor( HSCRIPT pInflictor );
+	HSCRIPT			ScriptGetWeapon() const;
+	void			ScriptSetWeapon( HSCRIPT pWeapon );
+	HSCRIPT			ScriptGetAttacker() const;
+	void			ScriptSetAttacker( HSCRIPT pAttacker );
+
+	void			ScriptSetDamageBonus( float flBonus );
+#endif
+
 
 //private:
 	void			CopyDamageToBaseDamage();
@@ -132,6 +159,8 @@ protected:
 	bool			m_bForceFriendlyFire;	// Ideally this would be a dmg type, but we can't add more
 
 	float			m_flDamageForForce;
+
+	ECritType		m_eCritType;
 
 	DECLARE_SIMPLE_DATADESC();
 };
@@ -353,12 +382,12 @@ inline void CTakeDamageInfo::SetDamageCustom( int iDamageCustom )
 
 inline int CTakeDamageInfo::GetDamageStats() const
 {
-	return m_iDamageCustom;
+	return m_iDamageStats;
 }
 
 inline void CTakeDamageInfo::SetDamageStats( int iDamageCustom )
 {
-	m_iDamageCustom = iDamageCustom;
+	m_iDamageStats = iDamageCustom;
 }
 
 inline int CTakeDamageInfo::GetAmmoType() const

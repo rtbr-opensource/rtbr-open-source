@@ -10,6 +10,9 @@
 
 #include "common_ps_fxc.h"
 
+#if defined(SHADER_MODEL_PS_3_0)
+//#define NEW_SHADOW_FILTERS // Comment if you want to enable retail shadow filter.
+#endif
 
 // JasonM - TODO: remove this simpleton version
 float DoShadow( sampler DepthSampler, float4 texCoord )

@@ -12,6 +12,10 @@
 #include "vstdlib/random.h"
 #include "engine/IEngineSound.h"
 #include "explode.h"
+#include "particle_parse.h"
+#ifdef RTBMP
+#include "rtbmp_gamerules.h"
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -102,6 +106,7 @@ void CTripmineGrenade::Precache( void )
 
 	PrecacheScriptSound( "TripmineGrenade.Place" );
 	PrecacheScriptSound( "TripmineGrenade.Activate" );
+	PrecacheParticleSystem( "explosion_nailmine" );
 }
 
 
@@ -173,9 +178,35 @@ void CTripmineGrenade::MakeBeam( void )
 
 	Vector vecTmpEnd = GetLocalOrigin() + m_vecDir * 2048 * drawLength;
 
-	m_pBeam = CBeam::BeamCreate( g_pModelNameLaser, 0.35 );
+	m_pBeam = CBeam::BeamCreate( g_pModelNameLaser, 1.0 );
 	m_pBeam->PointEntInit( vecTmpEnd, this );
-	m_pBeam->SetColor( 255, 55, 52 );
+#ifdef RTBMP
+	if (m_hOwner && RTBMPRules()->IsTeamplay())
+	{
+		ChangeTeam( m_hOwner->GetTeamNumber() );
+
+		if (GetTeamNumber() == TEAM_COMBINE)
+		{
+			m_pBeam->SetColor( 153, 204, 255 );
+		}
+		else if (GetTeamNumber() == TEAM_REBELS)
+		{
+			m_pBeam->SetColor( 255, 64, 64 );
+		}
+		else
+		{
+			Warning( "Teamplay is set but owner is not on a team!" );
+			m_pBeam->SetColor( 255, 178, 0 );
+		}
+	}
+	else
+	{
+		m_pBeam->SetColor( 255, 178, 0 );
+	}
+#else
+	m_pBeam->SetColor( 255, 178, 0 );
+#endif
+
 	m_pBeam->SetScrollRate( 25.6 );
 	m_pBeam->SetBrightness( 64 );
 	
@@ -215,6 +246,17 @@ void CTripmineGrenade::BeamBreakThink( void  )
 			m_hOwner = tr.m_pEnt;	// reset owner too
 	}
 
+#ifdef RTBMP
+	// teammates don't trigger tripmines
+	if (RTBMPRules()->IsTeamplay() &&
+		tr.m_pEnt->IsPlayer() &&
+		tr.m_pEnt->GetTeamNumber() == GetTeamNumber() &&
+		tr.m_pEnt != m_hOwner)
+	{
+		SetNextThink( gpGlobals->curtime + 0.05f );
+		return;
+	}
+#endif
 
 	CBaseEntity *pEntity = tr.m_pEnt;
 	CBaseCombatCharacter *pBCC  = ToBaseCombatCharacter( pEntity );
@@ -269,7 +311,8 @@ void CTripmineGrenade::DelayDeathThink( void )
 	UTIL_ScreenShake( GetAbsOrigin(), 25.0, 150.0, 1.0, 750, SHAKE_START );
 
 	ExplosionCreate( GetAbsOrigin() + m_vecDir * 8, GetAbsAngles(), m_hOwner, GetDamage(), 200, 
-		SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NODLIGHTS | SF_ENVEXPLOSION_NOSMOKE, 0.0f, this);
+		SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NODLIGHTS | SF_ENVEXPLOSION_NOSMOKE | SF_ENVEXPLOSION_NOFIREBALL | SF_ENVEXPLOSION_NOFIREBALLSMOKE | SF_ENVEXPLOSION_NOPARTICLES, 0.0f, this );
+	DispatchParticleEffect( "explosion_nailmine", GetAbsOrigin(), GetAbsAngles() );
 
 	UTIL_Remove( this );
 }

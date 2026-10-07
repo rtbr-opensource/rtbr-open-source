@@ -21,7 +21,20 @@ public:
 	DECLARE_CLASS( CInfoLadderDismount, CBaseEntity );
 	DECLARE_NETWORKCLASS();
 
+	CInfoLadderDismount();
+	~CInfoLadderDismount();
+
 	virtual void DrawDebugGeometryOverlays();
+
+	virtual void Spawn() OVERRIDE;
+
+	static int GetDismountCount();
+	static CInfoLadderDismount* GetDismount( int index );
+	static CUtlVector< CInfoLadderDismount* >	s_Dismounts;
+
+#ifdef GAME_DLL
+	virtual int UpdateTransmitState();
+#endif
 };
 
 typedef CHandle< CInfoLadderDismount > CInfoLadderDismountHandle;
@@ -59,6 +72,11 @@ public:
 	void	InputEnable( inputdata_t &inputdata );
 	void	InputDisable( inputdata_t &inputdata );
 
+#ifdef MAPBASE
+	void	InputForcePlayerOn( inputdata_t &inputdata );
+	void	InputCheckPlayerOn( inputdata_t &inputdata );
+#endif
+
 	bool	IsEnabled() const;
 
 	void	PlayerGotOn( CBasePlayer *pPlayer );
@@ -76,10 +94,8 @@ public:
 	void FindNearbyDismountPoints( const Vector& origin, float radius, CUtlVector< CInfoLadderDismountHandle >& list );
 	const char *GetSurfacePropName();
 
-private:
-
-
 	void	SearchForDismountPoints();
+private:
 
 	// Movement vector from "bottom" to "top" of ladder
 	CNetworkVector( m_vecLadderDir );

@@ -31,11 +31,42 @@ ConVar cl_npc_speedmod_outtime( "cl_npc_speedmod_outtime", "1.5", FCVAR_CLIENTDL
 IMPLEMENT_CLIENTCLASS_DT(C_BaseHLPlayer, DT_HL2_Player, CHL2_Player)
 	RecvPropDataTable( RECVINFO_DT(m_HL2Local),0, &REFERENCE_RECV_TABLE(DT_HL2Local) ),
 	RecvPropBool( RECVINFO( m_fIsSprinting ) ),
+	RecvPropInt( RECVINFO( m_iSuitZoomFOV ) ),
+#ifdef MAPBASE
+	RecvPropInt( RECVINFO( m_nProtagonistIndex ) ),
+#endif
+#if defined(SP_ANIM_STATE) && !defined(MAPBASE_MP)
+	RecvPropFloat( RECVINFO( m_flAnimRenderYaw ) ),
+	RecvPropFloat( RECVINFO( m_flAnimRenderZ ) ),
+#endif
 END_RECV_TABLE()
 
 BEGIN_PREDICTION_DATA( C_BaseHLPlayer )
 	DEFINE_PRED_TYPEDESCRIPTION( m_HL2Local, C_HL2PlayerLocalData ),
 	DEFINE_PRED_FIELD( m_fIsSprinting, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
+END_PREDICTION_DATA()
+
+// link to the correct class.
+#if !defined ( HL2MP ) && !defined ( PORTAL )
+LINK_ENTITY_TO_CLASS( player, C_BaseHLPlayer );
+#endif
+
+BEGIN_RECV_TABLE_NOBASE( LadderMove_t, DT_LadderMove )
+	RecvPropBool( RECVINFO( m_bForceLadderMove ) ),
+	RecvPropBool( RECVINFO( m_bForceMount ) ),
+	RecvPropFloat( RECVINFO( m_flStartTime ) ),
+	RecvPropFloat( RECVINFO( m_flArrivalTime ) ),
+	RecvPropVector( RECVINFO( m_vecGoalPosition ) ),
+	RecvPropVector( RECVINFO( m_vecStartPosition ) ),
+END_RECV_TABLE()
+
+BEGIN_PREDICTION_DATA_NO_BASE( LadderMove_t )
+	DEFINE_PRED_FIELD( m_bForceLadderMove, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
+	DEFINE_PRED_FIELD( m_bForceMount, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
+	DEFINE_PRED_FIELD_TOL( m_flStartTime, FIELD_FLOAT, FTYPEDESC_INSENDTABLE, 0.02f ),
+	DEFINE_PRED_FIELD_TOL( m_flArrivalTime, FIELD_FLOAT, FTYPEDESC_INSENDTABLE, 0.02f ),
+	DEFINE_PRED_FIELD( m_vecGoalPosition, FIELD_VECTOR, FTYPEDESC_INSENDTABLE | FTYPEDESC_NOERRORCHECK ),
+	DEFINE_PRED_FIELD( m_vecStartPosition, FIELD_VECTOR, FTYPEDESC_INSENDTABLE | FTYPEDESC_NOERRORCHECK ),
 END_PREDICTION_DATA()
 
 //-----------------------------------------------------------------------------
@@ -62,10 +93,18 @@ C_BaseHLPlayer::C_BaseHLPlayer()
 	AddVar( &m_Local.m_vecPunchAngleVel, &m_Local.m_iv_vecPunchAngleVel, LATCH_SIMULATION_VAR );
 
 	m_flZoomStart		= 0.0f;
+	m_iSuitZoomFOV		= 25;
 	m_flZoomEnd			= 0.0f;
 	m_flZoomRate		= 0.0f;
 	m_flZoomStartTime	= 0.0f;
 	m_flSpeedMod		= cl_forwardspeed.GetFloat();
+
+#ifdef MAPBASE
+	ConVarRef scissor("r_flashlightscissor");
+	scissor.SetValue("0");
+
+	m_nProtagonistIndex = -1;
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -80,7 +119,30 @@ void C_BaseHLPlayer::OnDataChanged( DataUpdateType_t updateType )
 		SetNextClientThink( CLIENT_THINK_ALWAYS );
 	}
 
+#if defined(SP_ANIM_STATE) && !defined(MAPBASE_MP)
+	if (m_flAnimRenderYaw != FLT_MAX)
+	{
+		m_angAnimRender = QAngle( 0, m_flAnimRenderYaw, 0 );
+	}
+#endif
+
 	BaseClass::OnDataChanged( updateType );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void C_BaseHLPlayer::AddEntity( void )
+{
+	BaseClass::AddEntity();
+
+#ifdef MAPBASE_MP
+	if (m_pPlayerAnimState)
+	{
+		QAngle angEyeAngles = EyeAngles();
+		m_pPlayerAnimState->Update( angEyeAngles.y, angEyeAngles.x );
+	}
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -89,6 +151,20 @@ void C_BaseHLPlayer::OnDataChanged( DataUpdateType_t updateType )
 void C_BaseHLPlayer::Weapon_DropPrimary( void )
 {
 	engine->ServerCmd( "DropPrimary" );
+}
+
+void C_BaseHLPlayer::PreThink( void )
+{
+	BaseClass::PreThink();
+	CheckSuitZoom();
+}
+
+bool C_BaseHLPlayer::Weapon_Switch( C_BaseCombatWeapon *pWeapon, int viewmodelindex )
+{
+	if ( IsZooming() )
+		StopZooming();
+
+	return BaseClass::Weapon_Switch( pWeapon, viewmodelindex );
 }
 
 float C_BaseHLPlayer::GetFOV()
@@ -644,6 +720,112 @@ bool C_BaseHLPlayer::CreateMove( float flInputSampleTime, CUserCmd *pCmd )
 void C_BaseHLPlayer::BuildTransformations( CStudioHdr *hdr, Vector *pos, Quaternion q[], const matrix3x4_t& cameraTransform, int boneMask, CBoneBitList &boneComputed )
 {
 	BaseClass::BuildTransformations( hdr, pos, q, cameraTransform, boneMask, boneComputed );
+/*#ifdef MAPBASE
+	// BuildFirstPersonMeathookTransformations is used prior to this when drawing legs
+	if (!DrawingLegs() || !InPerspectiveView() || !InFirstPersonView())
+#endif*/
 	BuildFirstPersonMeathookTransformations( hdr, pos, q, cameraTransform, boneMask, boneComputed, "ValveBiped.Bip01_Head1" );
 }
+
+
+#ifdef SP_ANIM_STATE
+// Set the activity based on an event or current state
+void C_BaseHLPlayer::SetAnimation( PLAYER_ANIM playerAnim )
+{
+#ifdef MAPBASE_MP
+	if (!m_pPlayerAnimState)
+	{
+		BaseClass::SetAnimation( playerAnim );
+		return;
+	}
+
+	m_pPlayerAnimState->SetPlayerAnimation( playerAnim );
+#endif
+}
+
+#ifdef RTBMP
+void C_BaseHLPlayer::SetFlinch( int HitGroup )
+{
+	if ( !m_pPlayerAnimState )
+		return;
+
+	m_pPlayerAnimState->SetPlayerFlinch( HitGroup );
+}
+#endif
+
+void C_BaseHLPlayer::AddAnimStateLayer( int iSequence, float flBlendIn, float flBlendOut, float flPlaybackRate, bool bHoldAtEnd, bool bOnlyWhenStill )
+{
+#ifdef MAPBASE_MP
+	if (!m_pPlayerAnimState)
+		return;
+
+	m_pPlayerAnimState->AddMiscSequence( iSequence, flBlendIn, flBlendOut, flPlaybackRate, bHoldAtEnd, bOnlyWhenStill );
+#endif
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+const Vector &C_BaseHLPlayer::GetRenderOrigin()
+{
+#ifndef MAPBASE_MP
+	if (m_flAnimRenderZ != 0.0f)
+	{
+		static Vector vecRender;
+		vecRender = BaseClass::GetRenderOrigin();
+		vecRender.z += m_flAnimRenderZ;
+		return vecRender;
+	}
+#endif
+
+	return BaseClass::GetRenderOrigin();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+const QAngle& C_BaseHLPlayer::GetRenderAngles( void )
+{
+#ifdef MAPBASE_MP
+	if ( m_pPlayerAnimState && !IsRagdoll() )
+	{
+		return m_pPlayerAnimState->GetRenderAngles();
+	}
+#else
+	if ( m_flAnimRenderYaw != FLT_MAX )
+	{
+		return m_angAnimRender;
+	}
+#endif
+	else
+	{
+		return BaseClass::GetRenderAngles();	
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: model-change notification. Fires on dynamic load completion as well
+//-----------------------------------------------------------------------------
+CStudioHdr *C_BaseHLPlayer::OnNewModel()
+{
+	CStudioHdr *hdr = BaseClass::OnNewModel();
+
+#ifdef MAPBASE_MP
+	// Clears the animation state if we already have one.
+	if ( m_pPlayerAnimState != NULL )
+	{
+		m_pPlayerAnimState->Release();
+		m_pPlayerAnimState = NULL;
+	}
+
+	if ( hdr && hdr->HaveSequenceForActivity(ACT_HL2MP_IDLE) /*&& hl2_use_sp_animstate.GetBool()*/ )
+	{
+		// Here we create and init the player animation state.
+		m_pPlayerAnimState = CreatePlayerAnimationState(this);
+	}
+#endif
+
+	return hdr;
+}
+#endif
 

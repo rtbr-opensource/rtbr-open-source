@@ -23,6 +23,10 @@
 #include "hintsystem.h"
 #include "SoundEmitterSystem/isoundemittersystembase.h"
 #include "c_env_fog_controller.h"
+#ifdef MAPBASE // From Alien Swarm SDK
+#include "c_postprocesscontroller.h"
+#include "c_colorcorrection.h"
+#endif
 #include "igameevents.h"
 #include "GameEventListener.h"
 
@@ -37,6 +41,7 @@ class C_BaseViewModel;
 class C_FuncLadder;
 class CFlashlightEffect;
 class C_EconWearable;
+class C_PostProcessController;
 
 extern int g_nKillCamMode;
 extern int g_nKillCamTarget1;
@@ -65,6 +70,16 @@ public:
 
 bool IsInFreezeCam( void );
 
+// Lower on the list - higher priority
+enum PlayerScreenFX {
+	SFX_IMMO = 1 << 0,
+	SFX_XENHEAL = 1 << 1,
+	SFX_OICW = 1 << 2,
+	SFX_HMG = 1 << 3,
+	SFX_SNIPER = 1 << 4,
+	SFX_CROSSBOW = 1 << 5,
+};
+
 //-----------------------------------------------------------------------------
 // Purpose: Base Player class
 //-----------------------------------------------------------------------------
@@ -78,6 +93,12 @@ public:
 
 	C_BasePlayer();
 	virtual			~C_BasePlayer();
+
+	int m_fxSFX = 0;
+	void SetFX( int fxType, bool setting );
+	bool GetFX( int fxType ) { return ((m_fxSFX & fxType) != 0); };
+	bool HasAnyFX() { return m_fxSFX != 0; }
+	bool m_bWeaponFXActive = false;
 
 	virtual void	Spawn( void );
 	virtual void	SharedSpawn(); // Shared between client and server.
@@ -125,6 +146,10 @@ public:
 
 	virtual Vector			Weapon_ShootPosition();
 	virtual void			Weapon_DropPrimary( void ) {}
+
+#ifdef MAPBASE
+	virtual Activity		Weapon_TranslateActivity( Activity baseAct, bool *pRequired = NULL );
+#endif
 
 	virtual Vector			GetAutoaimVector( float flScale );
 	void					SetSuitUpdate(const char *name, int fgroup, int iNoRepeat);
@@ -183,7 +208,7 @@ public:
 
 	// Flashlight
 	void	Flashlight( void );
-	void	UpdateFlashlight( void );
+	virtual void	UpdateFlashlight( void );
 
 	// Weapon selection code
 	virtual bool				IsAllowedToSwitchWeapons( void ) { return !IsObserver(); }
@@ -202,6 +227,11 @@ public:
 	void						SetMaxSpeed( float flMaxSpeed ) { m_flMaxspeed = flMaxSpeed; }
 	float						MaxSpeed() const		{ return m_flMaxspeed; }
 
+#ifdef MAPBASE
+	// See c_baseplayer.cpp
+	virtual ShadowType_t		ShadowCastType();
+	virtual bool				ShouldReceiveProjectedTextures( int flags );
+#else
 	// Should this object cast shadows?
 	virtual ShadowType_t		ShadowCastType() { return SHADOWS_NONE; }
 
@@ -209,6 +239,7 @@ public:
 	{
 		return false;
 	}
+#endif
 
 
 	bool						IsLocalPlayer( void ) const;
@@ -264,6 +295,7 @@ public:
 
 	virtual void				UpdateClientData( void );
 
+	bool						IsLerpingFOV( void ) const;
 	virtual float				GetFOV( void );	
 	int							GetDefaultFOV( void ) const;
 	virtual bool				IsZoomed( void )	{ return false; }
@@ -282,6 +314,15 @@ public:
 
 	virtual bool				ShouldInterpolate();
 
+#ifdef MAPBASE
+	bool						InPerspectiveView() const;	// In a view that renders directly from the player's perspective (and may, for example, render the playermodel)
+	bool						DrawingPlayerModelExternally() const;
+	bool						DrawingLegs() const;
+
+	virtual CStudioHdr			*OnNewModel( void );
+	virtual void				BuildTransformations( CStudioHdr *pStudioHdr, Vector *pos, Quaternion q[], const matrix3x4_t &cameraTransform, int boneMask, CBoneBitList &boneComputed );
+#endif
+
 	virtual bool				ShouldDraw();
 	virtual int					DrawModel( int flags );
 
@@ -289,7 +330,7 @@ public:
 	virtual void				OverrideView( CViewSetup *pSetup );
 
 	// returns the player name
-	const char *				GetPlayerName();
+	const char *				GetPlayerName() const;
 	virtual const Vector		GetPlayerMins( void ) const; // uses local player
 	virtual const Vector		GetPlayerMaxs( void ) const; // uses local player
 
@@ -298,6 +339,9 @@ public:
 	bool				IsPoisoned( void ) { return m_Local.m_bPoisoned; }
 
 	C_BaseEntity				*GetUseEntity();
+#ifdef MAPBASE // From Alien Swarm SDK
+	virtual C_BaseEntity		*GetPotentialUseEntity() { return GetUseEntity(); }
+#endif
 
 	// Vehicles...
 	IClientVehicle			*GetVehicle();
@@ -379,6 +423,11 @@ public:
 	void					UpdateFogController( void );
 	void					UpdateFogBlend( void );
 
+#ifdef MAPBASE // From Alien Swarm SDK
+	C_PostProcessController* GetActivePostProcessController() const;
+	C_ColorCorrection*		GetActiveColorCorrection() const;
+#endif
+
 	float					GetFOVTime( void ){ return m_flFOVTime; }
 
 	virtual void			OnAchievementAchieved( int iAchievement ) {}
@@ -389,8 +438,9 @@ public:
 #if defined USES_ECON_ITEMS
 	// Wearables
 	virtual void			UpdateWearables();
+	const C_EconWearable	*GetWearable( int i ) const { return m_hMyWearables[i]; }
 	C_EconWearable			*GetWearable( int i ) { return m_hMyWearables[i]; }
-	int						GetNumWearables( void ) { return m_hMyWearables.Count(); }
+	int						GetNumWearables( void ) const { return m_hMyWearables.Count(); }
 #endif
 
 	bool					HasFiredWeapon( void ) { return m_bFiredWeapon; }
@@ -404,6 +454,8 @@ protected:
 
 public:
 	int m_StuckLast;
+
+	const char* GetScriptOverlayMaterial() const { return m_Local.m_szScriptOverlayMaterial; }
 	
 	// Data for only the local player
 	CNetworkVarEmbedded( CPlayerLocalData, m_Local );
@@ -422,6 +474,8 @@ public:
 	int						m_iDefaultFOV;		// default FOV if no other zooms are occurring
 	EHANDLE					m_hZoomOwner;		// This is a pointer to the entity currently controlling the player's zoom
 												// Only this entity can change the zoom state once it has ownership
+	
+	bool					m_bFlashlightOn;
 
 	// For weapon prediction
 	bool			m_fOnTarget;		//Is the crosshair on a target?
@@ -443,20 +497,38 @@ public:
 	float			m_flConstraintWidth;
 	float			m_flConstraintSpeedFactor;
 
+#ifdef MAPBASE
+	// Transmitted from the server for internal player spawnflags.
+	// See baseplayer_shared.h for more details.
+	int				m_spawnflags;
+
+	inline bool		HasSpawnFlags( int flags ) { return (m_spawnflags & flags) != 0; }
+	inline void		RemoveSpawnFlags( int flags ) { m_spawnflags &= ~flags; }
+	inline void		AddSpawnFlags( int flags ) { m_spawnflags |= flags; }
+
+	// Draws the player's model below the camera, visible when the player looks down.
+	bool			m_bDrawPlayerLegs;
+
+	// Allows the player's model to draw on non-main views, like monitors or mirrors.
+	bool			m_bDrawPlayerModelExternally;
+
+	bool			m_bInTriggerFall;
+#endif
+
 protected:
 
-	void				CalcPlayerView( Vector& eyeOrigin, QAngle& eyeAngles, float& fov );
-	void				CalcVehicleView(IClientVehicle *pVehicle, Vector& eyeOrigin, QAngle& eyeAngles,
-							float& zNear, float& zFar, float& fov );
+	//Tony; made all of these virtual so mods can override.
+	virtual void		CalcPlayerView( Vector& eyeOrigin, QAngle& eyeAngles, float& fov );
+	virtual void		CalcVehicleView(IClientVehicle *pVehicle, Vector& eyeOrigin, QAngle& eyeAngles, float& zNear, float& zFar, float& fov );
 	virtual void		CalcObserverView( Vector& eyeOrigin, QAngle& eyeAngles, float& fov );
 	virtual Vector		GetChaseCamViewOffset( CBaseEntity *target );
-	void				CalcChaseCamView( Vector& eyeOrigin, QAngle& eyeAngles, float& fov );
+	virtual void		CalcChaseCamView( Vector& eyeOrigin, QAngle& eyeAngles, float& fov );
 	virtual void		CalcInEyeCamView( Vector& eyeOrigin, QAngle& eyeAngles, float& fov );
 
 	virtual float		GetDeathCamInterpolationTime();
 
 	virtual void		CalcDeathCamView( Vector& eyeOrigin, QAngle& eyeAngles, float& fov );
-	void				CalcRoamingView(Vector& eyeOrigin, QAngle& eyeAngles, float& fov);
+	virtual void		CalcRoamingView(Vector& eyeOrigin, QAngle& eyeAngles, float& fov);
 	virtual void		CalcFreezeCamView( Vector& eyeOrigin, QAngle& eyeAngles, float& fov );
 
 	// Check to see if we're in vgui input mode...
@@ -471,6 +543,10 @@ protected:
 
 	virtual void	FireGameEvent( IGameEvent *event );
 
+#ifdef MAPBASE
+	inline CUtlMap<int, float>		&GetFirstPersonArmScales() { return m_FirstPersonModelData.m_FirstPersonBoneScales[FirstPersonModelData_t::BoneScales_Arms]; }
+#endif
+
 protected:
 	// Did we just enter a vehicle this frame?
 	bool			JustEnteredVehicle();
@@ -478,7 +554,7 @@ protected:
 // DATA
 	int				m_iObserverMode;	// if in spectator mode != 0
 	EHANDLE			m_hObserverTarget;	// current observer target
-	float			m_flObserverChaseDistance; // last distance to observer traget
+	float			m_flObserverChaseDistance; // last distance to observer target
 	Vector			m_vecFreezeFrameStart;
 	float			m_flFreezeFrameStartTime;	// Time at which we entered freeze frame observer mode
 	float			m_flFreezeFrameDistance;
@@ -524,6 +600,41 @@ private:
 	EHANDLE			m_pCurrentVguiScreen;
 
 	bool			m_bFiredWeapon;
+
+#ifdef MAPBASE
+	struct FirstPersonModelData_t
+	{
+		void Reset()
+		{
+			m_flFirstPersonNeckPivotUp = m_flFirstPersonNeckPivotFwd = FLT_MAX;
+			m_flFirstPersonNeckPivotDuckUp = m_flFirstPersonNeckPivotDuckFwd = FLT_MAX;
+
+			for (int i = 0; i < BoneScales_Max; i++)
+			{
+				m_FirstPersonBoneScales[i].RemoveAll();
+				m_FirstPersonBoneScales[i].SetLessFunc( DefLessFunc( int ) );
+			}
+		}
+
+		void ParseModelData( C_BasePlayer *pPlayer, KeyValues *pkvPlayerModelData );
+
+		enum
+		{
+			BoneScales_Spine,
+			BoneScales_Arms,
+
+			BoneScales_Max
+		};
+
+		// Values to scale bones by when drawing playermodel in first person
+		CUtlMap<int, float> m_FirstPersonBoneScales[BoneScales_Max];
+
+		float			m_flFirstPersonNeckPivotUp, m_flFirstPersonNeckPivotFwd = FLT_MAX;
+		float			m_flFirstPersonNeckPivotDuckUp, m_flFirstPersonNeckPivotDuckFwd = FLT_MAX;
+	};
+
+	FirstPersonModelData_t	m_FirstPersonModelData;
+#endif
 
 
 	// Player flashlight dynamic light pointers
@@ -628,6 +739,11 @@ private:
 	};
 	// One for left and one for right side of step
 	StepSoundCache_t		m_StepSoundCache[ 2 ];
+
+#ifdef MAPBASE // From Alien Swarm SDK
+	CNetworkHandle( C_PostProcessController, m_hPostProcessCtrl );	// active postprocessing controller
+	CNetworkHandle( C_ColorCorrection, m_hColorCorrectionCtrl );	// active FXVolume color correction
+#endif
 
 public:
 

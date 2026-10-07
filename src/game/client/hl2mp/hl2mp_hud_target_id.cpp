@@ -13,6 +13,9 @@
 #include "iclientmode.h"
 #include "vgui/ILocalize.h"
 #include "hl2mp_gamerules.h"
+#ifdef MAPBASE_MP
+#include "c_ai_basenpc.h"
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -63,6 +66,7 @@ CTargetID::CTargetID( const char *pElementName ) :
 	m_iLastEntIndex = 0;
 
 	SetHiddenBits( HIDEHUD_MISCSTATUS );
+	SetSize( ScreenWidth(), ScreenHeight() );
 }
 
 //-----------------------------------------------------------------------------
@@ -70,6 +74,7 @@ CTargetID::CTargetID( const char *pElementName ) :
 //-----------------------------------------------------------------------------
 void CTargetID::Init( void )
 {
+	SetSize( ScreenWidth(), ScreenHeight() );
 };
 
 void CTargetID::ApplySchemeSettings( vgui::IScheme *scheme )
@@ -79,6 +84,8 @@ void CTargetID::ApplySchemeSettings( vgui::IScheme *scheme )
 	m_hFont = scheme->GetFont( "TargetID", IsProportional() );
 
 	SetPaintBackgroundEnabled( false );
+
+	SetSize( ScreenWidth(), ScreenHeight() );
 }
 
 //-----------------------------------------------------------------------------
@@ -157,17 +164,40 @@ void CTargetID::Paint()
 
 			bShowPlayerName = true;
 			g_pVGuiLocalize->ConvertANSIToUnicode( pPlayer->GetPlayerName(),  wszPlayerName, sizeof(wszPlayerName) );
-			
+
+#ifdef MAPBASE_MP
+			if ( HL2MPRules()->PlayerRelationship( pLocalPlayer, pPlayer ) == GR_TEAMMATE )
+#else
 			if ( HL2MPRules()->IsTeamplay() == true && pPlayer->InSameTeam(pLocalPlayer) )
+#endif
 			{
 				printFormatString = "#Playerid_sameteam";
 				bShowHealth = true;
+#ifdef RTBMP
+				gHUD.m_ViewTargetRelation = CROSSHAIRRELATION_FRIEND;
+#endif
 			}
 			else
 			{
 				printFormatString = "#Playerid_diffteam";
+#ifdef RTBMP
+				gHUD.m_ViewTargetRelation = CROSSHAIRRELATION_ENEMY;
+#endif
 			}
-		
+
+#ifdef RTBMP
+			if ( HL2MPRules()->IsTeamplay() )
+			{
+				if ( pPlayer->GetTeamNumber() == TEAM_COMBINE )
+				{
+					gHUD.m_ViewTargetRelation = CROSSHAIRRELATION_COMBINE;
+				}
+				else
+				{
+					gHUD.m_ViewTargetRelation = CROSSHAIRRELATION_REBELS;
+				}
+			}
+#endif
 
 			if ( bShowHealth )
 			{
@@ -175,6 +205,69 @@ void CTargetID::Paint()
 				wszHealthText[ ARRAYSIZE(wszHealthText)-1 ] = '\0';
 			}
 		}
+#ifdef MAPBASE_MP
+		else
+		{
+			extern ConVar sv_hl2mp_npc_target_id;
+			if (sv_hl2mp_npc_target_id.GetBool())
+			{
+				C_BaseEntity *pEnt = cl_entitylist->GetEnt( iEntIndex );
+				const char *pszPlayerName = pEnt->GetPlayerName();
+
+				if (pszPlayerName && *pszPlayerName && (!pEnt->IsNPC() || !pEnt->MyNPCPointer()->IsNeutralTo( pLocalPlayer )))
+				{
+					c = GetColorForTargetTeam( pEnt->GetTeamNumber() );
+
+					bShowPlayerName = true;
+
+					wchar_t *pLocalized = g_pVGuiLocalize->Find( pszPlayerName );
+					if (pLocalized)
+					{
+						V_wcsncpy( wszPlayerName, pLocalized, sizeof( wszPlayerName ) );
+					}
+					else
+					{
+						g_pVGuiLocalize->ConvertANSIToUnicode( pszPlayerName, wszPlayerName, sizeof( wszPlayerName ) );
+					}
+			
+					if ( (HL2MPRules()->IsTeamplay() == true && pEnt->InSameTeam(pLocalPlayer)) || (pEnt->IsNPC() && pEnt->MyNPCPointer()->IsPlayerAlly(pLocalPlayer)) )
+					{
+						printFormatString = "#Playerid_sameteam";
+						bShowHealth = true;
+#ifdef RTBMP
+						gHUD.m_ViewTargetRelation = CROSSHAIRRELATION_FRIEND;
+#endif
+					}
+					else
+					{
+						printFormatString = "#Playerid_diffteam";
+#ifdef RTBMP
+						gHUD.m_ViewTargetRelation = CROSSHAIRRELATION_ENEMY;
+#endif
+					}
+					
+					if ( HL2MPRules()->IsTeamplay() )
+					{
+						if ( pEnt->GetTeamNumber() == TEAM_COMBINE )
+						{
+							gHUD.m_ViewTargetRelation = CROSSHAIRRELATION_COMBINE;
+						}
+						else if ( pEnt->GetTeamNumber() == TEAM_REBELS )
+						{
+							gHUD.m_ViewTargetRelation = CROSSHAIRRELATION_REBELS;
+						}
+					}
+
+					if ( bShowHealth )
+					{
+						// NPCs show their health directly
+						_snwprintf( wszHealthText, ARRAYSIZE(wszHealthText) - 1, L"%i",  pEnt->GetHealth() );
+						wszHealthText[ ARRAYSIZE(wszHealthText)-1 ] = '\0';
+					}
+				}
+			}
+		}
+#endif
 
 		if ( printFormatString )
 		{
@@ -218,5 +311,13 @@ void CTargetID::Paint()
 			vgui::surface()->DrawSetTextColor( c );
 			vgui::surface()->DrawPrintText( sIDString, wcslen(sIDString) );
 		}
+		else
+		{
+			gHUD.m_ViewTargetRelation = CROSSHAIRRELATION_NONE;
+		}
+	}
+	else
+	{
+		gHUD.m_ViewTargetRelation = CROSSHAIRRELATION_NONE;
 	}
 }

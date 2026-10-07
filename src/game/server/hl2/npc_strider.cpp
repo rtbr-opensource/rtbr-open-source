@@ -652,7 +652,11 @@ void CNPC_Strider::PostNPCInit()
 		RemoveFlag( FL_FLY );
 	}
 
+#ifdef MAPBASE_MP // From SecobMod
+	m_PlayerFreePass.SetPassTarget( UTIL_GetNearestPlayer( GetAbsOrigin() ) );
+#else
 	m_PlayerFreePass.SetPassTarget( UTIL_PlayerByIndex(1) );
+#endif
 	
 	AI_FreePassParams_t freePassParams = 
 	{
@@ -778,7 +782,11 @@ int	CNPC_Strider::DrawDebugTextOverlays()
 			text_offset++;
 		}
 
+#ifdef MAPBASE_MP // From SecobMod
+		CBasePlayer *pPlayer = UTIL_GetNearestPlayer( GetAbsOrigin() );
+#else
 		CBaseEntity *pPlayer = UTIL_PlayerByIndex(1);
+#endif
 		if ( pPlayer )
 		{
 			if ( GetSenses()->ShouldSeeEntity( pPlayer ) && GetSenses()->CanSeeEntity( pPlayer ) )
@@ -1302,6 +1310,15 @@ void CNPC_Strider::BuildScheduleTestBits()
 //---------------------------------------------------------
 int CNPC_Strider::SelectSchedule()
 {
+#ifdef MAPBASE
+	if( GetMoveType() == MOVETYPE_NONE )
+	{
+		// Dropship just released me.
+		AddFlag(FL_FLY);
+		SetMoveType( MOVETYPE_STEP );
+		return SCHED_STRIDER_FALL_TO_GROUND;
+	}
+#endif
 /*
 	if( GetMoveType() != MOVETYPE_FLY )
 	{
@@ -1485,6 +1502,26 @@ int CNPC_Strider::TranslateSchedule( int scheduleType )
 
 				return SCHED_COMBAT_PATROL;
 			}
+		}
+		else
+		{
+#ifdef MAPBASE
+			extern ConVar ai_enemy_memory_fixes;
+
+			// Striders convert TASK_GET_PATH_TO_ENEMY_LOS to TASK_GET_PATH_TO_ENEMY_LKP_LOS, a task which incorrectly
+			// acts identically to the former. This is detailed in CAI_BaseNPC::StartTask and fixed by ai_enemy_memory_fixes.
+			// 
+			// However, SCHED_ESTABLISH_LINE_OF_FIRE only stops being used once the NPC has LOS to its target.
+			// Since the fixed task now uses the enemy's last known position instead of the enemy's actual position,
+			// this schedule risks getting stuck in a loop.
+			// 
+			// This code chains back up to SCHED_ESTABLISH_LINE_OF_FIRE_FALLBACK, which is what's supposed to happen when a
+			// strider is eluded in this way.
+			if ( ai_enemy_memory_fixes.GetBool() && FVisible( GetEnemyLKP() ) )
+			{
+				return TranslateSchedule( SCHED_ESTABLISH_LINE_OF_FIRE_FALLBACK );
+			}
+#endif
 		}
 
 		break;
@@ -3129,7 +3166,11 @@ int CNPC_Strider::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 			{
 				// See if the person that injured me is an NPC.
 				CAI_BaseNPC *pAttacker = dynamic_cast<CAI_BaseNPC *>( info.GetAttacker() );
+#ifdef MAPBASE_MP // From SecobMod
+				CBasePlayer *pPlayer = UTIL_GetNearestPlayer( GetAbsOrigin() );
+#else
 				CBasePlayer *pPlayer = AI_GetSinglePlayer();
+#endif
 
 				if( pAttacker && pAttacker->IsAlive() && pPlayer )
 				{
@@ -3351,7 +3392,11 @@ bool CNPC_Strider::BecomeRagdoll( const CTakeDamageInfo &info, const Vector &for
 	{
 		// Otherwise just keel over
 		CRagdollProp *pRagdoll = NULL;
+#ifdef MAPBASE_MP // From SecobMod
+		CBasePlayer *pPlayer = UTIL_GetNearestPlayer( GetAbsOrigin() );
+#else
 		CBasePlayer *pPlayer = AI_GetSinglePlayer();
+#endif
 		if ( pPlayer && mat_dxlevel.GetInt() > 0 )
 		{
 			int dxlevel = mat_dxlevel.GetInt();
@@ -5729,6 +5774,18 @@ AI_BEGIN_CUSTOM_NPC( npc_strider, CNPC_Strider )
 		"		COND_STRIDER_SHOULD_STAND"
 	)
 
+#ifdef MAPBASE
+	DEFINE_SCHEDULE
+	(
+		SCHED_STRIDER_FALL_TO_GROUND,
+
+		"	Tasks "
+		"		TASK_SOUND_WAKE			0"
+		"		TASK_PLAY_SEQUENCE		ACTIVITY:ACT_STRIDER_DEPLOY"
+		""
+		"	Interrupts "
+	)
+#else
 	DEFINE_SCHEDULE
 	(
 		SCHED_STRIDER_FALL_TO_GROUND,
@@ -5738,7 +5795,7 @@ AI_BEGIN_CUSTOM_NPC( npc_strider, CNPC_Strider )
 		""
 		"	Interrupts "
 	)
-
+#endif
 
 AI_END_CUSTOM_NPC()
 

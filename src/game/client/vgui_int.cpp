@@ -32,6 +32,10 @@
 #include "tf_gamerules.h"
 #endif
 
+#include "vgui/icreateserverpanel.h"
+#include "vgui/imodelselectpanel.h"
+#include "vgui/ifirsttimeoptionspanel.h"
+
 using namespace vgui;
 
 void MP3Player_Create( vgui::VPANEL parent );
@@ -200,6 +204,8 @@ void VGui_CreateGlobalPanels( void )
 #if defined( TRACK_BLOCKING_IO )
 	VPANEL gameDLLPanel = enginevgui->GetPanel( PANEL_GAMEDLL );
 #endif
+	VPANEL gameUIParent = enginevgui->GetPanel( PANEL_GAMEUIDLL );
+
 	// Part of game
 	internalCenterPrint->Create( gameToolParent );
 	loadingdisc->Create( gameToolParent );
@@ -220,6 +226,9 @@ void VGui_CreateGlobalPanels( void )
 #ifdef SIXENSE
 	g_pSixenseInput->CreateGUI( gameToolParent );
 #endif
+	createserverpanel->Create( gameUIParent );
+	modelselectpanel->Create( gameUIParent );
+	firsttimeroptionsmenu->Create( gameUIParent );
 }
 
 void VGui_Shutdown()
@@ -240,6 +249,10 @@ void VGui_Shutdown()
 	messagechars->Destroy();
 	loadingdisc->Destroy();
 	internalCenterPrint->Destroy();
+
+	createserverpanel->Destroy();
+	modelselectpanel->Destroy();
+	firsttimeroptionsmenu->Destroy();
 
 	if ( g_pClientMode )
 	{
@@ -265,11 +278,13 @@ void VGui_PreRender()
 	if ( IsPC() )
 	{
 		loadingdisc->SetLoadingVisible( engine->IsDrawingLoadingImage() && !engine->IsPlayingDemo() );
+		
+		bool bShowPausedImage = !enginevgui->IsGameUIVisible() && cl_showpausedimage.GetBool() && engine->IsPaused() && !engine->IsTakingScreenshot() && !engine->IsPlayingDemo();
 #if !defined( TF_CLIENT_DLL )
-		loadingdisc->SetPausedVisible( !enginevgui->IsGameUIVisible() && cl_showpausedimage.GetBool() && engine->IsPaused() && !engine->IsTakingScreenshot() && !engine->IsPlayingDemo() );
+		loadingdisc->SetPausedVisible( bShowPausedImage, engine->GetPausedExpireTime()  );
 #else
-		bool bShowPausedImage = cl_showpausedimage.GetBool() && ( TFGameRules() && !TFGameRules()->IsInTraining() );
-		loadingdisc->SetPausedVisible( !enginevgui->IsGameUIVisible() && bShowPausedImage && engine->IsPaused() && !engine->IsTakingScreenshot() && !engine->IsPlayingDemo() );
+		bShowPausedImage &= ( TFGameRules() && !TFGameRules()->IsInTraining() );
+		loadingdisc->SetPausedVisible( bShowPausedImage, engine->GetPausedExpireTime() );
 #endif
 	}
 }

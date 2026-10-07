@@ -1,0 +1,124 @@
+//-----------------------------------------------------------------------------
+//	SERVER_RTBMP.VPC
+//
+//	Project Script
+//-----------------------------------------------------------------------------
+
+$Macro SRCDIR		"..\.."
+$Macro GAMENAME 	"rtbmp"
+
+$Include "$SRCDIR\game\server\server_hl2mp.vpc"
+
+$Configuration
+{
+	$Compiler
+	{
+		$AdditionalIncludeDirectories	"$BASE;.\rtbr;$SRCDIR\game\shared\rtbr;.\rtbmp;$SRCDIR\game\shared\rtbmp;"
+		$PreprocessorDefinitions		"$BASE;RTBMP;RTBR_DLL"
+	}
+}
+
+$Project "Server (RTBMP)"
+{
+	$Folder	"Source Files"
+	{
+		$Folder	"RTBMP"
+		{
+			$Folder	"Weapons"
+			{
+				$File	"$SRCDIR\game\shared\rtbmp\weapon_gauss.cpp"
+				$File	"$SRCDIR\game\shared\rtbmp\weapon_gauss.h"
+				$File	"$SRCDIR\game\shared\rtbmp\weapon_akm.cpp"
+				$File	"$SRCDIR\game\shared\rtbmp\weapon_oicw.cpp"
+				$File	"$SRCDIR\game\shared\rtbmp\weapon_hmg.cpp"
+				$File	"$SRCDIR\game\shared\rtbmp\weapon_immolator.cpp"
+				// todo: move these over to rtbmp directory. these are not hl2mp weapons anymore
+				$File	"$SRCDIR\game\shared\hl2mp\weapon_alyxgun.cpp"
+				$File	"$SRCDIR\game\shared\hl2mp\weapon_alyxgun.h"
+				$File	"$SRCDIR\game\shared\hl2mp\weapon_annabelle.cpp"
+				$File	"$SRCDIR\game\shared\hl2mp\weapon_flaregun.cpp"
+				$File	"$SRCDIR\game\shared\hl2mp\weapon_flaregun.h"
+			}
+			
+			$File	"rtbmp\capturetheflag.h"
+			$File	"rtbmp\capturetheflag.cpp"
+			$File 	"rtbmp\rtbmp_client.cpp"
+			$File	"rtbmp\rtbmp_player.h"
+			$File	"rtbmp\rtbmp_player.cpp"
+			$File 	"$SRCDIR\game\shared\rtbmp\rtbmp_gamerules.h"
+			$File 	"$SRCDIR\game\shared\rtbmp\rtbmp_gamerules.cpp"
+			$File 	"$SRCDIR\game\shared\rtbmp\rtba_usermessages.cpp"
+		}
+		
+		$Folder "RTBR Shared"
+		{
+			$Folder "Game"
+			{
+				$File 	"$SRCDIR\game\shared\rtbr\rtbr_shareddefs.h"
+				$File 	"$SRCDIR\game\shared\rtbmp\rtbmp_player_shared.h"
+			}
+		}
+		
+		$Folder "RTBR"
+		{
+			$Folder "NPCs"
+			{
+				$Folder "Flora"
+				{
+					$File "rtbr\npc_xenshroom.cpp"
+					$File "rtbr\npc_xencoil.cpp"
+					$File "rtbr\npc_xenlight.cpp"
+					$File "rtbr\npc_xensack.cpp"
+				}
+				
+				$File	"$SRCDIR\game\shared\rtbr\npc_cremator_shared.h"
+				$File	"rtbr\npc_combineguard.cpp"
+				$File	"rtbr\npc_protozoan.cpp"
+				$File	"rtbr\npc_protozoan.h"
+				$File	"rtbr\npc_cremator.cpp"
+				$File	"rtbr\npc_cremator.h"
+				$File	"rtbr\npc_sandbarnacle.cpp"
+				$File	"rtbr\npc_houndeye.cpp"
+				$File	"rtbr\npc_houndeye.h"
+				$File	"rtbr\npc_houndeyealpha.cpp"
+				$File	"rtbr\npc_houndeyealpha.h"
+				$File	"rtbr\npc_wasteland_scanner.cpp"
+				$File	"rtbr\npc_wasteland_scanner.h"
+				$File	"rtbr\npc_bigmomma.cpp"
+				$File	"rtbr\npc_antlionbirther.h"
+				$File	"rtbr\npc_antlionbirther.cpp"
+				$File	"rtbr\npc_antlionrollergrub.h"
+				$File	"rtbr\npc_antlionrollergrub.cpp"
+				$File	"rtbr\npc_antlionking.cpp"
+			}
+		}
+		
+		// New Xen plants from EZ2
+		$Folder	"EZ2 DLL"
+		{
+			$Folder "Flora" 
+			{
+				$File	"ez2\npc_baseflora.h"
+				$File	"ez2\npc_baseflora.cpp"
+				// // Use the RTBR lightstalk for now!
+				// $File	"ez2\npc_lightstalk.h"
+				// $File	"ez2\npc_lightstalk.cpp"
+				$File	"ez2\npc_xenhair.h"
+				$File	"ez2\npc_xenhair.cpp"
+				$File	"ez2\npc_xentree.h"
+				$File	"ez2\npc_xentree.cpp"
+			}
+			$Folder "NPCs" 
+			{
+				$File "ez2\npc_gonome.h"
+				$File "ez2\npc_gonome.cpp"
+				$File "ez2\npc_bullsquid.h"
+				$File "ez2\npc_bullsquid.cpp"
+				$File "ez2\npc_basepredator.h"
+				$File "ez2\npc_basepredator.cpp"
+				$File "ez2\ai_behavior_beast.h"
+				$File "ez2\ai_behavior_beast.cpp"
+			}
+		}
+	}
+}

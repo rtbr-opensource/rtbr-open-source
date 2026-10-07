@@ -92,6 +92,7 @@ END_DATADESC()
 
 LINK_ENTITY_TO_CLASS(func_recharge, CRecharge);
 
+int g_interactionSuitChargerEmpty = 1;
 
 bool CRecharge::KeyValue( const char *szKeyName, const char *szValue )
 {
@@ -211,7 +212,7 @@ void CRecharge::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE use
 		if (m_flSoundTime <= gpGlobals->curtime)
 		{
 			m_flSoundTime = gpGlobals->curtime + 0.62;
-			EmitSound( "SuitRecharge.Deny" );
+			EmitSound( "SuitCharger.Deny" );
 		}
 		return;
 	}
@@ -229,7 +230,7 @@ void CRecharge::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE use
 		if (m_flSoundTime <= gpGlobals->curtime)
 		{
 			m_flSoundTime = gpGlobals->curtime + 0.62;
-			EmitSound( "SuitRecharge.Deny" );
+			EmitSound( "SuitCharger.Deny" );
 		}
 		return;
 	}
@@ -256,7 +257,7 @@ void CRecharge::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE use
 	if (!m_iOn)
 	{
 		m_iOn++;
-		EmitSound( "SuitRecharge.Start" );
+		EmitSound( "SuitCharger.Start" );
 		m_flSoundTime = 0.56 + gpGlobals->curtime;
 
 		m_OnPlayerUse.FireOutput( pActivator, this );
@@ -265,9 +266,9 @@ void CRecharge::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE use
 	if ((m_iOn == 1) && (m_flSoundTime <= gpGlobals->curtime))
 	{
 		m_iOn++;
-		CPASAttenuationFilter filter( this, "SuitRecharge.ChargingLoop" );
+		CPASAttenuationFilter filter( this, "SuitCharger.Loop" );
 		filter.MakeReliable();
-		EmitSound( filter, entindex(), "SuitRecharge.ChargingLoop" );
+		EmitSound( filter, entindex(), "SuitCharger.Loop" );
 	}
 
 	CBasePlayer *pl = (CBasePlayer *) m_hActivator.Get();
@@ -313,7 +314,8 @@ void CRecharge::Off(void)
 	// Stop looping sound.
 	if (m_iOn > 1)
 	{
-		StopSound( "SuitRecharge.ChargingLoop" );
+		StopSound( "SuitCharger.Loop" );
+		EmitSound( "SuitCharger.Stop" );
 	}
 
 	m_iOn = 0;
@@ -343,6 +345,8 @@ public:
 	void Recharge(void);
 	bool KeyValue( const char *szKeyName, const char *szValue );
 	void Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
+	virtual bool HasSecondaryUse( void ) { return true; }
+	void UseAmmo( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
 	virtual int	ObjectCaps( void ) { return (BaseClass::ObjectCaps() | m_iCaps ); }
 
 	void SetInitialCharge( void );
@@ -438,9 +442,12 @@ void CNewRecharge::Precache( void )
 {
 	PrecacheModel( HEALTH_CHARGER_MODEL_NAME );
 
-	PrecacheScriptSound( "SuitRecharge.Deny" );
-	PrecacheScriptSound( "SuitRecharge.Start" );
-	PrecacheScriptSound( "SuitRecharge.ChargingLoop" );
+	PrecacheScriptSound( "SuitCharger.Start" );
+	PrecacheScriptSound( "SuitCharger.Loop" );
+	PrecacheScriptSound( "SuitCharger.Stop" );
+	PrecacheScriptSound( "SuitCharger.Empty" );
+	PrecacheScriptSound( "SuitCharger.Deny" );
+	PrecacheScriptSound( "SuitCharger.Recharge" );
 
 }
 
@@ -595,6 +602,11 @@ void CNewRecharge::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE 
 
 	CBasePlayer *pPlayer = static_cast<CBasePlayer *>(pActivator);
 
+	if (useType == USE_AMMO){
+		UseAmmo( pActivator, pCaller, useType, value );
+		return;
+	}
+
 	// Reset to a state of continuous use.
 	m_iCaps = FCAP_CONTINUOUS_USE;
 
@@ -616,7 +628,7 @@ void CNewRecharge::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE 
 		if (m_flSoundTime <= gpGlobals->curtime)
 		{
 			m_flSoundTime = gpGlobals->curtime + 0.62;
-			EmitSound( "SuitRecharge.Deny" );
+			EmitSound( "SuitCharger.Deny" );
 		}
 		return;
 	}
@@ -636,7 +648,7 @@ void CNewRecharge::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE 
 		if ( m_flSoundTime <= gpGlobals->curtime )
 		{
 			m_flSoundTime = gpGlobals->curtime + 0.62;
-			EmitSound( "SuitRecharge.Deny" );
+			EmitSound( "SuitCharger.Empty" );
 		}
 
 		return;
@@ -677,7 +689,7 @@ void CNewRecharge::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE 
 			pPlayer->m_afButtonPressed &= ~IN_USE;
 			m_iCaps = FCAP_IMPULSE_USE;
 			
-			EmitSound( "SuitRecharge.Deny" );
+			EmitSound( "SuitCharger.Deny" );
 			return;
 		}
 	}
@@ -694,7 +706,7 @@ void CNewRecharge::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE 
 	if ( !m_iOn )
 	{
 		m_iOn++;
-		EmitSound( "SuitRecharge.Start" );
+		EmitSound( "SuitCharger.Start" );
 		m_flSoundTime = 0.56 + gpGlobals->curtime;
 
 		m_OnPlayerUse.FireOutput( pActivator, this );
@@ -703,9 +715,9 @@ void CNewRecharge::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE 
 	if ((m_iOn == 1) && (m_flSoundTime <= gpGlobals->curtime))
 	{
 		m_iOn++;
-		CPASAttenuationFilter filter( this, "SuitRecharge.ChargingLoop" );
+		CPASAttenuationFilter filter( this, "SuitCharger.Loop" );
 		filter.MakeReliable();
-		EmitSound( filter, entindex(), "SuitRecharge.ChargingLoop" );
+		EmitSound( filter, entindex(), "SuitCharger.Loop" );
 	}
 
 	// Give armor if we need it
@@ -723,9 +735,140 @@ void CNewRecharge::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE 
 	m_flNextCharge = gpGlobals->curtime + 0.1;
 }
 
+void CNewRecharge::UseAmmo( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
+{
+	// if it's not a player, ignore
+	if (!pActivator || !pActivator->IsPlayer())
+		return;
+	CBasePlayer *pPlayer = static_cast<CBasePlayer *>(pActivator);
+
+	CBaseCombatWeapon *pWeapon = static_cast<CBaseCombatWeapon *>(pCaller);
+	if (!pWeapon)
+		return;
+	// Reset to a state of continuous use.
+	m_iCaps = FCAP_CONTINUOUS_USE;
+
+	if (m_iOn)
+	{
+		float flCharges = CHARGES_PER_SECOND;
+		float flCalls = CALLS_PER_SECOND;
+
+		if (HasSpawnFlags( SF_CITADEL_RECHARGER ))
+			flCharges = CITADEL_CHARGES_PER_SECOND;
+
+		m_flJuice -= flCharges / flCalls;
+		StudioFrameAdvance();
+	}
+
+	// Only usable if you have the HEV suit on
+	if (!pPlayer->IsSuitEquipped())
+	{
+		if (m_flSoundTime <= gpGlobals->curtime)
+		{
+			m_flSoundTime = gpGlobals->curtime + 0.62;
+			EmitSound( "SuitCharger.Deny" );
+		}
+		return;
+	}
+
+	// if there is no juice left, turn it off
+	if (m_iJuice <= 0)
+	{
+		// Start our deny animation over again
+		ResetSequence( LookupSequence( "emptyclick" ) );
+
+		m_nState = 1;
+
+		// Shut off
+		Off();
+
+#ifdef RTBMP
+		// tell the gauss that we're empty, so it can do its outro
+		pWeapon->DispatchInteraction( g_interactionSuitChargerEmpty, NULL, pPlayer );
+#endif
+
+		// Play a deny sound
+		if (m_flSoundTime <= gpGlobals->curtime)
+		{
+			m_flSoundTime = gpGlobals->curtime + 0.62;
+			EmitSound( "SuitCharger.Empty" );
+		}
+
+		return;
+	}
+
+	// Get our maximum armor value
+	int nMaxArmor = 100;
+	if (HasSpawnFlags( SF_CITADEL_RECHARGER ))
+	{
+		nMaxArmor = sk_suitcharger_citadel_maxarmor.GetInt();
+	}
+
+	int nIncrementArmor = 1;
+
+	// The citadel charger gives more per charge and also gives health
+	if (HasSpawnFlags( SF_CITADEL_RECHARGER ))
+	{
+		nIncrementArmor = 10;
+
+#ifdef HL2MP
+		nIncrementArmor = 2;
+#endif
+
+		// Also give health for the citadel version.
+		if (pActivator->GetHealth() < pActivator->GetMaxHealth() && m_flNextCharge < gpGlobals->curtime)
+		{
+			pActivator->TakeHealth( 5, DMG_GENERIC );
+		}
+	}
+
+	int primAmmo = pPlayer->GetActiveWeapon()->GetPrimaryAmmoType(); // if we don't have a secondary ammo that we need to recharge then we're fine. but this is stupid!
+	// If we're over our limit, debounce our keys
+	if (!g_pGameRules->CanHaveAmmo( pPlayer, primAmmo )){
+		// instead of depressing the button, change attack interval so that the player HAS to depress the button
+		pWeapon->m_flNextPrimaryAttack = FLT_MAX;
+		EmitSound( "SuitCharger.Deny" );
+		return;
+	}
+	// This is bumped out if used within the time period
+	SetNextThink( gpGlobals->curtime + CHARGE_RATE );
+	SetThink( &CNewRecharge::Off );
+
+	// Time to recharge yet?
+	if (m_flNextCharge >= gpGlobals->curtime)
+		return;
+
+	// Play the on sound or the looping charging sound
+	if (!m_iOn)
+	{
+		m_iOn++;
+		EmitSound( "SuitCharger.Start" );
+		m_flSoundTime = 0.56 + gpGlobals->curtime;
+
+		m_OnPlayerUse.FireOutput( pActivator, this );
+	}
+
+	if ((m_iOn == 1) && (m_flSoundTime <= gpGlobals->curtime))
+	{
+		m_iOn++;
+		CPASAttenuationFilter filter( this, "SuitCharger.Loop" );
+		filter.MakeReliable();
+		EmitSound( filter, entindex(), "SuitCharger.Loop" );
+	}
+	// Give ammo if we need it
+	pPlayer->GiveAmmo( nIncrementArmor, primAmmo, true );
+	UpdateJuice( m_iJuice - nIncrementArmor );
+	// Send the output.
+	float flRemaining = m_iJuice / MaxJuice();
+	m_OutRemainingCharge.Set( flRemaining, pActivator, this );
+
+	// govern the rate of charge
+	m_flNextCharge = gpGlobals->curtime + 0.1;
+}
+
 void CNewRecharge::Recharge(void)
 {
-	EmitSound( "SuitRecharge.Start" );
+	EmitSound( "SuitCharger.Start" );
 	ResetSequence( LookupSequence( "idle" ) );
 
 	UpdateJuice( MaxJuice() );
@@ -743,7 +886,8 @@ void CNewRecharge::Off(void)
 	// Stop looping sound.
 	if (m_iOn > 1)
 	{
-		StopSound( "SuitRecharge.ChargingLoop" );
+		StopSound( "SuitCharger.Loop" );
+		EmitSound( "SuitCharger.Stop" );
 	}
 	
 	if ( m_nState == 1 )
@@ -751,12 +895,19 @@ void CNewRecharge::Off(void)
 		SetCycle( 1.0f );
 	}
 
+#ifdef RTBMP
+	if ( m_iJuice <= 0 && m_iReactivate != 0 && !m_iOn )
+		return;
+#endif
+
 	m_iOn = 0;
 	m_flJuice = m_iJuice;
 
+#ifndef RTBMP
 	if ( m_iReactivate == 0 )
+#endif
 	{
-		if ((!m_iJuice) && g_pGameRules->FlHEVChargerRechargeTime() > 0 )
+		if ( g_pGameRules->FlHEVChargerRechargeTime() > 0 )
 		{
 			if ( HasSpawnFlags( SF_CITADEL_RECHARGER ) )
 			{

@@ -1,0 +1,61 @@
+#
+# MAPBASE SOURCE 2013 CI
+#
+# This can be used to manually build the codebase.
+#
+# See mapbase_build-base.yml for more information on how this works.
+
+name: Build Projects (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: 'Which configuration to build with'
+        default: 'Release'
+        required: true
+        type: choice
+        options:
+        - Release
+        - Debug
+      game:
+        description: 'Name of the game to build (if relevant)'
+        default: 'episodic'
+        required: false
+        type: choice
+        options:
+        - episodic
+        - hl2
+        - hl2mp
+        - hl2mp /episodic
+        - tf
+        - tf /hl2mp
+      project-group:
+        description: 'Which group of projects to compile'
+        required: true
+        type: choice
+        options:
+        - everything
+        - game
+        - shaders
+        - maptools
+      build-on-linux:
+        description: 'Build on Ubuntu/Linux?'
+        default: true
+        required: false
+        type: boolean
+      build-on-windows:
+        description: 'Build on Windows?'
+        default: false
+        required: false
+        type: boolean
+
+jobs:
+  build_manual:
+    uses: ./.github/workflows/mapbase_build-base.yml
+    with:
+      configuration: '${{ github.event.inputs.configuration }}'
+      game: '${{ github.event.inputs.game }}'
+      project-group: '${{ github.event.inputs.project-group }}'
+      build-on-linux: "${{ github.event.inputs.build-on-linux == 'true' }}"
+      build-on-windows: "${{ github.event.inputs.build-on-windows == 'true' }}"

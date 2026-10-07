@@ -39,6 +39,11 @@ public:
 	// Don't treat as a live target
 	virtual bool IsAlive( void ) { return false; }
 	virtual bool OverridePropdata() { return true; }
+
+#ifdef MAPBASE
+	// Attempt to replace a dynamic_cast
+	virtual bool IsPropPhysics() { return false; }
+#endif
 };
 
 
@@ -58,10 +63,18 @@ public:
 	virtual void Precache();
 	virtual float GetAutoAimRadius() { return 24.0f; }
 
+#ifdef MAPBASE
+	virtual bool KeyValue( const char *szKeyName, const char *szValue );
+#endif
+
 	void BreakablePropTouch( CBaseEntity *pOther );
 
 	virtual int OnTakeDamage( const CTakeDamageInfo &info );
 	void Event_Killed( const CTakeDamageInfo &info );
+#ifdef MAPBASE
+	// Marks Break() as virtual
+	virtual
+#endif
 	void Break( CBaseEntity *pBreaker, const CTakeDamageInfo &info );
 	void BreakThink( void );
 	void AnimateThink( void );
@@ -72,6 +85,10 @@ public:
 	void InputAddHealth( inputdata_t &inputdata );
 	void InputRemoveHealth( inputdata_t &inputdata );
 	void InputSetHealth( inputdata_t &inputdata );
+#ifdef MAPBASE
+	void InputSetInteraction( inputdata_t &inputdata );
+	void InputRemoveInteraction( inputdata_t &inputdata );
+#endif
 
 	int	 GetNumBreakableChunks( void ) { return m_iNumBreakableChunks; }
 
@@ -86,6 +103,11 @@ public:
 		if ( HasInteraction( PROPINTER_PHYSGUN_LAUNCH_SPIN_Z ) )
 			return true;
 
+#ifdef MAPBASE
+		if ( m_bUsesCustomCarryAngles )
+			return true;
+#endif
+
 		return false; 
 	}
 
@@ -97,6 +119,11 @@ public:
 	void	HandleFirstCollisionInteractions( int index, gamevcollisionevent_t *pEvent );
 	void	HandleInteractionStick( int index, gamevcollisionevent_t *pEvent );
 	void	StickAtPosition( const Vector &stickPosition, const Vector &savePosition, const QAngle &saveAngles );
+
+#ifdef MAPBASE
+	// Uses the new CBaseEntity interaction implementation
+	bool	HandleInteraction( int interactionType, void *data, CBaseCombatCharacter* sourceEnt );
+#endif
 	
 	// Disable auto fading under dx7 or when level fades are specified
 	void	DisableAutoFade();
@@ -111,6 +138,10 @@ public:
 	int				m_iMinHealthDmg;
 
 	QAngle			m_preferredCarryAngles;
+#ifdef MAPBASE
+	// Indicates whether the prop is using the keyvalue carry angles.
+	bool			m_bUsesCustomCarryAngles;
+#endif
 
 public:
 // IBreakableWithPropData
@@ -196,6 +227,9 @@ public:
 	virtual	CBasePlayer *HasPhysicsAttacker( float dt );
 
 #ifdef HL2_EPISODIC
+#ifdef MAPBASE
+	virtual float GetFlareLifetime() { return 30.0f; }
+#endif
 	void CreateFlare( float flLifetime );
 #endif //HL2_EPISODIC
 
@@ -243,7 +277,14 @@ private:
 	mp_break_t m_mpBreakMode;
 
 	EHANDLE					m_hLastAttacker;		// Last attacker that harmed me.
+#ifdef MAPBASE
+protected:
+	// Needs to be protected for prop_flare entity usage
 	EHANDLE					m_hFlareEnt;
+private:
+#else
+	EHANDLE					m_hFlareEnt;
+#endif
 	string_t				m_iszPuntSound;
 	bool					m_bUsePuntSound;
 };
@@ -288,12 +329,14 @@ public:
 
 	// Input handlers
 	void InputSetAnimation( inputdata_t &inputdata );
+#ifdef MAPBASE // From Alien Swarm SDK
+	void InputSetAnimationNoReset( inputdata_t &inputdata );
+#endif
 	void InputSetDefaultAnimation( inputdata_t &inputdata );
 	void InputTurnOn( inputdata_t &inputdata );
 	void InputTurnOff( inputdata_t &inputdata );
 	void InputDisableCollision( inputdata_t &inputdata );
 	void InputEnableCollision( inputdata_t &inputdata );
-	void InputSetPlaybackRate( inputdata_t &inputdata );
 
 	COutputEvent		m_pOutputAnimBegun;
 	COutputEvent		m_pOutputAnimOver;
@@ -304,6 +347,9 @@ public:
 	int					m_iTransitionDirection;
 
 	// Random animations
+#ifdef MAPBASE // From Alien Swarm SDK
+	bool				m_bHoldAnimation;
+#endif
 	bool				m_bRandomAnimator;
 	float				m_flNextRandAnim;
 	float				m_flMinRandAnimTime;
@@ -312,6 +358,9 @@ public:
 
 	bool				m_bStartDisabled;
 	bool				m_bDisableBoneFollowers;
+#ifdef MAPBASE // From Alien Swarm SDK
+	bool				m_bUpdateAttachedChildren;	// For props with children on attachment points, update their child touches as we animate
+#endif
 
 	CNetworkVar( bool, m_bUseHitboxesForRenderBox );
 
@@ -344,6 +393,11 @@ public:
 	bool CreateVPhysics( void );
 	bool OverridePropdata( void );
 
+#ifdef MAPBASE
+	// Attempt to replace a dynamic_cast
+	virtual bool IsPropPhysics() { return true; }
+#endif
+
 	virtual void VPhysicsUpdate( IPhysicsObject *pPhysics );
 	virtual void VPhysicsCollision( int index, gamevcollisionevent_t *pEvent );
 
@@ -352,10 +406,14 @@ public:
 	void InputEnableMotion( inputdata_t &inputdata );
 	void InputDisableMotion( inputdata_t &inputdata );
 	void InputDisableFloating( inputdata_t &inputdata );
+#ifdef MAPBASE
+	void InputSetDebris( inputdata_t &inputdata );
+#endif
 
 	void EnableMotion( void );
 	bool CanBePickedUpByPhyscannon( void );
 	void OnPhysGunPickup( CBasePlayer *pPhysGunUser, PhysGunPickup_t reason );
+	void OnPhysGunPull( CBasePlayer *pPhysGunUser );
 	void OnPhysGunDrop( CBasePlayer *pPhysGunUser, PhysGunDrop_t reason );
 
 	bool GetPropDataAngles( const char *pKeyName, QAngle &vecAngles );
@@ -389,6 +447,7 @@ private:
 	COutputEvent m_OnPhysGunPickup;
 	COutputEvent m_OnPhysGunPunt;
 	COutputEvent m_OnPhysGunOnlyPickup;
+	COutputEvent m_OnPhysGunPull;
 	COutputEvent m_OnPhysGunDrop;
 	COutputEvent m_OnPlayerUse;
 	COutputEvent m_OnPlayerPickup;

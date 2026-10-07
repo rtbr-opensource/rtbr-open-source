@@ -26,7 +26,12 @@ static ConVar hud_deathnotice_time( "hud_deathnotice_time", "6", 0 );
 // Player entries in a death notice
 struct DeathNoticePlayer
 {
+#ifdef MAPBASE_MP
+	wchar_t		szName[MAX_PLAYER_NAME_LENGTH];
+	int			nTeam;	// Saved to show correct team on NPCs and players who switch teams while dead
+#else
 	char		szName[MAX_PLAYER_NAME_LENGTH];
+#endif
 	int			iEntIndex;
 };
 
@@ -60,6 +65,11 @@ public:
 	void RetireExpiredDeathNotices( void );
 	
 	virtual void FireGameEvent( IGameEvent * event );
+#ifdef MAPBASE_MP
+	void OnNonPlayerKilled( IGameEvent * event );
+
+	int GetTeamFromIndex( int iEntIndex );
+#endif
 
 private:
 
@@ -95,6 +105,8 @@ CHudDeathNotice::CHudDeathNotice( const char *pElementName ) :
 	m_iconD_skull = NULL;
 
 	SetHiddenBits( HIDEHUD_MISCSTATUS );
+
+	SetSize( ScreenWidth(), ScreenHeight() );
 }
 
 //-----------------------------------------------------------------------------
@@ -104,6 +116,8 @@ void CHudDeathNotice::ApplySchemeSettings( IScheme *scheme )
 {
 	BaseClass::ApplySchemeSettings( scheme );
 	SetPaintBackgroundEnabled( false );
+
+	SetSize( ScreenWidth(), ScreenHeight() );
 }
 
 //-----------------------------------------------------------------------------
@@ -112,6 +126,9 @@ void CHudDeathNotice::ApplySchemeSettings( IScheme *scheme )
 void CHudDeathNotice::Init( void )
 {
 	ListenForGameEvent( "player_death" );	
+#ifdef MAPBASE_MP
+	ListenForGameEvent( "npc_death" );
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -160,6 +177,14 @@ void CHudDeathNotice::Paint()
 		if ( !icon )
 			continue;
 
+#ifdef MAPBASE_MP
+		wchar_t *victim = m_DeathNotices[i].Victim.szName;
+		wchar_t *killer = m_DeathNotices[i].Killer.szName;
+
+		// Get the team numbers for the players involved
+		int iKillerTeam = m_DeathNotices[i].Killer.nTeam;
+		int iVictimTeam = m_DeathNotices[i].Victim.nTeam;
+#else
 		wchar_t victim[ 256 ];
 		wchar_t killer[ 256 ];
 
@@ -175,10 +200,13 @@ void CHudDeathNotice::Paint()
 
 		g_pVGuiLocalize->ConvertANSIToUnicode( m_DeathNotices[i].Victim.szName, victim, sizeof( victim ) );
 		g_pVGuiLocalize->ConvertANSIToUnicode( m_DeathNotices[i].Killer.szName, killer, sizeof( killer ) );
+#endif
+
+		int nLinePadding = vgui::scheme()->GetProportionalScaledValue( 4 );
 
 		// Get the local position for this notice
 		int len = UTIL_ComputeStringWidth( m_hTextFont, victim );
-		int y = yStart + (m_flLineHeight * i);
+		int y = yStart + ( ( m_flLineHeight + nLinePadding ) * i);
 
 		int iconWide;
 		int iconTall;
@@ -195,14 +223,17 @@ void CHudDeathNotice::Paint()
 			iconTall = (int)( scale * (float)icon->Height() );
 		}
 
+		// misyl: Looks bad all crunched up in the corner.
+		int nPadding = vgui::scheme()->GetProportionalScaledValue( 16 );
+
 		int x;
 		if ( m_bRightJustify )
 		{
-			x =	GetWide() - len - iconWide;
+			x =	GetWide() - len - iconWide - nPadding;
 		}
 		else
 		{
-			x = 0;
+			x = nPadding;
 		}
 		
 		// Only draw killers name if it wasn't a suicide
@@ -222,7 +253,7 @@ void CHudDeathNotice::Paint()
 			surface()->DrawGetTextPos( x, y );
 		}
 
-		Color iconColor( 255, 80, 0, 255 );
+		Color iconColor( 255, 160, 40, 255 );
 
 		// Draw death weapon
 		//If we're using a font char, this will ignore iconTall and iconWide
@@ -268,6 +299,15 @@ void CHudDeathNotice::FireGameEvent( IGameEvent * event )
 	if ( hud_deathnotice_time.GetFloat() == 0 )
 		return;
 
+#ifdef MAPBASE_MP
+	if ( event->GetName()[0] == 'n' ) // npc_death
+	{
+		// Use a different function for non-player deaths
+		OnNonPlayerKilled( event );
+		return;
+	}
+#endif
+
 	// the event should be "player_death"
 	int killer = engine->GetPlayerForUserID( event->GetInt("attacker") );
 	int victim = engine->GetPlayerForUserID( event->GetInt("userid") );
@@ -292,8 +332,28 @@ void CHudDeathNotice::FireGameEvent( IGameEvent * event )
 	}
 
 	// Get the names of the players
-	const char *killer_name = g_PR->GetPlayerName( killer );
+	const char *killer_name = NULL;
 	const char *victim_name = g_PR->GetPlayerName( victim );
+
+#ifdef MAPBASE_MP
+	bool bIsNPC = false;
+	if (!killer && event->GetInt( "attacker" ) > gpGlobals->maxClients)
+	{
+		// Must be a non-player
+		killer = event->GetInt( "attacker" );
+		C_BaseEntity *pKiller = C_BaseEntity::Instance( killer );
+		if (pKiller)
+		{
+			// Some classes override GetPlayerName for user-friendly names
+			killer_name = pKiller->GetPlayerName();
+			bIsNPC = true;
+		}
+	}
+	else
+#endif
+	{
+		killer_name = g_PR->GetPlayerName( killer );
+	}
 
 	if ( !killer_name )
 		killer_name = "";
@@ -304,8 +364,34 @@ void CHudDeathNotice::FireGameEvent( IGameEvent * event )
 	DeathNoticeItem deathMsg;
 	deathMsg.Killer.iEntIndex = killer;
 	deathMsg.Victim.iEntIndex = victim;
+#ifdef MAPBASE_MP
+	if (bIsNPC)
+	{
+		// Find a localized version of the killer name if possible
+		wchar_t *pLocalized = g_pVGuiLocalize->Find( killer_name );
+		if (pLocalized)
+		{
+			V_wcsncpy( deathMsg.Killer.szName, pLocalized, sizeof( deathMsg.Killer.szName ) );
+		}
+		else
+		{
+			g_pVGuiLocalize->ConvertANSIToUnicode( killer_name, deathMsg.Killer.szName, sizeof( deathMsg.Killer.szName ) );
+		}
+	}
+	else
+	{
+		g_pVGuiLocalize->ConvertANSIToUnicode( killer_name, deathMsg.Killer.szName, sizeof( deathMsg.Killer.szName ) );
+	}
+
+	g_pVGuiLocalize->ConvertANSIToUnicode( victim_name, deathMsg.Victim.szName, sizeof( deathMsg.Victim.szName ) );
+
+	// Get the team numbers for the players involved
+	deathMsg.Killer.nTeam = GetTeamFromIndex( killer );
+	deathMsg.Victim.nTeam = GetTeamFromIndex( victim );
+#else
 	Q_strncpy( deathMsg.Killer.szName, killer_name, MAX_PLAYER_NAME_LENGTH );
 	Q_strncpy( deathMsg.Victim.szName, victim_name, MAX_PLAYER_NAME_LENGTH );
+#endif
 	deathMsg.flDisplayTime = gpGlobals->curtime + hud_deathnotice_time.GetFloat();
 	deathMsg.iSuicide = ( !killer || killer == victim );
 
@@ -328,16 +414,28 @@ void CHudDeathNotice::FireGameEvent( IGameEvent * event )
 	{
 		if ( !strcmp( fullkilledwith, "d_worldspawn" ) )
 		{
+#ifdef MAPBASE_MP
+			Q_snprintf( sDeathMsg, sizeof( sDeathMsg ), "%ws died.\n", deathMsg.Victim.szName );
+#else
 			Q_snprintf( sDeathMsg, sizeof( sDeathMsg ), "%s died.\n", deathMsg.Victim.szName );
+#endif
 		}
 		else	//d_world
 		{
+#ifdef MAPBASE_MP
+			Q_snprintf( sDeathMsg, sizeof( sDeathMsg ), "%ws suicided.\n", deathMsg.Victim.szName );
+#else
 			Q_snprintf( sDeathMsg, sizeof( sDeathMsg ), "%s suicided.\n", deathMsg.Victim.szName );
+#endif
 		}
 	}
 	else
 	{
+#ifdef MAPBASE_MP
+		Q_snprintf( sDeathMsg, sizeof( sDeathMsg ), "%ws killed %ws", deathMsg.Killer.szName, deathMsg.Victim.szName );
+#else
 		Q_snprintf( sDeathMsg, sizeof( sDeathMsg ), "%s killed %s", deathMsg.Killer.szName, deathMsg.Victim.szName );
+#endif
 
 		if ( fullkilledwith && *fullkilledwith && (*fullkilledwith > 13 ) )
 		{
@@ -347,6 +445,156 @@ void CHudDeathNotice::FireGameEvent( IGameEvent * event )
 
 	Msg( "%s", sDeathMsg );
 }
+
+#ifdef MAPBASE_MP
+//-----------------------------------------------------------------------------
+// Purpose: Server's told us that someone's died
+//-----------------------------------------------------------------------------
+void CHudDeathNotice::OnNonPlayerKilled( IGameEvent * event )
+{
+	int killer = event->GetInt("attacker_entindex");
+	int victim = event->GetInt("victim_entindex");
+	const char *killedwith = event->GetString( "weapon" );
+
+	char fullkilledwith[128];
+	if ( killedwith && *killedwith )
+	{
+		Q_snprintf( fullkilledwith, sizeof(fullkilledwith), "death_%s", killedwith );
+	}
+	else
+	{
+		fullkilledwith[0] = 0;
+	}
+
+	// Get the names of the players
+	const char *killer_name = NULL;
+	const char *victim_name = NULL;
+
+	C_BaseEntity *pKiller = C_BaseEntity::Instance( killer );
+	if (pKiller)
+	{
+		killer_name = pKiller->GetPlayerName();
+	}
+
+	C_BaseEntity *pVictim = C_BaseEntity::Instance( victim );
+	if (pVictim)
+	{
+		victim_name = pVictim->GetPlayerName();
+	}
+
+	// For now, don't show death notices for NPCs we don't have net names for
+	// (probably a NPC which spawned and died off-screen without any players coming into contact with it)
+	if ((!killer_name || !*killer_name) && (!victim_name || !*victim_name))
+		return;
+
+	if ( !killer_name )
+		killer_name = "";
+	if ( !victim_name )
+		victim_name = "";
+
+	// Do we have too many death messages in the queue?
+	if ( m_DeathNotices.Count() > 0 &&
+		m_DeathNotices.Count() >= (int)m_flMaxDeathNotices )
+	{
+		// Remove the oldest one in the queue, which will always be the first
+		m_DeathNotices.Remove(0);
+	}
+
+	// Make a new death notice
+	DeathNoticeItem deathMsg;
+	deathMsg.Killer.iEntIndex = killer;
+	deathMsg.Victim.iEntIndex = victim;
+
+	// Find a localized version of the killer name if possible
+	wchar_t *pLocalized = NULL;
+	if (killer_name && (!pKiller || !pKiller->IsPlayer()))
+	{
+		pLocalized = g_pVGuiLocalize->Find( killer_name );
+	}
+
+	if (pLocalized)
+		V_wcsncpy( deathMsg.Killer.szName, pLocalized, sizeof( deathMsg.Killer.szName ) );
+	else
+		g_pVGuiLocalize->ConvertANSIToUnicode( killer_name, deathMsg.Killer.szName, sizeof( deathMsg.Killer.szName ) );
+
+	// Then the victim name
+	pLocalized = NULL;
+	if (victim_name)
+	{
+		pLocalized = g_pVGuiLocalize->Find( victim_name );
+	}
+
+	if (pLocalized)
+		V_wcsncpy( deathMsg.Victim.szName, pLocalized, sizeof( deathMsg.Victim.szName ) );
+	else
+		g_pVGuiLocalize->ConvertANSIToUnicode( victim_name, deathMsg.Victim.szName, sizeof( deathMsg.Victim.szName ) );
+
+	// Get the team numbers for the players involved
+	deathMsg.Killer.nTeam = GetTeamFromIndex( killer );
+	deathMsg.Victim.nTeam = GetTeamFromIndex( victim );
+
+	deathMsg.flDisplayTime = gpGlobals->curtime + hud_deathnotice_time.GetFloat();
+	deathMsg.iSuicide = ( !killer || killer == victim );
+
+	// Try and find the death identifier in the icon list
+	deathMsg.iconDeath = gHUD.GetIcon( fullkilledwith );
+
+	if ( !deathMsg.iconDeath || deathMsg.iSuicide )
+	{
+		// Can't find it, so use the default skull & crossbones icon
+		deathMsg.iconDeath = m_iconD_skull;
+	}
+
+	// Add it to our list of death notices
+	m_DeathNotices.AddToTail( deathMsg );
+
+	char sDeathMsg[512];
+
+	// Record the death notice in the console
+	if ( deathMsg.iSuicide )
+	{
+		if ( !strcmp( fullkilledwith, "d_worldspawn" ) )
+		{
+			Q_snprintf( sDeathMsg, sizeof( sDeathMsg ), "%ws died.\n", deathMsg.Victim.szName );
+		}
+		else	//d_world
+		{
+			Q_snprintf( sDeathMsg, sizeof( sDeathMsg ), "%ws suicided.\n", deathMsg.Victim.szName );
+		}
+	}
+	else
+	{
+		Q_snprintf( sDeathMsg, sizeof( sDeathMsg ), "%ws killed %ws", deathMsg.Killer.szName, deathMsg.Victim.szName );
+
+		if ( fullkilledwith && *fullkilledwith && (*fullkilledwith > 13 ) )
+		{
+			Q_strncat( sDeathMsg, VarArgs( " with %s.\n", fullkilledwith+6 ), sizeof( sDeathMsg ), COPY_ALL_CHARACTERS );
+		}
+	}
+
+	Msg( "%s", sDeathMsg );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+int CHudDeathNotice::GetTeamFromIndex( int iEntIndex )
+{
+	if ( iEntIndex > gpGlobals->maxClients )
+	{
+		// Non-player, get team number directly
+		C_BaseEntity *pEnt = C_BaseEntity::Instance( iEntIndex );
+		if (pEnt)
+			return pEnt->GetTeamNumber();
+	}
+	else if ( g_PR )
+	{
+		return g_PR->GetTeam( iEntIndex );
+	}
+
+	return TEAM_UNASSIGNED;
+}
+#endif
 
 
 

@@ -30,6 +30,9 @@ CBaseMultiplayerPlayer::~CBaseMultiplayerPlayer()
 	m_pAchievementKV->deleteThis();
 }
 
+BEGIN_ENT_SCRIPTDESC( CBaseMultiplayerPlayer, CBasePlayer, "Multiplayer Player" )
+END_SCRIPTDESC();
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
@@ -91,7 +94,13 @@ bool CBaseMultiplayerPlayer::SpeakConcept( AI_Response &response, int iConcept )
 {
 	// Save the current concept.
 	m_iCurrentConcept = iConcept;
-	return SpeakFindResponse( response, g_pszMPConcepts[iConcept] );
+#ifdef NEW_RESPONSE_SYSTEM
+	CAI_Concept concept(g_pszMPConcepts[iConcept]);
+	concept.SetSpeaker(this);
+	return FindResponse( response, concept );
+#else
+	return SpeakFindResponse( g_pszMPConcepts[iConcept] );
+#endif
 }
 
 //-----------------------------------------------------------------------------

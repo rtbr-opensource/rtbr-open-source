@@ -34,12 +34,28 @@ BEGIN_DATADESC( CBaseGrenade )
 	DEFINE_FIELD( m_hThrower, FIELD_EHANDLE ),
 	//					m_fRegisteredSound ???
 	DEFINE_FIELD( m_bIsLive, FIELD_BOOLEAN ),
+#ifdef MAPBASE
+	DEFINE_KEYFIELD( m_DmgRadius, FIELD_FLOAT, "Radius" ),
+#else
 	DEFINE_FIELD( m_DmgRadius, FIELD_FLOAT ),
+#endif
 	DEFINE_FIELD( m_flDetonateTime, FIELD_TIME ),
 	DEFINE_FIELD( m_flWarnAITime, FIELD_TIME ),
+#ifdef MAPBASE
+	DEFINE_KEYFIELD( m_flDamage, FIELD_FLOAT, "Damage" ),
+#else
 	DEFINE_FIELD( m_flDamage, FIELD_FLOAT ),
+#endif
 	DEFINE_FIELD( m_iszBounceSound, FIELD_STRING ),
 	DEFINE_FIELD( m_bHasWarnedAI,	FIELD_BOOLEAN ),
+
+#ifdef MAPBASE
+	DEFINE_INPUTFUNC( FIELD_FLOAT, "SetDamage", InputSetDamage ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "Detonate", InputDetonate ),
+
+	DEFINE_OUTPUT( m_OnDetonate, "OnDetonate" ),
+	DEFINE_OUTPUT( m_OnDetonate_OutPosition, "OnDetonate_OutPosition" ),
+#endif
 
 	// Function Pointers
 	DEFINE_THINKFUNC( Smoke ),
@@ -54,8 +70,28 @@ BEGIN_DATADESC( CBaseGrenade )
 
 END_DATADESC()
 
-void SendProxy_CropFlagsToPlayerFlagBitsLength( const SendProp *pProp, const void *pStruct, const void *pVarData, DVariant *pOut, int iElement, int objectID);
+#endif
 
+#ifdef MAPBASE_VSCRIPT
+BEGIN_ENT_SCRIPTDESC( CBaseGrenade, CBaseAnimating, "The base class for grenades." )
+
+	DEFINE_SCRIPTFUNC( GetBlastForce, "Gets the grenade's blast force override. Grenades which use base damage force calculations return 0,0,0" )
+
+	DEFINE_SCRIPTFUNC( GetDamage, "Gets the grenade's blast damage." )
+	DEFINE_SCRIPTFUNC( GetDamageRadius, "Gets the grenade's blast damage radius." )
+	DEFINE_SCRIPTFUNC( SetDamage, "Sets the grenade's blast damage." )
+	DEFINE_SCRIPTFUNC( SetDamageRadius, "Sets the grenade's blast damage radius." )
+
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetThrower, "GetThrower", "Gets the grenade's thrower." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetThrower, "SetThrower", "Sets the grenade's thrower." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetOriginalThrower, "GetOriginalThrower", "Gets the grenade's original thrower after the thrower was changed due to being picked up by a gravity gun or something." )
+
+	DEFINE_SCRIPTFUNC_NAMED( GetDetonateTime, "GetTimer", "Gets the grenade's detonate time if it has one." )
+	DEFINE_SCRIPTFUNC( HasWarnedAI, "Whether or not the grenade has issued its DANGER sound to the world sound list yet." )
+	DEFINE_SCRIPTFUNC( IsLive, "Whether or not the grenade has issued its DANGER sound to the world sound list yet." )
+	DEFINE_SCRIPTFUNC( GetWarnAITime, "Gets the time at which the grenade will warn/has warned AI." )
+
+END_SCRIPTDESC();
 #endif
 
 IMPLEMENT_NETWORKCLASS_ALIASED( BaseGrenade, DT_BaseGrenade )
@@ -70,7 +106,7 @@ BEGIN_NETWORK_TABLE( CBaseGrenade, DT_BaseGrenade )
 
 	SendPropVector( SENDINFO( m_vecVelocity ), 0, SPROP_NOSCALE ), 
 	// HACK: Use same flag bits as player for now
-	SendPropInt			( SENDINFO(m_fFlags), PLAYER_FLAG_BITS, SPROP_UNSIGNED, SendProxy_CropFlagsToPlayerFlagBitsLength ),
+	SendPropInt			( SENDINFO(m_fFlags), 0, SPROP_UNSIGNED ),
 #else
 	RecvPropFloat( RECVINFO( m_flDamage ) ),
 	RecvPropFloat( RECVINFO( m_DmgRadius ) ),
@@ -146,7 +182,7 @@ void CBaseGrenade::Explode( trace_t *pTrace, int bitsDamageType )
 			!( contents & MASK_WATER ) ? g_sModelIndexFireball : g_sModelIndexWExplosion,
 			m_DmgRadius * .03, 
 			25,
-			TE_EXPLFLAG_NONE,
+			TE_EXPLFLAG_NOFIREBALL | TE_EXPLFLAG_NOPARTICLES,
 			m_DmgRadius,
 			m_flDamage,
 			&vecNormal,
@@ -160,7 +196,7 @@ void CBaseGrenade::Explode( trace_t *pTrace, int bitsDamageType )
 			!( contents & MASK_WATER ) ? g_sModelIndexFireball : g_sModelIndexWExplosion,
 			m_DmgRadius * .03, 
 			25,
-			TE_EXPLFLAG_NONE,
+			TE_EXPLFLAG_NOFIREBALL | TE_EXPLFLAG_NOPARTICLES,
 			m_DmgRadius,
 			m_flDamage );
 	}
@@ -179,6 +215,11 @@ void CBaseGrenade::Explode( trace_t *pTrace, int bitsDamageType )
 	UTIL_DecalTrace( pTrace, "Scorch" );
 
 	EmitSound( "BaseGrenade.Explode" );
+
+#ifdef MAPBASE
+	m_OnDetonate.FireOutput(GetThrower(), this);
+	m_OnDetonate_OutPosition.Set(GetAbsOrigin(), GetThrower(), this);
+#endif
 
 	SetThink( &CBaseGrenade::SUB_Remove );
 	SetTouch( NULL );
@@ -258,6 +299,25 @@ void CBaseGrenade::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE 
 	// Pass up so we still call any custom Use function
 	BaseClass::Use( pActivator, pCaller, useType, value );
 }
+
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CBaseGrenade::InputSetDamage( inputdata_t &inputdata )
+{
+	SetDamage( inputdata.value.Float() );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CBaseGrenade::InputDetonate( inputdata_t &inputdata )
+{
+	Detonate();
+}
+#endif
+
 #endif
 
 //-----------------------------------------------------------------------------

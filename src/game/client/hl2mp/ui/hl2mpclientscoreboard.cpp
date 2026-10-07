@@ -12,6 +12,9 @@
 #include "c_playerresource.h"
 #include "c_hl2mp_player.h"
 #include "hl2mp_gamerules.h"
+#ifdef MAPBASE
+#include "c_hl2mp_playerresource.h"
+#endif
 
 #include <KeyValues.h>
 
@@ -20,6 +23,9 @@
 #include <vgui/ISurface.h>
 #include <vgui/IVGui.h>
 #include <vgui_controls/SectionedListPanel.h>
+#ifdef MAPBASE
+#include <vgui_controls/ImageList.h>
+#endif
 
 #include "voice_status.h"
 
@@ -53,6 +59,8 @@ static int coord[NumSegments+1] = {
 //-----------------------------------------------------------------------------
 CHL2MPClientScoreBoardDialog::CHL2MPClientScoreBoardDialog(IViewPort *pViewPort):CClientScoreBoardDialog(pViewPort)
 {
+	SetProportional( true );
+	m_bAllowGrowth = false;
 }
 
 //-----------------------------------------------------------------------------
@@ -318,6 +326,8 @@ void CHL2MPClientScoreBoardDialog::ApplySchemeSettings( vgui::IScheme *pScheme )
 
 	SetBgColor( Color(0, 0, 0, 0) );
 	SetBorder( pScheme->GetBorder( "BaseBorder" ) );
+
+	m_pPlayerList->SetProportional( true );
 }
 
 
@@ -447,9 +457,8 @@ void CHL2MPClientScoreBoardDialog::AddHeader()
 	// add the top header
 	m_pPlayerList->AddSection(0, "");
 	m_pPlayerList->SetSectionAlwaysVisible(0);
-	HFont hFallbackFont = scheme()->GetIScheme( GetScheme() )->GetFont( "DefaultVerySmallFallBack", false );
-	m_pPlayerList->AddColumnToSection(0, "name", "", 0, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_NAME_WIDTH ), hFallbackFont );
-	m_pPlayerList->AddColumnToSection(0, "class", "", 0, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_CLASS_WIDTH ) );
+	m_pPlayerList->AddColumnToSection(0, "avatar", "", 0, m_iAvatarWidth * 2 );
+	m_pPlayerList->AddColumnToSection(0, "name", "", 0, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_NAME_WIDTH ) - ( m_iAvatarWidth * 2 ) );
 	m_pPlayerList->AddColumnToSection(0, "frags", "#PlayerScore", 0 | SectionedListPanel::COLUMN_RIGHT, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_SCORE_WIDTH ) );
 	m_pPlayerList->AddColumnToSection(0, "deaths", "#PlayerDeath", 0 | SectionedListPanel::COLUMN_RIGHT, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_DEATH_WIDTH ) );
 	m_pPlayerList->AddColumnToSection(0, "ping", "#PlayerPing", 0 | SectionedListPanel::COLUMN_RIGHT, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_PING_WIDTH ) );
@@ -462,16 +471,18 @@ void CHL2MPClientScoreBoardDialog::AddHeader()
 //-----------------------------------------------------------------------------
 void CHL2MPClientScoreBoardDialog::AddSection(int teamType, int teamNumber)
 {
-	HFont hFallbackFont = scheme()->GetIScheme( GetScheme() )->GetFont( "DefaultVerySmallFallBack", false );
-
 	int sectionID = GetSectionFromTeamNumber( teamNumber );
 	if ( teamType == TYPE_TEAM )
 	{
  		m_pPlayerList->AddSection(sectionID, "", StaticPlayerSortFunc);
 
 		// setup the columns
-		m_pPlayerList->AddColumnToSection(sectionID, "name", "", 0, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_NAME_WIDTH ), hFallbackFont );
-		m_pPlayerList->AddColumnToSection(sectionID, "class", "" , 0, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_CLASS_WIDTH ) );
+		if ( ShowAvatars() )
+		{
+			m_pPlayerList->AddColumnToSection( sectionID, "avatar", "", SectionedListPanel::COLUMN_IMAGE, ( m_iAvatarWidth * 2 ) );
+		}
+
+		m_pPlayerList->AddColumnToSection(sectionID, "name", "", 0, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_NAME_WIDTH ) - ( m_iAvatarWidth * 2 ) );
 		m_pPlayerList->AddColumnToSection(sectionID, "frags", "", SectionedListPanel::COLUMN_RIGHT, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_SCORE_WIDTH ) );
 		m_pPlayerList->AddColumnToSection(sectionID, "deaths", "", SectionedListPanel::COLUMN_RIGHT, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_DEATH_WIDTH ) );
 		m_pPlayerList->AddColumnToSection(sectionID, "ping", "", SectionedListPanel::COLUMN_RIGHT, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_PING_WIDTH ) );
@@ -488,8 +499,11 @@ void CHL2MPClientScoreBoardDialog::AddSection(int teamType, int teamNumber)
 	else if ( teamType == TYPE_SPECTATORS )
 	{
 		m_pPlayerList->AddSection(sectionID, "");
-		m_pPlayerList->AddColumnToSection(sectionID, "name", "#Spectators", 0, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_NAME_WIDTH ), hFallbackFont );
-		m_pPlayerList->AddColumnToSection(sectionID, "class", "" , 0, scheme()->GetProportionalScaledValueEx( GetScheme(), 100 ) );
+		if ( ShowAvatars() )
+		{
+			m_pPlayerList->AddColumnToSection( sectionID, "avatar", "", SectionedListPanel::COLUMN_IMAGE | SectionedListPanel::COLUMN_RIGHT, ( m_iAvatarWidth * 2 ) );
+		}
+		m_pPlayerList->AddColumnToSection(sectionID, "name", "#Spectators", 0, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_NAME_WIDTH ) - ( m_iAvatarWidth * 2 ) );
 	}
 }
 
@@ -519,7 +533,6 @@ bool CHL2MPClientScoreBoardDialog::GetPlayerScoreInfo(int playerIndex, KeyValues
 	kv->SetString("name", g_PR->GetPlayerName(playerIndex) );
 	kv->SetInt("deaths", g_PR->GetDeaths( playerIndex ));
 	kv->SetInt("frags", g_PR->GetPlayerScore( playerIndex ));
-	kv->SetString("class", "");
 	
 	if (g_PR->GetPing( playerIndex ) < 1)
 	{
@@ -609,6 +622,7 @@ void CHL2MPClientScoreBoardDialog::UpdatePlayerInfo()
 			// add the player to the list
 			KeyValues *playerData = new KeyValues("data");
 			GetPlayerScoreInfo( i, playerData );
+			UpdatePlayerAvatar( i, playerData );
 			int itemID = FindItemIDForPlayerIndex( i );
   			int sectionID = GetSectionFromTeamNumber( g_PR->GetTeam( i ) );
 						
@@ -630,6 +644,25 @@ void CHL2MPClientScoreBoardDialog::UpdatePlayerInfo()
 
 			// set the row color based on the players team
 			m_pPlayerList->SetItemFgColor( itemID, g_PR->GetTeamColor( g_PR->GetTeam( i ) ) );
+
+#ifdef MAPBASE
+			bool bUsingIdleBot = g_HL2MP_PR->IsUsingIdleBot( i );
+			if (bUsingIdleBot)
+			{
+				// Make this player grey like spectators
+				m_pPlayerList->SetItemFgColor( itemID, COLOR_GREY );
+			}
+
+			int iImageIndex = playerData->GetInt( "avatar" );
+			vgui::IImage *pImage = m_pImageList->GetImage( iImageIndex );
+			if ( pImage )
+			{
+				// Make avatar less visible when controlled by an idle bot
+				static const Color clrHalf( 192, 192, 192, 128 );
+				static const Color clrFull( 255, 255, 255, 255 );
+				pImage->SetColor( bUsingIdleBot ? clrHalf : clrFull );
+			}
+#endif
 
 			playerData->deleteThis();
 		}

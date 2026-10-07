@@ -46,6 +46,14 @@ const char* CAI_BaseNPC::GetSquadSlotDebugName( int iSquadSlot )
 		break;
 	case SQUAD_SLOT_ATTACK2:			return "SQUAD_SLOT_ATTACK2";	
 		break;
+	case SQUAD_SLOT_ATTACK3:			return "SQUAD_SLOT_ATTACK3";	
+		break;
+	case SQUAD_SLOT_ATTACK4:			return "SQUAD_SLOT_ATTACK4";	
+		break;
+	case SQUAD_SLOT_ATTACK5:			return "SQUAD_SLOT_ATTACK5";	
+		break;
+	case SQUAD_SLOT_ATTACK6:			return "SQUAD_SLOT_ATTACK6";	
+		break;
 	case SQUAD_SLOT_INVESTIGATE_SOUND:	return "SQUAD_SLOT_INVESTIGATE_SOUND";	
 		break;
 	case SQUAD_SLOT_EXCLUSIVE_HANDSIGN:	return "SQUAD_SLOT_EXCLUSIVE_HANDSIGN";	
@@ -78,6 +86,10 @@ void CAI_BaseNPC::InitDefaultSquadSlotSR(void)
 {
 	gm_SquadSlotNamespace.AddSymbol( "SQUAD_SLOT_ATTACK1", AI_RemapToGlobal(SQUAD_SLOT_ATTACK1) );
 	gm_SquadSlotNamespace.AddSymbol( "SQUAD_SLOT_ATTACK2", AI_RemapToGlobal(SQUAD_SLOT_ATTACK2) );
+	gm_SquadSlotNamespace.AddSymbol( "SQUAD_SLOT_ATTACK3", AI_RemapToGlobal(SQUAD_SLOT_ATTACK3) );
+	gm_SquadSlotNamespace.AddSymbol( "SQUAD_SLOT_ATTACK4", AI_RemapToGlobal(SQUAD_SLOT_ATTACK4) );
+	gm_SquadSlotNamespace.AddSymbol( "SQUAD_SLOT_ATTACK5", AI_RemapToGlobal(SQUAD_SLOT_ATTACK5) );
+	gm_SquadSlotNamespace.AddSymbol( "SQUAD_SLOT_ATTACK6", AI_RemapToGlobal(SQUAD_SLOT_ATTACK6) );
 	gm_SquadSlotNamespace.AddSymbol( "SQUAD_SLOT_INVESTIGATE_SOUND", AI_RemapToGlobal(SQUAD_SLOT_INVESTIGATE_SOUND) );
 	gm_SquadSlotNamespace.AddSymbol( "SQUAD_SLOT_EXCLUSIVE_HANDSIGN", AI_RemapToGlobal(SQUAD_SLOT_EXCLUSIVE_HANDSIGN) );
 	gm_SquadSlotNamespace.AddSymbol( "SQUAD_SLOT_EXCLUSIVE_RELOAD", AI_RemapToGlobal(SQUAD_SLOT_EXCLUSIVE_RELOAD) );

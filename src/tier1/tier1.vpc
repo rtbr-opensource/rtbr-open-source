@@ -36,10 +36,13 @@ $Project "tier1"
 		$File	"convar.cpp"
 		$File	"datamanager.cpp"
 		$File	"diff.cpp"
+		$File	"exprevaluator.cpp"
 		$File	"generichash.cpp"
 		$File	"ilocalize.cpp"
 		$File	"interface.cpp"
+		$File	"interval.cpp"
 		$File	"KeyValues.cpp"
+		$File	"keyvaluesjson.cpp"
 		$File	"kvpacker.cpp"
 		$File	"lzmaDecoder.cpp"
 		$File	"lzss.cpp" [!$SOURCESDK]
@@ -78,6 +81,8 @@ $Project "tier1"
 		$File	"snappy.cpp"
 		$File	"snappy-sinksource.cpp"
 		$File	"snappy-stubs-internal.cpp"
+		$File	"mapbase_con_groups.cpp" [$MAPBASE]
+		$File	"mapbase_matchers_base.cpp" [$MAPBASE]
 	}
 
 	// Select bits from the LZMA SDK to support lzmaDecoder.h
@@ -116,6 +121,7 @@ $Project "tier1"
 		$File	"$SRCDIR\public\tier1\ilocalize.h"
 		$File	"$SRCDIR\public\tier1\interface.h"
 		$File	"$SRCDIR\public\tier1\KeyValues.h"
+		$File	"$SRCDIR\public\tier1\keyvaluesjson.h"
 		$File	"$SRCDIR\public\tier1\kvpacker.h"
 		$File	"$SRCDIR\public\tier1\lzmaDecoder.h"
 		$File	"$SRCDIR\public\tier1\lzss.h"
@@ -133,6 +139,7 @@ $Project "tier1"
 		$File	"$SRCDIR\public\tier1\tier1.h"
 		$File	"$SRCDIR\public\tier1\tokenreader.h"
 		$File	"$SRCDIR\public\tier1\uniqueid.h"				[$WINDOWS]
+		$File	"$SRCDIR\public\tier1\util_misc.h"
 		$File	"$SRCDIR\public\tier1\utlbidirectionalset.h"
 		$File	"$SRCDIR\public\tier1\utlblockmemory.h"
 		$File	"$SRCDIR\public\tier1\utlbuffer.h"
@@ -158,7 +165,10 @@ $Project "tier1"
 		$File	"$SRCDIR\public\tier1\utlsymbol.h"
 		$File	"$SRCDIR\public\tier1\utlsymbollarge.h"
 		$File	"$SRCDIR\public\tier1\utlvector.h"
+		$File	"$SRCDIR\public\tier1\utlrange.h"
 		$File	"$SRCDIR\public\tier1\utlbinaryblock.h"
+		$File	"$SRCDIR\public\tier1\mapbase_con_groups.h"	[$MAPBASE]
+		$File	"$SRCDIR\public\tier1\mapbase_matchers_base.h"	[$MAPBASE]
 		$File	"$SRCDIR\common\xbox\xboxstubs.h"				[$WINDOWS]
 	}
 }

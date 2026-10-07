@@ -31,6 +31,17 @@ typedef struct wrect_s
 	int bottom;
 } wrect_t;
 
+#ifdef RTBMP
+enum CrosshairRelation_t
+{
+	CROSSHAIRRELATION_NONE = 0,
+	CROSSHAIRRELATION_FRIEND, // Generic friend/foe marker (e.g. co-op)
+	CROSSHAIRRELATION_ENEMY,
+	CROSSHAIRRELATION_COMBINE, // Only for teamplay
+	CROSSHAIRRELATION_REBELS,
+};
+#endif
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
@@ -118,7 +129,7 @@ public:
 	void						OnRestore();
 
 	void						Think();
-
+	
 	void						ProcessInput( bool bActive );
 	void						UpdateHud( bool bActive );
 
@@ -137,6 +148,7 @@ public:
 
 	void						DrawProgressBar( int x, int y, int width, int height, float percentage, Color& clr, unsigned char type );
 	void						DrawIconProgressBar( int x, int y, CHudTexture *icon, CHudTexture *icon2, float percentage, Color& clr, int type );
+	void						DrawIconProgressBar( int x, int y, int w, int h, CHudTexture *icon, float percentage, Color& clr, int type );
 
 	CHudTexture					*GetIcon( const char *szIcon );
 
@@ -161,6 +173,15 @@ public:
 
 	void						SetScreenShotTime( float flTime ){ m_flScreenShotTime = flTime; }
 
+	// Walk through all the HUD elements. Handler should be an object taking a CHudElement*
+	template<typename THandler> void ForEachHudElement( THandler handler )
+	{
+		FOR_EACH_VEC( m_HudList, i )
+		{
+			handler( m_HudList[i] );
+		}
+	}
+
 public:
 
 	int							m_iKeyBits;
@@ -173,6 +194,14 @@ public:
 	Color						m_clrNormal;
 	Color						m_clrCaution;
 	Color						m_clrYellowish;
+	
+#ifdef RTBMP
+	// for rtba, colours to set the quickinfo when mousing over enemies or friendlies
+	Color						m_clrViewingEnemy;
+	Color						m_clrViewingFriend;
+	
+	CrosshairRelation_t			m_ViewTargetRelation;
+#endif
 
 	CUtlVector< CHudElement * >	m_HudList;
 
@@ -193,6 +222,37 @@ private:
 };
 
 extern CHud gHUD;
+
+//-----------------------------------------------------------------------------
+// Purpose: CHudIcons
+//-----------------------------------------------------------------------------
+class CHudIcons
+{
+public:
+	CHudIcons();
+	~CHudIcons();
+
+	void						Init();
+	void						Shutdown();
+
+	CHudTexture					*GetIcon( const char *szIcon );
+
+	// loads a new icon into the list, without duplicates
+	CHudTexture					*AddUnsearchableHudIconToList( CHudTexture& texture );
+	CHudTexture					*AddSearchableHudIconToList( CHudTexture& texture );
+
+	void						RefreshHudTextures();
+
+private:
+
+	void						SetupNewHudTexture( CHudTexture *t );
+	bool						m_bHudTexturesLoaded;
+	// Global list of known icons
+	CUtlDict< CHudTexture *, int >		m_Icons;
+
+};
+
+CHudIcons &HudIcons();
 
 //-----------------------------------------------------------------------------
 // Global fonts used in the client DLL

@@ -87,6 +87,11 @@ class CFuncLadder;
 class CNavArea;
 class CHintSystem;
 class CAI_Expresser;
+class CVoteController;
+
+#ifdef MAPBASE // From Alien Swarm SDK
+class CTonemapTrigger;
+#endif
 
 #if defined USES_ECON_ITEMS
 class CEconWearable;
@@ -160,6 +165,10 @@ enum PlayerPhysFlag_e
 #define DOT_25DEGREE  0.9063077870367
 #define DOT_30DEGREE  0.866025403784
 #define DOT_45DEGREE  0.707106781187
+
+#define IDLE_FIDGET_TIME 15 // amount of time to be idle for before fidget
+#define IDLE_FIDGET_TICK 0.25f // time per idle check
+
 enum
 {
 	VPHYS_WALK = 0,
@@ -233,7 +242,6 @@ private:
 	CBasePlayer *m_pParent; 
 };
 
-
 class CBasePlayer : public CBaseCombatCharacter
 {
 public:
@@ -245,6 +253,8 @@ protected:
 public:
 	DECLARE_DATADESC();
 	DECLARE_SERVERCLASS();
+	// script description
+	DECLARE_ENT_SCRIPTDESC();
 	
 	CBasePlayer();
 	~CBasePlayer();
@@ -265,6 +275,15 @@ public:
 	void					HideViewModels( void );
 	void					DestroyViewModels( void );
 
+#if defined(MAPBASE) && defined(HL2_DLL)
+	virtual void			CreateHandModel( int viewmodelindex = 1, int iOtherVm = 0 );
+#endif
+
+	void Fidget();
+	bool LookingAtFriendly( void );
+	int m_iIdleTicks = 0;
+	QAngle m_vViewAngles;
+
 	CPlayerState			*PlayerData( void ) { return &pl; }
 	
 	int						RequiredEdictIndex( void ) { return ENTINDEX(edict()); } 
@@ -279,15 +298,20 @@ public:
 	virtual int				UpdateTransmitState();
 	virtual int				ShouldTransmit( const CCheckTransmitInfo *pInfo );
 
-	// Returns true if this player wants pPlayer to be moved back in time when this player runs usercmds.
+	// Returns true if this player wants pEntity to be moved back in time when this entity runs usercmds.
 	// Saves a lot of overhead on the server if we can cull out entities that don't need to lag compensate
 	// (like team members, entities out of our PVS, etc).
-	virtual bool			WantsLagCompensationOnEntity( const CBasePlayer	*pPlayer, const CUserCmd *pCmd, const CBitVec<MAX_EDICTS> *pEntityTransmitBits ) const;
+	virtual bool			WantsLagCompensationOnEntity( const CBaseEntity	*pEntity, const CUserCmd *pCmd, const CBitVec<MAX_EDICTS> *pEntityTransmitBits ) const;
 
 	virtual void			Spawn( void );
 	virtual void			Activate( void );
 	virtual void			SharedSpawn(); // Shared between client and server.
 	virtual void			ForceRespawn( void );
+
+#ifdef MAPBASE
+	// For the logic_playerproxy output
+	virtual void			SpawnedAtPoint( CBaseEntity *pSpawnPoint ) {}
+#endif
 
 	virtual void			InitialSpawn( void );
 	virtual void			InitHUD( void ) {}
@@ -314,6 +338,9 @@ public:
 
 	// Forces processing of usercmds (e.g., even if game is paused, etc.)
 	void					ForceSimulation();
+
+	// Process new user settings from the engine
+	void					ClientSettingsChanged();
 
 	virtual unsigned int	PhysicsSolidMaskForEntity( void ) const;
 
@@ -371,7 +398,7 @@ public:
 	const char *			GetPlayerName() { return m_szNetname; }
 	void					SetPlayerName( const char *name );
 
-	int						GetUserID() { return engine->GetPlayerUserId( edict() ); }
+	int						GetUserID() const { return engine->GetPlayerUserId( edict() ); }
 	const char *			GetNetworkIDString(); 
 	virtual const Vector	GetPlayerMins( void ) const; // uses local player
 	virtual const Vector	GetPlayerMaxs( void ) const; // uses local player
@@ -382,6 +409,37 @@ public:
 	void					ViewPunchReset( float tolerance = 0 );
 	void					ShowViewModel( bool bShow );
 	void					ShowCrosshair( bool bShow );
+
+	bool					ScriptIsPlayerNoclipping( void );
+	void					SetForceLocalDraw( bool bForceLocalDraw )
+	{
+		m_Local.m_bForceLocalPlayerDraw = bForceLocalDraw;
+	}
+	bool					GetForceLocalDraw( void )
+	{
+		return m_Local.m_bForceLocalPlayerDraw;
+	}
+
+#ifdef MAPBASE_VSCRIPT
+	HSCRIPT					VScriptGetExpresser();
+
+	int						GetButtons() { return m_nButtons; }
+	int						GetButtonPressed() { return m_afButtonPressed; }
+	int						GetButtonReleased() { return m_afButtonReleased; }
+	int						GetButtonLast() { return m_afButtonLast; }
+	int						GetButtonDisabled() { return m_afButtonDisabled; }
+	int						GetButtonForced() { return m_afButtonForced; }
+
+	const Vector&			ScriptGetEyeForward() { static Vector vecForward; EyeVectors( &vecForward, NULL, NULL ); return vecForward; }
+	const Vector&			ScriptGetEyeRight() { static Vector vecRight; EyeVectors( NULL, &vecRight, NULL ); return vecRight; }
+	const Vector&			ScriptGetEyeUp() { static Vector vecUp; EyeVectors( NULL, NULL, &vecUp ); return vecUp; }
+
+	HSCRIPT					ScriptGetViewModel( int viewmodelindex );
+
+	HSCRIPT					ScriptGetUseEntity() { return ToHScript( GetUseEntity() ); }
+	HSCRIPT					ScriptGetPotentialUseEntity() { return ToHScript( GetPotentialUseEntity() ); }
+	HSCRIPT					ScriptGetHeldObject() { return ToHScript( GetHeldObject() ); }
+#endif
 
 	// View model prediction setup
 	void					CalcView( Vector &eyeOrigin, QAngle &eyeAngles, float &zNear, float &zFar, float &fov );
@@ -416,6 +474,9 @@ public:
 	virtual bool			Weapon_ShouldSelectItem( CBaseCombatWeapon *pWeapon );
 	void					Weapon_DropSlot( int weaponSlot );
 	CBaseCombatWeapon		*GetLastWeapon( void ) { return m_hLastWeapon.Get(); }
+#ifdef MAPBASE
+	virtual Activity		Weapon_TranslateActivity( Activity baseAct, bool *pRequired = NULL );
+#endif
 
 	virtual void			OnMyWeaponFired( CBaseCombatWeapon *weapon );	// call this when this player fires a weapon to allow other systems to react
 	virtual float			GetTimeSinceWeaponFired( void ) const;			// returns the time, in seconds, since this player fired a weapon
@@ -464,6 +525,8 @@ public:
 	bool					IsSinglePlayerGameEnding() { return m_bSinglePlayerGameEnding == true; }
 
 	bool					HandleVoteCommands( const CCommand &args );
+
+	virtual CVoteController *GetTeamVoteController();
 	
 	// Observer functions
 	virtual bool			StartObserverMode(int mode); // true, if successful
@@ -473,7 +536,7 @@ public:
 	virtual int				GetObserverMode( void ); // returns observer mode or OBS_NONE
 	virtual bool			SetObserverTarget(CBaseEntity * target);
 	virtual void			ObserverUse( bool bIsPressed ); // observer pressed use
-	virtual CBaseEntity		*GetObserverTarget( void ); // returns players targer or NULL
+	virtual CBaseEntity		*GetObserverTarget( void ); // returns players target or NULL
 	virtual CBaseEntity		*FindNextObserverTarget( bool bReverse ); // returns next/prev player to follow or NULL
 	virtual int				GetNextObserverSearchStartPoint( bool bReverse ); // Where we should start looping the player list in a FindNextObserverTarget call
 	virtual bool			IsValidObserverTarget(CBaseEntity * target); // true, if player is allowed to see this target
@@ -550,8 +613,9 @@ public:
 	virtual void			PickupObject( CBaseEntity *pObject, bool bLimitMassAndSize = true ) {}
 	virtual void			ForceDropOfCarriedPhysObjects( CBaseEntity *pOnlyIfHoldindThis = NULL ) {}
 	virtual float			GetHeldObjectMass( IPhysicsObject *pHeldObject );
+	virtual CBaseEntity		*GetHeldObject( void );
 
-	void					CheckSuitUpdate();
+	virtual void			CheckSuitUpdate();
 	void					SetSuitUpdate(const char *name, int fgroup, int iNoRepeat);
 	virtual void			UpdateGeigerCounter( void );
 	void					CheckTimeBasedDamage( void );
@@ -561,11 +625,20 @@ public:
 	virtual Vector			GetAutoaimVector( float flScale );
 	virtual Vector			GetAutoaimVector( float flScale, float flMaxDist );
 	virtual void			GetAutoaimVector( autoaim_params_t &params );
+#ifdef MAPBASE_VSCRIPT
+	Vector					ScriptGetAutoaimVector( float flScale ) { return GetAutoaimVector( flScale ); }
+	Vector					ScriptGetAutoaimVectorCustomMaxDist( float flScale, float flMaxDist ) { return GetAutoaimVector( flScale, flMaxDist ); }
+#endif
 
 	float					GetAutoaimScore( const Vector &eyePosition, const Vector &viewDir, const Vector &vecTarget, CBaseEntity *pTarget, float fScale, CBaseCombatWeapon *pActiveWeapon );
 	QAngle					AutoaimDeflection( Vector &vecSrc, autoaim_params_t &params );
 	virtual bool			ShouldAutoaim( void );
 	void					SetTargetInfo( Vector &vecSrc, float flDist );
+
+#ifdef MAPBASE
+	// Tries to figure out what the player is trying to aim at
+	CBaseEntity				*GetProbableAimTarget( const Vector &vecSrc, const Vector &vecDir );
+#endif
 
 	void					SetViewEntity( CBaseEntity *pEntity );
 	CBaseEntity				*GetViewEntity( void ) { return m_hViewEntity; }
@@ -588,8 +661,8 @@ public:
 	float					GetTimeSinceLastUserCommand( void ) { return ( !IsConnected() || IsFakeClient() || IsBot() ) ? 0.f : gpGlobals->curtime - m_flLastUserCommandTime; }
 
 	// Team Handling
-	virtual void			ChangeTeam( int iTeamNum ) { ChangeTeam(iTeamNum,false, false); }
-	virtual void			ChangeTeam( int iTeamNum, bool bAutoTeam, bool bSilent );
+	virtual void			ChangeTeam( int iTeamNum ) OVERRIDE { ChangeTeam( iTeamNum, false, false ); }
+	virtual void			ChangeTeam( int iTeamNum, bool bAutoTeam, bool bSilent, bool bAutoBalance = false );
 
 	// say/sayteam allowed?
 	virtual bool		CanHearAndReadChatFrom( CBasePlayer *pPlayer ) { return true; }
@@ -619,6 +692,12 @@ public:
 	virtual void			EquipWearable( CEconWearable *pItem );
 	virtual void			RemoveWearable( CEconWearable *pItem );
 	void					PlayWearableAnimsForPlaybackEvent( wearableanimplayback_t iPlayback );
+#endif
+
+#ifdef MAPBASE
+	bool					ShouldUseVisibilityCache( CBaseEntity *pEntity );
+
+	void					UpdateFXVolume( void );		// From Alien Swarm SDK
 #endif
 
 public:
@@ -662,7 +741,7 @@ public:
 	bool	IsConnected() const		{ return m_iConnected != PlayerDisconnected; }
 	bool	IsDisconnecting() const	{ return m_iConnected == PlayerDisconnecting; }
 	bool	IsSuitEquipped() const	{ return m_Local.m_bWearingSuit; }
-	int		ArmorValue() const		{ return m_ArmorValue; }
+	virtual int		ArmorValue() const		{ return m_ArmorValue; }
 	bool	HUDNeedsRestart() const { return m_fInitHUD; }
 	float	MaxSpeed() const		{ return m_flMaxspeed; }
 	Activity GetActivity( ) const	{ return m_Activity; }
@@ -707,6 +786,9 @@ public:
 	void	SetMuzzleFlashTime( float flTime );
 	void	SetUseEntity( CBaseEntity *pUseEntity );
 	CBaseEntity *GetUseEntity();
+#ifdef MAPBASE // From Alien Swarm SDK
+	virtual CBaseEntity *GetPotentialUseEntity() { return GetUseEntity(); }
+#endif
 
 	virtual float GetPlayerMaxSpeed();
 
@@ -738,10 +820,15 @@ public:
 	int		GetLockViewanglesTickNumber() const { return m_iLockViewanglesTickNumber; }
 	QAngle	GetLockViewanglesData() const { return m_qangLockViewangles; }
 
+	bool	IsLerpingFOV( void ) const;
 	int		GetFOV( void );														// Get the current FOV value
 	int		GetDefaultFOV( void ) const;										// Default FOV if not specified otherwise
 	int		GetFOVForNetworking( void );										// Get the current FOV used for network computations
 	bool	SetFOV( CBaseEntity *pRequester, int FOV, float zoomRate = 0.0f, int iZoomStart = 0 );	// Alters the base FOV of the player (must have a valid requester)
+#ifdef MAPBASE_VSCRIPT
+	void	ScriptSetFOV(int iFOV, float flSpeed);								// Overrides player FOV, ignores zoom owner
+	HSCRIPT ScriptGetFOVOwner() { return ToHScript(m_hZoomOwner); }
+#endif
 	void	SetDefaultFOV( int FOV );											// Sets the base FOV if nothing else is affecting it by zooming
 	CBaseEntity *GetFOVOwner( void ) { return m_hZoomOwner; }
 	float	GetFOVDistanceAdjustFactor(); // shared between client and server
@@ -754,8 +841,10 @@ public:
 	void	DeactivateMovementConstraint( );
 
 	// talk control
+	virtual bool CanPlayerTalk();
 	void	NotePlayerTalked() { m_fLastPlayerTalkTime = gpGlobals->curtime; }
-	float	LastTimePlayerTalked() { return m_fLastPlayerTalkTime; }
+	float	LastTimePlayerTalked() const { return m_fLastPlayerTalkTime; }
+	bool	ArePlayerTalkMessagesAvailable();
 
 	void	DisableButtons( int nButtons );
 	void	EnableButtons( int nButtons );
@@ -768,6 +857,9 @@ public:
 	void	InputSetHealth( inputdata_t &inputdata );
 	void	InputSetHUDVisibility( inputdata_t &inputdata );
 	void	InputHandleMapEvent( inputdata_t &inputdata );
+#ifdef MAPBASE
+	void	InputSetSuppressAttacks( inputdata_t &inputdata );
+#endif
 
 	surfacedata_t *GetSurfaceData( void ) { return m_pSurfaceData; }
 	void SetLadderNormal( Vector vecLadderNormal ) { m_vecLadderNormal = vecLadderNormal; }
@@ -782,31 +874,33 @@ public:
 	uint64		GetSteamIDAsUInt64( void );
 #endif
 
-	float GetRemainingMovementTimeForUserCmdProcessing() const { return m_flMovementTimeForUserCmdProcessingRemaining; }
-	float ConsumeMovementTimeForUserCmdProcessing( float flTimeNeeded )
+	int GetRemainingMovementTicksForUserCmdProcessing() const { return m_nMovementTicksForUserCmdProcessingRemaining; }
+	int ConsumeMovementTicksForUserCmdProcessing( int nTicks )
 	{
-		if ( m_flMovementTimeForUserCmdProcessingRemaining <= 0.0f )
+		if ( m_nMovementTicksForUserCmdProcessingRemaining < 0 )
 		{
-			return 0.0f;
+			return 0;
 		}
-		else if ( flTimeNeeded > m_flMovementTimeForUserCmdProcessingRemaining + FLT_EPSILON )
+		else if ( nTicks < m_nMovementTicksForUserCmdProcessingRemaining )
 		{
-			float flResult = m_flMovementTimeForUserCmdProcessingRemaining;
-			m_flMovementTimeForUserCmdProcessingRemaining = 0.0f;
-			return flResult;
+			m_nMovementTicksForUserCmdProcessingRemaining -= nTicks;
+			return nTicks;
 		}
 		else
 		{
-			m_flMovementTimeForUserCmdProcessingRemaining -= flTimeNeeded;
-			if ( m_flMovementTimeForUserCmdProcessingRemaining < 0.0f )
-				m_flMovementTimeForUserCmdProcessingRemaining = 0.0f;
-			return flTimeNeeded;
+			nTicks = m_nMovementTicksForUserCmdProcessingRemaining;
+			m_nMovementTicksForUserCmdProcessingRemaining = 0;
+			return nTicks;
 		}
 	}
 
+#ifdef RTBMP
+	int	LastDamageAmount( void ) { return m_lastDamageAmount; }
+#endif
+
 private:
 	// How much of a movement time buffer can we process from this user?
-	float				m_flMovementTimeForUserCmdProcessingRemaining;
+	int				m_nMovementTicksForUserCmdProcessingRemaining;
 
 	// For queueing up CUserCmds and running them from PhysicsSimulate
 	int					GetCommandContextCount( void ) const;
@@ -842,6 +936,19 @@ public:
 	void InitFogController( void );
 	void InputSetFogController( inputdata_t &inputdata );
 
+#ifdef MAPBASE // From Alien Swarm SDK
+	void OnTonemapTriggerStartTouch( CTonemapTrigger *pTonemapTrigger );
+	void OnTonemapTriggerEndTouch( CTonemapTrigger *pTonemapTrigger );
+	CUtlVector< CHandle< CTonemapTrigger > > m_hTriggerTonemapList;
+
+	CNetworkHandle( CPostProcessController, m_hPostProcessCtrl );	// active postprocessing controller
+	CNetworkHandle( CColorCorrection, m_hColorCorrectionCtrl );		// active FXVolume color correction
+	void InitPostProcessController( void );
+	void InputSetPostProcessController( inputdata_t &inputdata );
+	void InitColorCorrectionController( void );
+	void InputSetColorCorrectionController( inputdata_t &inputdata );
+#endif
+
 	// Used by env_soundscape_triggerable to manage when the player is touching multiple
 	// soundscape triggers simultaneously.
 	// The one at the HEAD of the list is always the current soundscape for the player.
@@ -876,10 +983,16 @@ public:
 
 	char					m_szAnimExtension[32];
 
+	bool					m_bPendingClientSettings; // User client settings changed, but we're not importing them
+							                          // until allowed
 	int						m_nUpdateRate;		// user snapshot rate cl_updaterate
 	float					m_fLerpTime;		// users cl_interp
+#ifdef RTBMP
+	float					m_fNpcLerpTime;		// users cl_interp_npcs
+#endif
 	bool					m_bLagCompensation;	// user wants lag compenstation
 	bool					m_bPredictWeapons; //  user has client side predicted weapons
+	bool					m_bRequestPredict; //  user has client prediction enabled
 	
 	float		GetDeathTime( void ) { return m_flDeathTime; }
 
@@ -895,6 +1008,10 @@ public:
 	CEconWearable			*GetWearable( int i ) { return m_hMyWearables[i]; }
 	const CEconWearable		*GetWearable( int i ) const { return m_hMyWearables[i]; }
 	int						GetNumWearables( void ) const { return m_hMyWearables.Count(); }
+#endif
+
+#ifdef MAPBASE
+	CNetworkVar( bool, m_bInTriggerFall );
 #endif
 
 private:
@@ -955,6 +1072,8 @@ protected:
 	CNetworkVar( int,	m_iFOVStart );		// What our FOV started at
 	CNetworkVar( float,	m_flFOVTime );		// Time our FOV change started
 	
+	CNetworkVar( bool, m_bFlashlightOn );
+	
 	int						m_iObserverLastMode; // last used observer mode
 	CNetworkHandle( CBaseEntity, m_hObserverTarget );	// entity handle to m_iObserverTarget
 	bool					m_bForcedObserverMode; // true, player was forced by invalid targets to switch mode
@@ -982,6 +1101,13 @@ protected:
 	float					m_fDelay;			// replay delay in seconds
 	float					m_fReplayEnd;		// time to stop replay mode
 	int						m_iReplayEntity;	// follow this entity in replay
+
+#ifdef MAPBASE // From Alien Swarm SDK
+	// For now, Mapbase uses Tony Sergi's Source 2007 tonemap fixes.
+	// Alien Swarm SDK tonemap controller code copies the parameters instead.
+	virtual void UpdateTonemapController( void );
+	//CNetworkHandle( CBaseEntity, m_hTonemapController );
+#endif
 
 private:
 	void HandleFuncTrain();
@@ -1047,6 +1173,7 @@ private:
 	// from edict_t
 	// CBasePlayer doesn't send this but CCSPlayer does.
 	CNetworkVarForDerived( int, m_ArmorValue );
+	float					m_flArmorDamageAccumulator;
 	float					m_AirFinished;
 	float					m_PainFinished;
 
@@ -1100,6 +1227,14 @@ public:
 	float					m_flSideMove;
 	int						m_nNumCrateHudHints;
 
+#ifdef MAPBASE
+	bool					GetDrawPlayerLegs( void ) { return m_bDrawPlayerLegs; }
+	void					SetDrawPlayerLegs( bool bToggle ) { m_bDrawPlayerLegs.Set( bToggle ); }
+
+	bool					GetDrawPlayerModelExternally( void ) { return m_bDrawPlayerModelExternally; }
+	void					SetDrawPlayerModelExternally( bool bToggle ) { m_bDrawPlayerModelExternally.Set( bToggle ); }
+#endif
+
 private:
 
 	// Used in test code to teleport the player to random locations in the map.
@@ -1111,6 +1246,9 @@ private:
 
 	bool					m_bGamePaused;
 	float					m_fLastPlayerTalkTime;
+	float					m_flPlayerTalkAvailableMessagesTier1;
+	float					m_flPlayerTalkAvailableMessagesTier2;
+	float					m_fLastPlayerTalkAttemptTime;
 	
 	CNetworkVar( CBaseCombatWeaponHandle, m_hLastWeapon );
 
@@ -1137,6 +1275,11 @@ private:
 
 	// Player name
 	char					m_szNetname[MAX_PLAYER_NAME_LENGTH];
+
+#ifdef MAPBASE
+	CNetworkVar( bool, m_bDrawPlayerLegs );
+	CNetworkVar( bool, m_bDrawPlayerModelExternally );
+#endif
 
 protected:
 	// HACK FOR TF2 Prediction
@@ -1195,6 +1338,23 @@ public:
 	virtual bool HasHaptics(){return m_bhasHaptics;}
 	// NVNT sets weather a user should receive haptic device messages.
 	virtual void SetHaptics(bool has) { m_bhasHaptics = has;}
+
+	const char* GetScriptOverlayMaterial() const { return m_Local.m_szScriptOverlayMaterial; }
+	void SetScriptOverlayMaterial( const char *pszMaterial )
+	{
+		if ( !pszMaterial || !*pszMaterial )
+		{
+			m_Local.m_szScriptOverlayMaterial.GetForModify()[0] = '\0';
+			return;
+		}
+
+		V_strncpy( m_Local.m_szScriptOverlayMaterial.GetForModify(), pszMaterial, MAX_PATH );
+	}
+
+	void InputSetScriptOverlayMaterial( inputdata_t &inputdata )
+	{
+		SetScriptOverlayMaterial( inputdata.value.String() );
+	}
 private:
 	// NVNT member variable holding if this user is using a haptic device.
 	bool m_bhasHaptics;
@@ -1224,6 +1384,27 @@ private:
 public:
 	virtual unsigned int PlayerSolidMask( bool brushOnly = false ) const;	// returns the solid mask for the given player, so bots can have a more-restrictive set
 
+private:
+	//
+	//Tony; new tonemap controller changes, specifically for multiplayer.
+	//
+	void	ClearTonemapParams();		//Tony; we need to clear our tonemap params every time we spawn to -1, if we trigger an input, the values will be set again.
+public:
+	void	InputSetTonemapScale( inputdata_t &inputdata );			//Set m_Local.
+//	void	InputBlendTonemapScale( inputdata_t &inputdata );		//TODO; this should be calculated on the client, if we use it; perhaps an entity message would suffice? .. hmm..
+	void	InputSetTonemapRate( inputdata_t &inputdata );
+	void	InputSetAutoExposureMin( inputdata_t &inputdata );
+	void	InputSetAutoExposureMax( inputdata_t &inputdata );
+	void	InputSetBloomScale( inputdata_t &inputdata );
+
+	//Tony; restore defaults (set min/max to -1.0 so nothing gets overridden)
+	void	InputUseDefaultAutoExposure( inputdata_t &inputdata );
+	void	InputUseDefaultBloomScale( inputdata_t &inputdata );
+
+	virtual bool BHaveChatSuspensionInCurrentMatch() { return false; }
+
+	// A voice packet from this client was received by the server
+	virtual void OnVoiceTransmit( void ) {}
 };
 
 typedef CHandle<CBasePlayer> CBasePlayerHandle;
@@ -1559,5 +1740,8 @@ enum
 	VEHICLE_ANALOG_BIAS_FORWARD,
 	VEHICLE_ANALOG_BIAS_REVERSE,
 };
+
+class CSendProxyRecipients;
+void* SendProxy_SendNonLocalDataTable( const SendProp *pProp, const void *pStruct, const void *pVarData, CSendProxyRecipients *pRecipients, int objectID );
 
 #endif // PLAYER_H

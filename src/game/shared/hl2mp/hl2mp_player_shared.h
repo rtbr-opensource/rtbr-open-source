@@ -12,6 +12,9 @@
 #define HL2MP_PUSHAWAY_THINK_INTERVAL		(1.0f / 20.0f)
 #include "studio.h"
 
+#ifdef MAPBASE
+#include "mapbase/mapbase_playeranimstate.h"
+#endif
 
 enum
 {
@@ -34,6 +37,7 @@ enum HL2MPPlayerState
 #define CHL2MP_Player C_HL2MP_Player
 #endif
 
+#ifndef SP_ANIM_STATE
 class CPlayerAnimState
 {
 public:
@@ -93,5 +97,6 @@ private:
 
 	float				m_flTurnCorrectionTime;
 };
+#endif
 
 #endif //HL2MP_PLAYER_SHARED_h

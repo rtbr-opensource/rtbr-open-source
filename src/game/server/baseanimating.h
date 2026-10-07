@@ -16,6 +16,9 @@
 #include "datacache/idatacache.h"
 #include "tier0/threadtools.h"
 
+#ifdef MAPBASE_VSCRIPT
+struct scriptanimevent_t;
+#endif
 
 struct animevent_t;
 struct matrix3x4_t;
@@ -44,6 +47,7 @@ public:
 
 	DECLARE_DATADESC();
 	DECLARE_SERVERCLASS();
+	DECLARE_ENT_SCRIPTDESC();
 
 	virtual void SetModel( const char *szModelName );
 	virtual void Activate();
@@ -71,6 +75,9 @@ public:
 	// interpolation will be done correctly on the client.
 	// This defaults to off.
 	void	UseClientSideAnimation();
+#ifdef MAPBASE
+	void	SetClientSideAnimation( bool val ) { m_bClientSideAnimation = val; };
+#endif
 
 	// Tells whether or not we're using client-side animation. Used for controlling
 	// the transmission of animtime.
@@ -83,6 +90,7 @@ public:
 	virtual void	StudioFrameAdvance(); // advance animation frame to some time in the future
 	void StudioFrameAdvanceManual( float flInterval );
 	bool	IsValidSequence( int iSequence );
+	virtual void	ReachedEndOfSequence() { return; }
 
 	inline float					GetPlaybackRate();
 	inline void						SetPlaybackRate( float rate );
@@ -99,6 +107,10 @@ public:
 	inline float SequenceDuration( void ) { return SequenceDuration( m_nSequence ); }
 	float	SequenceDuration( CStudioHdr *pStudioHdr, int iSequence );
 	inline float SequenceDuration( int iSequence ) { return SequenceDuration(GetModelPtr(), iSequence); }
+	float	ScriptGetSequenceDuration( int iSequence );
+#ifdef MAPBASE_VSCRIPT
+	inline float ScriptSequenceDuration( int iSequence ) { return SequenceDuration(GetModelPtr(), iSequence); }
+#endif
 	float	GetSequenceCycleRate( CStudioHdr *pStudioHdr, int iSequence );
 	inline float	GetSequenceCycleRate( int iSequence ) { return GetSequenceCycleRate(GetModelPtr(),iSequence); }
 	float	GetLastVisibleCycle( CStudioHdr *pStudioHdr, int iSequence );
@@ -112,6 +124,7 @@ public:
 	int		SelectHeaviestSequence ( Activity activity );
 	int		LookupActivity( const char *label );
 	int		LookupSequence ( const char *label );
+	inline int ScriptLookupSequence( const char *label ) { return LookupSequence( label ); }
 	KeyValues *GetSequenceKeyValues( int iSequence );
 
 	float GetSequenceMoveYaw( int iSequence );
@@ -140,15 +153,33 @@ public:
 
 	bool HasAnimEvent( int nSequence, int nEvent );
 	virtual	void DispatchAnimEvents ( CBaseAnimating *eventHandler ); // Handle events that have happend since last time called up until X seconds into the future
+	inline void ScriptDispatchAnimEvents( HSCRIPT hScript )
+	{
+		CBaseEntity *pEntity = ToEnt( hScript );
+		CBaseAnimating *pAnimating = NULL;
+		if ( pEntity )
+			pAnimating = pEntity->GetBaseAnimating();
+		return this->DispatchAnimEvents( pAnimating );
+	}
 	virtual void HandleAnimEvent( animevent_t *pEvent );
+#ifdef MAPBASE_VSCRIPT
+	bool ScriptHookHandleAnimEvent( scriptanimevent_t &event );
+#endif
 
 	int		LookupPoseParameter( CStudioHdr *pStudioHdr, const char *szName );
 	inline int	LookupPoseParameter( const char *szName ) { return LookupPoseParameter(GetModelPtr(), szName); }
+	int ScriptLookupPoseParameter( const char *szName ) { return LookupPoseParameter( szName ); }
 
 	float	SetPoseParameter( CStudioHdr *pStudioHdr, const char *szName, float flValue );
 	inline float SetPoseParameter( const char *szName, float flValue ) { return SetPoseParameter( GetModelPtr(), szName, flValue ); }
 	float	SetPoseParameter( CStudioHdr *pStudioHdr, int iParameter, float flValue );
 	inline float SetPoseParameter( int iParameter, float flValue ) { return SetPoseParameter( GetModelPtr(), iParameter, flValue ); }
+#ifdef VSCRIPT_PRIORITIZE_TF2_SYNTAX
+#ifdef MAPBASE_VSCRIPT
+	inline float ScriptGetPoseParameter( int iParameter ) { return GetPoseParameter( iParameter ); }
+#endif
+	inline float ScriptSetPoseParameter( int iParameter, float flValue ) { return SetPoseParameter( iParameter, flValue ); }
+#endif
 
 	float	GetPoseParameter( const char *szName );
 	float	GetPoseParameter( int iParameter );
@@ -188,6 +219,26 @@ public:
 	int GetAttachmentBone( int iAttachment );
 	virtual bool GetAttachment( int iAttachment, matrix3x4_t &attachmentToWorld );
 
+#ifdef MAPBASE_VSCRIPT
+	HSCRIPT ScriptGetAttachmentMatrix(int iAttachment);
+#ifndef VSCRIPT_PRIORITIZE_TF2_SYNTAX
+	float	ScriptGetPoseParameter(const char* szName);
+	void	ScriptSetPoseParameter(const char* szName, float fValue);
+#endif
+
+	void	ScriptGetBoneTransform( int iBone, HSCRIPT hTransform );
+
+	int		ScriptGetSequenceActivity( int iSequence ) { return GetSequenceActivity( iSequence ); }
+	float	ScriptGetSequenceMoveDist( int iSequence ) { return GetSequenceMoveDist( GetModelPtr(), iSequence ); }
+	int		ScriptSelectHeaviestSequence( int activity ) { return SelectHeaviestSequence( (Activity)activity ); }
+	int		ScriptSelectWeightedSequence( int activity, int curSequence ) { return SelectWeightedSequence( (Activity)activity, curSequence ); }
+
+	HSCRIPT_RC ScriptGetSequenceKeyValues( int iSequence );
+
+	static ScriptHook_t	g_Hook_OnServerRagdoll;
+	static ScriptHook_t	g_Hook_HandleAnimEvent;
+#endif
+
 	// These return the attachment in the space of the entity
 	bool GetAttachmentLocal( const char *szName, Vector &origin, QAngle &angles );
 	bool GetAttachmentLocal( int iAttachment, Vector &origin, QAngle &angles );
@@ -197,10 +248,18 @@ public:
 	bool GetAttachment(  const char *szName, Vector &absOrigin, Vector *forward = NULL, Vector *right = NULL, Vector *up = NULL );
 	bool GetAttachment( int iAttachment, Vector &absOrigin, Vector *forward = NULL, Vector *right = NULL, Vector *up = NULL );
 
+	Vector ScriptGetAttachmentOrigin( int iAttachment );
+	QAngle ScriptGetAttachmentAngles( int iAttachment );
+	Vector ScriptGetBoneOrigin( int iBone );
+	QAngle ScriptGetBoneAngles( int iBone );
+
 	void SetBodygroup( int iGroup, int iValue );
 	int GetBodygroup( int iGroup );
+	int GetSkin() const { return m_nSkin; }
+	void SetSkin(int nSkin) { m_nSkin = nSkin; }
 
 	const char *GetBodygroupName( int iGroup );
+	const char *GetBodygroupPartName( int iGroup, int iPart );
 	int FindBodygroupByName( const char *name );
 	int GetBodygroupCount( int iGroup );
 	int GetNumBodyGroups( void );
@@ -266,6 +325,7 @@ public:
 	void				DrawRawSkeleton( matrix3x4_t boneToWorld[], int boneMask, bool noDepthTest = true, float duration = 0.0f, bool monocolor = false );
 
 	void				SetModelScale( float scale, float change_duration = 0.0f );
+	inline void			ScriptSetModelScale( float scale, float change_duration = 0.0f )  { SetModelScale( scale, change_duration ); }
 	float				GetModelScale() const { return m_flModelScale; }
 
 	void				UpdateModelScale();
@@ -288,16 +348,33 @@ public:
 	// Fire
 	virtual void Ignite( float flFlameLifetime, bool bNPCOnly = true, float flSize = 0.0f, bool bCalledByLevelDesigner = false );
 	virtual void IgniteLifetime( float flFlameLifetime );
+	virtual void IgniteGreen( float flFlameLifetime, bool bNPCOnly = true, float flSize = 0.0f, bool bCalledByLevelDesigner = false );
+	virtual void IgniteLifetimeGreen( float flFlameLifetime );
 	virtual void IgniteNumHitboxFires( int iNumHitBoxFires );
 	virtual void IgniteHitboxFireScale( float flHitboxFireScale );
-	virtual void Extinguish() { RemoveFlag( FL_ONFIRE ); }
+	virtual void Extinguish() {
+		RemoveFlag( FL_ONFIRE );
+		m_OnExtinguish.FireOutput( this, this );
+	}
 	bool IsOnFire() { return ( (GetFlags() & FL_ONFIRE) != 0 ); }
+#if 0 // I thought I needed this, but upon further inspection we never actually used this. Remove from singleplayer.
+	bool IsOnGreenFire() { return ((GetFlags() & FL_ONFIREGREEN) != 0); }
+#endif
 	void Scorch( int rate, int floor );
 	void InputIgnite( inputdata_t &inputdata );
+#ifdef RTBMP
+	void InputIgniteCrem( inputdata_t &inputdata );
+	void InputExtinguish( inputdata_t &inputdata );
+#endif
 	void InputIgniteLifetime( inputdata_t &inputdata );
 	void InputIgniteNumHitboxFires( inputdata_t &inputdata );
 	void InputIgniteHitboxFireScale( inputdata_t &inputdata );
 	void InputBecomeRagdoll( inputdata_t &inputdata );
+#ifdef MAPBASE
+	void InputCreateSeparateRagdoll( inputdata_t &inputdata );
+	void InputCreateSeparateRagdollClient( inputdata_t &inputdata );
+	void InputSetPoseParameter( inputdata_t &inputdata );
+#endif
 
 	// Dissolve, returns true if the ragdoll has been created
 	bool Dissolve( const char *pMaterialName, float flStartTime, bool bNPCOnly = true, int nDissolveType = 0, Vector vDissolverOrigin = vec3_origin, int iMagnitude = 0 );
@@ -309,11 +386,19 @@ public:
 	float				m_flLastEventCheck;	// cycle index of when events were last checked
 
 	virtual void SetLightingOriginRelative( CBaseEntity *pLightingOriginRelative );
+#ifdef MAPBASE
+	void SetLightingOriginRelative( string_t strLightingOriginRelative, inputdata_t *inputdata = NULL );
+#else
 	void SetLightingOriginRelative( string_t strLightingOriginRelative );
+#endif
 	CBaseEntity *GetLightingOriginRelative();
 
 	virtual void SetLightingOrigin( CBaseEntity *pLightingOrigin );
+#ifdef MAPBASE
+	void SetLightingOrigin( string_t strLightingOrigin, inputdata_t *inputdata = NULL );
+#else
 	void SetLightingOrigin( string_t strLightingOrigin );
+#endif
 	CBaseEntity *GetLightingOrigin();
 
 	const float* GetPoseParameterArray() { return m_flPoseParameter.Base(); }
@@ -340,10 +425,18 @@ private:
 	void InputSetLightingOriginRelative( inputdata_t &inputdata );
 	void InputSetLightingOrigin( inputdata_t &inputdata );
 	void InputSetModelScale( inputdata_t &inputdata );
+	void InputSetModel( inputdata_t &inputdata );
+	void InputSetCycle( inputdata_t &inputdata );
+	void InputSetPlaybackRate( inputdata_t &inputdata );
+#ifdef MAPBASE
+public: // From Alien Swarm SDK
+#endif
 
 	bool CanSkipAnimation( void );
 
 public:
+	void ScriptSetModel( const char *pszModel );
+
 	CNetworkVar( int, m_nForceBone );
 	CNetworkVector( m_vecForce );
 
@@ -416,6 +509,10 @@ protected:
 
 public:
 	COutputEvent m_OnIgnite;
+	COutputEvent m_OnExtinguish;
+#ifdef MAPBASE
+	COutputEHANDLE m_OnServerRagdoll;
+#endif
 
 private:
 	CStudioHdr			*m_pStudioHdr;

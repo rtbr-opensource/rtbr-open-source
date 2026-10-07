@@ -57,6 +57,8 @@ public:
 
 	// Notify that the player is spawned
 	virtual void			ClientSpawned( edict_t *pPlayer ) OVERRIDE;
+
+	virtual void			ClientVoice( edict_t* pEdict ) OVERRIDE;
 };
 
 
@@ -153,6 +155,8 @@ public:
 	// Called to see if the game server is okay with a manual changelevel or map command
 	virtual bool			IsManualMapChangeOkay( const char **pszReason ) OVERRIDE;
 
+	virtual bool			GetWorkshopMap( uint32 uIndex, WorkshopMapDesc_t *pDesc ) OVERRIDE;
+
 private:
 
 	// This can just be a wrapper on MapEntity_ParseAllEntities, but CS does some tricks in here
@@ -223,6 +227,23 @@ public:
 
 };
 EXPOSE_SINGLE_INTERFACE( CServerGameTags, IServerGameTags, INTERFACEVERSION_SERVERGAMETAGS );
+
+#ifdef MAPBASE
+// 
+// Dynamic mod-based mod title comments
+// 
+typedef struct
+{
+	char pBSPName[64];
+	char pTitleName[64];
+} MODTITLECOMMENT;
+
+typedef struct
+{
+	int iChapter;
+	char pChapterName[64];
+} MODCHAPTER;
+#endif
 
 #endif // GAMEINTERFACE_H
 

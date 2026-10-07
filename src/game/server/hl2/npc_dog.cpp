@@ -138,6 +138,7 @@ protected:
 };
 
 LINK_ENTITY_TO_CLASS( npc_dog, CNPC_Dog );
+LINK_ENTITY_TO_CLASS( npc_skitch, CNPC_Dog );
 
 BEGIN_DATADESC( CNPC_Dog )
 	DEFINE_EMBEDDED( m_BoneFollowerManager ),
@@ -340,7 +341,11 @@ void CNPC_Dog::SetPlayerAvoidState( void )
 		physfollower_t *pBone;
 		int i;
 
+#ifdef MAPBASE_MP // From SecobMod
+		CBasePlayer *pLocalPlayer = UTIL_GetNearestPlayer( GetAbsOrigin() );
+#else
 		CBasePlayer *pLocalPlayer = AI_GetSinglePlayer();
+#endif
 
 		if ( pLocalPlayer )
 		{
@@ -455,7 +460,12 @@ void CNPC_Dog::Spawn( void )
 
 	BaseClass::Spawn();
 
-	SetModel( "models/dog.mdl" );
+	if (FClassnameIs( this, "npc_skitch" )) {
+		SetModel( "models/skitch/skitch.mdl" );
+	}
+	else {
+		SetModel( DefaultOrCustomModel( "models/dog.mdl" ) );
+	}
 
 	SetHullType( HULL_WIDE_HUMAN );
 	SetHullSizeNormal();
@@ -638,7 +648,7 @@ void CNPC_Dog::PullObject( bool bMantain )
 //-----------------------------------------------------------------------------
 void CNPC_Dog::Precache( void )
 {
-	PrecacheModel( "models/dog.mdl" );
+	PrecacheModel( DefaultOrCustomModel( "models/dog.mdl" ) );
 	
 	PrecacheScriptSound( "Weapon_PhysCannon.Launch" );
 
@@ -832,7 +842,11 @@ void CNPC_Dog::ThrowObject( const char *pAttachmentName )
 			}
 				
 			if ( m_hThrowTarget == NULL )
+#ifdef MAPBASE_MP // From SecobMod
+				 m_hThrowTarget = UTIL_GetNearestVisiblePlayer( this );
+#else
 				 m_hThrowTarget = AI_GetSinglePlayer();
+#endif
 
 			Vector vThrowDirection;
 
@@ -1385,7 +1399,11 @@ void CNPC_Dog::RunTask( const Task_t *pTask )
 
 				SetAim( m_hPhysicsEnt->WorldSpaceCenter() - GetAbsOrigin() );
 
+#ifdef MAPBASE_MP // From SecobMod
+				CBasePlayer *pPlayer = UTIL_GetNearestVisiblePlayer( this );
+#else
 				CBasePlayer *pPlayer = AI_GetSinglePlayer();
+#endif
 
 				float flDistanceToPlayer = flDistance;
 
@@ -1519,7 +1537,11 @@ void CNPC_Dog::SetupThrowTarget( void )
 {
 	if ( m_hThrowTarget == NULL )
 	{
+#ifdef MAPBASE_MP // From SecobMod
+		m_hThrowTarget = UTIL_GetNearestVisiblePlayer( this );
+#else
 		m_hThrowTarget = AI_GetSinglePlayer();
+#endif
 	}
 
 	SetTarget( m_hThrowTarget );
@@ -1674,7 +1696,11 @@ void CNPC_Dog::StartTask( const Task_t *pTask )
 		m_flNextSwat = gpGlobals->curtime + pTask->flTaskData;
 
 		if ( m_hThrowTarget == NULL )
+#ifdef MAPBASE_MP // From SecobMod
+			m_hThrowTarget = UTIL_GetNearestVisiblePlayer( this );
+#else
 			m_hThrowTarget = AI_GetSinglePlayer();
+#endif
 
 		TaskComplete();
 		break;

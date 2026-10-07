@@ -33,11 +33,14 @@
 
 void Host_Say( edict_t *pEdict, bool teamonly );
 
+#ifndef RTBMP
 ConVar sv_motd_unload_on_dismissal( "sv_motd_unload_on_dismissal", "0", 0, "If enabled, the MOTD contents will be unloaded when the player closes the MOTD." );
+#endif
 
 extern CBaseEntity*	FindPickerEntityClass( CBasePlayer *pPlayer, char *classname );
 extern bool			g_fGameOver;
 
+#ifndef RTBMP
 void FinishClientPutInServer( CHL2MP_Player *pPlayer )
 {
 	pPlayer->InitialSpawn();
@@ -101,7 +104,6 @@ void ClientActive( edict_t *pEdict, bool bLoadGame )
 	FinishClientPutInServer( pPlayer );
 }
 
-
 /*
 ===============
 const char *GetGameDescription()
@@ -116,6 +118,7 @@ const char *GetGameDescription()
 	else
 		return "Half-Life 2 Deathmatch";
 }
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: Given a player and optional name returns the entity of that 
@@ -156,7 +159,7 @@ void ClientGamePrecache( void )
 	CBaseEntity::PrecacheScriptSound( "Geiger.BeepLow" );
 }
 
-
+#ifndef RTBMP
 // called by ClientKill and DeadThink
 void respawn( CBaseEntity *pEdict, bool fCopyCorpse )
 {
@@ -175,6 +178,7 @@ void respawn( CBaseEntity *pEdict, bool fCopyCorpse )
 		}
 	}
 }
+#endif
 
 void GameStartFrame( void )
 {
@@ -183,13 +187,9 @@ void GameStartFrame( void )
 		return;
 
 	gpGlobals->teamplay = (teamplay.GetInt() != 0);
-
-#ifdef DEBUG
-	extern void Bot_RunAll();
-	Bot_RunAll();
-#endif
 }
 
+#ifndef RTBMP
 //=========================================================
 // instantiate the proper game rules object
 //=========================================================
@@ -198,4 +198,4 @@ void InstallGameRules()
 	// vanilla deathmatch
 	CreateGameRulesObject( "CHL2MPRules" );
 }
-
+#endif

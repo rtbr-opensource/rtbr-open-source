@@ -75,16 +75,19 @@ public:
 	bool				Deploy( void );
 	bool				Holster( CBaseCombatWeapon *pSwitchingTo = NULL );
 
+	const CUtlVector< CBaseEntity* > &GetSatchelVector();
 
 	CWeapon_SLAM();
 
-#ifndef CLIENT_DLL
 	DECLARE_ACTTABLE();
+#ifndef CLIENT_DLL
 	DECLARE_DATADESC();
 #endif
 
 private:
 	CWeapon_SLAM( const CWeapon_SLAM & );
+
+	CUtlVector< CBaseEntity* > m_SatchelVector;
 };
 
 

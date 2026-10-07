@@ -27,7 +27,7 @@
 using namespace vgui;
 
 #include "hudelement.h"
-#include "hud_numericdisplay.h"
+#include "hud_bitmapnumericdisplay.h"
 
 #include "convar.h"
 
@@ -39,9 +39,9 @@ using namespace vgui;
 //-----------------------------------------------------------------------------
 // Purpose: Health panel
 //-----------------------------------------------------------------------------
-class CHudHealth : public CHudElement, public CHudNumericDisplay
+class CHudHealth : public CHudElement, public CHudBitmapNumericDisplay
 {
-	DECLARE_CLASS_SIMPLE( CHudHealth, CHudNumericDisplay );
+	DECLARE_CLASS_SIMPLE( CHudHealth, CHudBitmapNumericDisplay );
 
 public:
 	CHudHealth( const char *pElementName );
@@ -49,14 +49,14 @@ public:
 	virtual void VidInit( void );
 	virtual void Reset( void );
 	virtual void OnThink();
-			void MsgFunc_Damage( bf_read &msg );
+	void MsgFunc_Damage( bf_read &msg );
 
 private:
 	// old variables
 	int		m_iHealth;
-	
+
 	int		m_bitsDamage;
-};	
+};
 
 DECLARE_HUDELEMENT( CHudHealth );
 DECLARE_HUD_MESSAGE( CHudHealth, Damage );
@@ -64,7 +64,7 @@ DECLARE_HUD_MESSAGE( CHudHealth, Damage );
 //-----------------------------------------------------------------------------
 // Purpose: Constructor
 //-----------------------------------------------------------------------------
-CHudHealth::CHudHealth( const char *pElementName ) : CHudElement( pElementName ), CHudNumericDisplay(NULL, "HudHealth")
+CHudHealth::CHudHealth( const char *pElementName ) : CHudElement( pElementName ), CHudBitmapNumericDisplay( NULL, "HudHealth" )
 {
 	SetHiddenBits( HIDEHUD_HEALTH | HIDEHUD_PLAYERDEAD | HIDEHUD_NEEDSUIT );
 }
@@ -83,20 +83,21 @@ void CHudHealth::Init()
 //-----------------------------------------------------------------------------
 void CHudHealth::Reset()
 {
-	m_iHealth		= INIT_HEALTH;
-	m_bitsDamage	= 0;
+	m_iHealth = INIT_HEALTH;
+	m_bitsDamage = 0;
 
-	wchar_t *tempString = g_pVGuiLocalize->Find("#Valve_Hud_HEALTH");
+	wchar_t *tempString = g_pVGuiLocalize->Find( "#Valve_Hud_HEALTH" );
 
 	if (tempString)
 	{
-		SetLabelText(tempString);
+		//SetLabelText(tempString);
 	}
 	else
 	{
-		SetLabelText(L"HEALTH");
+		//SetLabelText(L"HEALTH");
 	}
-	SetDisplayValue(m_iHealth);
+	SetLabel( 1 );
+	SetDisplayValue( m_iHealth );
 }
 
 //-----------------------------------------------------------------------------
@@ -114,31 +115,31 @@ void CHudHealth::OnThink()
 {
 	int newHealth = 0;
 	C_BasePlayer *local = C_BasePlayer::GetLocalPlayer();
-	if ( local )
+	if (local)
 	{
 		// Never below zero
 		newHealth = MAX( local->GetHealth(), 0 );
 	}
 
 	// Only update the fade if we've changed health
-	if ( newHealth == m_iHealth )
+	if (newHealth == m_iHealth)
 	{
 		return;
 	}
 
 	m_iHealth = newHealth;
 
-	if ( m_iHealth >= 20 )
+	if (m_iHealth >= 20)
 	{
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthIncreasedAbove20");
+		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "HealthIncreasedAbove20" );
 	}
-	else if ( m_iHealth > 0 )
+	else if (m_iHealth > 0)
 	{
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthIncreasedBelow20");
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthLow");
+		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "HealthIncreasedBelow20" );
+		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "HealthLow" );
 	}
 
-	SetDisplayValue(m_iHealth);
+	SetDisplayValue( m_iHealth );
 }
 
 //-----------------------------------------------------------------------------
@@ -159,12 +160,12 @@ void CHudHealth::MsgFunc_Damage( bf_read &msg )
 	vecFrom.z = msg.ReadBitCoord();
 
 	// Actually took damage?
-	if ( damageTaken > 0 || armor > 0 )
+	if (damageTaken > 0 || armor > 0)
 	{
-		if ( damageTaken > 0 )
+		if (damageTaken > 0)
 		{
 			// start the animation
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthDamageTaken");
+			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "HealthDamageTaken" );
 		}
 	}
 }

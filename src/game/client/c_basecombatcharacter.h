@@ -29,6 +29,9 @@ class C_BaseCombatCharacter : public C_BaseFlex
 public:
 	DECLARE_CLIENTCLASS();
 	DECLARE_PREDICTABLE();
+#ifdef MAPBASE_VSCRIPT
+	DECLARE_ENT_SCRIPTDESC();
+#endif
 
 					C_BaseCombatCharacter( void );
 	virtual			~C_BaseCombatCharacter( void );
@@ -97,11 +100,26 @@ public:
 #ifdef GLOWS_ENABLE
 	CGlowObject			*GetGlowObject( void ){ return m_pGlowEffect; }
 	virtual void		GetGlowEffectColor( float *r, float *g, float *b );
+	void				GetCustomGlowEffectColor( float *r, float *g, float *b, float *a );
 //	void				EnableGlowEffect( float r, float g, float b );
 
 	void				SetClientSideGlowEnabled( bool bEnabled ){ m_bClientSideGlowEnabled = bEnabled; UpdateGlowEffect(); }
 	bool				IsClientSideGlowEnabled( void ){ return m_bClientSideGlowEnabled; }
+
+	bool				IsServerSideGlowEnabled( void ){ return m_bGlowEnabled; }
+	bool				IsCustomGlowColor() { return !m_GlowColor.IsZero(); }
 #endif // GLOWS_ENABLE
+
+#ifdef MAPBASE_VSCRIPT
+	int					ScriptGetAmmoCount( int i );
+	HSCRIPT				ScriptGetActiveWeapon();
+	HSCRIPT				ScriptGetWeapon( int i );
+#endif
+
+#ifdef MAPBASE
+	virtual Activity	Weapon_TranslateActivity( Activity baseAct, bool *pRequired );
+	virtual Activity	Weapon_BackupActivity( Activity activity, bool weaponTranslationWasRequired = false, C_BaseCombatWeapon *pSpecificWeapon = NULL );
+#endif
 
 public:
 
@@ -129,6 +147,10 @@ private:
 	bool				m_bGlowEnabled;				// networked value
 	bool				m_bOldGlowEnabled;
 	CGlowObject			*m_pGlowEffect;
+	Vector				m_GlowColor;
+	Vector				m_OldGlowColor;
+	float				m_GlowAlpha;
+	int					m_OldGlowAlpha;
 #endif // GLOWS_ENABLE
 
 private:

@@ -1238,7 +1238,7 @@ int CAI_AssaultBehavior::TranslateSchedule( int scheduleType )
 	case SCHED_RANGE_ATTACK1:
 		if ( GetOuter()->GetShotRegulator()->IsInRestInterval() )				
 		{
-			if ( GetOuter()->HasStrategySlotRange( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK2 ) )
+			if ( GetOuter()->HasStrategySlotRange( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK4 ) )
 				GetOuter()->VacateStrategySlot();
 			return SCHED_COMBAT_FACE; // @TODO (toml 07-02-03): Should do something more tactically sensible
 		}
@@ -1257,7 +1257,7 @@ int CAI_AssaultBehavior::TranslateSchedule( int scheduleType )
 		break;
 
 	case SCHED_HOLD_RALLY_POINT:
-		if( HasCondition(COND_NO_PRIMARY_AMMO) | HasCondition(COND_LOW_PRIMARY_AMMO) )
+		if( HasCondition(COND_NO_PRIMARY_AMMO) || HasCondition(COND_LOW_PRIMARY_AMMO) )
 		{
 			return SCHED_RELOAD;
 		}

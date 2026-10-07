@@ -38,6 +38,7 @@ class C_BaseClientShader
 */
 
 class IRagdoll;
+class C_ClientRagdoll;
 class CIKContext;
 class CIKState;
 class ConVar;
@@ -79,7 +80,7 @@ public:
 	QAngle	m_angRotation;
 	Vector	m_vOriginVelocity;
 	int		m_nLastFramecount : 31;
-	int		m_bAnglesComputed : 1;
+	bool	m_bAnglesComputed : 1;
 };
 
 
@@ -95,6 +96,7 @@ public:
 	DECLARE_CLIENTCLASS();
 	DECLARE_PREDICTABLE();
 	DECLARE_INTERPOLATION();
+	DECLARE_ENT_SCRIPTDESC();
 
 	enum
 	{
@@ -147,11 +149,14 @@ public:
 	virtual void UpdateIKLocks( float currentTime );
 	virtual void CalculateIKLocks( float currentTime );
 	virtual bool ShouldDraw();
+	virtual void UpdateVisibility() OVERRIDE;
 	virtual int DrawModel( int flags );
 	virtual int	InternalDrawModel( int flags );
 	virtual bool OnInternalDrawModel( ClientModelRenderInfo_t *pInfo );
 	virtual bool OnPostInternalDrawModel( ClientModelRenderInfo_t *pInfo );
 	void		DoInternalDrawModel( ClientModelRenderInfo_t *pInfo, DrawModelState_t *pState, matrix3x4_t *pBoneToWorldArray = NULL );
+
+	virtual IMaterial* GetEconWeaponMaterialOverride( int iTeam ) { return NULL; }
 
 	//
 	virtual CMouthInfo *GetMouth();
@@ -163,8 +168,22 @@ public:
 	virtual void FireObsoleteEvent( const Vector& origin, const QAngle& angles, int event, const char *options );
 	virtual const char* ModifyEventParticles( const char* token ) { return token; }
 
+#ifdef MAPBASE_VSCRIPT
+	bool ScriptHookFireEvent( const Vector& origin, const QAngle& angles, int event, const char *options );
+#endif
+
+#if defined ( SDK_DLL ) || defined ( HL2MP )
+	virtual void ResetEventsParity() { m_nPrevResetEventsParity = -1; } // used to force animation events to function on players so the muzzleflashes and other events occur
+																		// so new functions don't have to be made to parse the models like CSS does in ProcessMuzzleFlashEvent
+																		// allows the multiplayer world weapon models to declare the muzzleflashes, and other effects like sp
+																		// without the need to script it and add extra parsing code.
+#endif
+
 	// Parses and distributes muzzle flash events
 	virtual bool DispatchMuzzleEffect( const char *options, bool isFirstPerson );
+
+	// Magazine ejection system
+	virtual void DispatchMagThrow( const char *options );
 
 	// virtual	void AllocateMaterials( void );
 	// virtual	void FreeMaterials( void );
@@ -262,6 +281,7 @@ public:
 	// Attachments.
 	bool							GetAttachment( const char *szName, Vector &absOrigin );
 	bool							GetAttachment( const char *szName, Vector &absOrigin, QAngle &absAngles );
+	virtual bool					GetAttachmentDeferred( int number, matrix3x4_t& matrix );
 
 	// Inherited from C_BaseEntity
 	virtual bool					GetAttachment( int number, Vector &origin );
@@ -289,6 +309,7 @@ public:
 	bool							IsRagdoll() const;
 	bool							IsAboutToRagdoll() const;
 	virtual C_BaseAnimating			*BecomeRagdollOnClient();
+	virtual C_ClientRagdoll			*CreateClientRagdoll( bool bRestoring = false );
 	C_BaseAnimating					*CreateRagdollCopy();
 	bool							InitAsClientRagdoll( const matrix3x4_t *pDeltaBones0, const matrix3x4_t *pDeltaBones1, const matrix3x4_t *pCurrentBonePosition, float boneDt, bool bFixedConstraints=false );
 	void							IgniteRagdoll( C_BaseAnimating *pSource );
@@ -341,6 +362,8 @@ public:
 	virtual void					UpdateClientSideAnimation();
 	void							ClientSideAnimationChanged();
 	virtual unsigned int			ComputeClientSideAnimationFlags();
+
+	virtual void					ReachedEndOfSequence() { return; }
 
 	virtual void ResetClientsideFrame( void ) { SetCycle( 0 ); }
 
@@ -447,6 +470,41 @@ public:
 	virtual bool					IsViewModel() const;
 	virtual void					UpdateOnRemove( void );
 
+#ifdef MAPBASE_VSCRIPT
+	int		ScriptLookupAttachment( const char *pAttachmentName ) { return LookupAttachment( pAttachmentName ); }
+	const Vector& ScriptGetAttachmentOrigin(int iAttachment);
+	const QAngle& ScriptGetAttachmentAngles(int iAttachment);
+	HSCRIPT_RC ScriptGetAttachmentMatrix(int iAttachment);
+
+	void	ScriptGetBoneTransform( int iBone, HSCRIPT hTransform );
+	void	ScriptSetBoneTransform( int iBone, HSCRIPT hTransform );
+
+	void		ScriptAttachEntityToBone( HSCRIPT attachTarget, int boneIndexAttached, const Vector &bonePosition, const QAngle &boneAngles );
+	void		ScriptRemoveBoneAttachment( HSCRIPT boneAttachment );
+	HSCRIPT		ScriptGetBoneAttachment( int i );
+
+	int		ScriptGetSequenceActivity( int iSequence ) { return GetSequenceActivity( iSequence ); }
+	float	ScriptGetSequenceMoveDist( int iSequence ) { return GetSequenceMoveDist( GetModelPtr(), iSequence ); }
+	int		ScriptSelectWeightedSequence( int activity ) { return SelectWeightedSequence( (Activity)activity ); }
+
+	// For VScript
+	int		ScriptGetSkin() { return GetSkin(); }
+	void	SetSkin( int iSkin ) { m_nSkin = iSkin; }
+
+	int		GetForceBone()				{ return m_nForceBone; }
+	void	SetForceBone( int iBone )	{ m_nForceBone = iBone; }
+	const Vector&	GetRagdollForce()					{ return m_vecForce; }
+	void	SetRagdollForce( const Vector &vecForce )	{ m_vecForce = vecForce; }
+
+	HSCRIPT			ScriptBecomeRagdollOnClient();
+
+	static ScriptHook_t	g_Hook_OnClientRagdoll;
+	static ScriptHook_t	g_Hook_FireEvent;
+	//static ScriptHook_t	g_Hook_BuildTransformations; // UNDONE: Thread access issues
+
+	float							ScriptGetPoseParameter(const char* szName);
+#endif
+	void							ScriptSetPoseParameter(const char* szName, float fValue);
 protected:
 	// View models scale their attachment positions to account for FOV. To get the unmodified
 	// attachment position (like if you're rendering something else during the view model's DrawModel call),
@@ -465,6 +523,8 @@ protected:
 
 	virtual bool					CalcAttachments();
 
+	virtual bool					ShouldFlipViewModel();
+
 private:
 	// This method should return true if the bones have changed + SetupBones needs to be called
 	virtual float					LastBoneChangedTime() { return FLT_MAX; }
@@ -482,6 +542,10 @@ private:
 
 public:
 	CRagdoll						*m_pRagdoll;
+	C_BaseAnimating					*m_pClientsideRagdoll;	// From Alien Swarm SDK
+#ifdef MAPBASE
+	C_BaseAnimating					*m_pServerRagdoll;	// Not from Alien Swarm SDK (note that this can exist without the entity having died)
+#endif
 
 	// Texture group to use
 	int								m_nSkin;
@@ -617,6 +681,7 @@ private:
 	unsigned char m_nOldMuzzleFlashParity;
 
 	bool							m_bInitModelEffects;
+	bool							m_bDelayInitModelEffects;
 
 	// Dynamic models
 	bool							m_bDynamicModelAllowed;
@@ -635,6 +700,7 @@ private:
 	mutable CStudioHdr				*m_pStudioHdr;
 	mutable MDLHandle_t				m_hStudioHdr;
 	CThreadFastMutex				m_StudioHdrInitLock;
+	bool							m_bHasAttachedParticles;
 };
 
 enum 
@@ -653,6 +719,9 @@ public:
 	C_ClientRagdoll( bool bRestoring = true );
 	DECLARE_CLASS( C_ClientRagdoll, C_BaseAnimating );
 	DECLARE_DATADESC();
+#ifdef MAPBASE_VSCRIPT
+	DECLARE_ENT_SCRIPTDESC();
+#endif
 
 	// inherited from IPVSNotify
 	virtual void OnPVSStatusChanged( bool bInPVS );
@@ -674,8 +743,17 @@ public:
 	void	FadeOut( void );
 	virtual float LastBoneChangedTime();
 
+#ifdef MAPBASE_VSCRIPT
+	HSCRIPT			ScriptGetRagdollObject( int iIndex );
+	int				ScriptGetRagdollObjectCount();
+#endif
+
 	bool m_bFadeOut;
 	bool m_bImportant;
+#ifdef MAPBASE
+	// Required to save/restore Alien Swarm SDK ragdoll LRU forced fade
+	float m_flForcedRetireTime;
+#endif
 	float m_flEffectTime;
 
 private:

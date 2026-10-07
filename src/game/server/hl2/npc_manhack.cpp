@@ -973,7 +973,7 @@ int CNPC_Manhack::TranslateSchedule( int scheduleType )
 				return SCHED_MANHACK_SWARM;
 			}
 
-			if ( !m_bDoSwarmBehavior || OccupyStrategySlotRange( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK2 ) )
+			if ( !m_bDoSwarmBehavior || OccupyStrategySlotRange( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK4 ) )
 			{
 				return SCHED_CHASE_ENEMY;
 			}
@@ -2700,7 +2700,7 @@ void CNPC_Manhack::StartTask( const Task_t *pTask )
 			AISquadIter_t iter;
 			for (CAI_BaseNPC *pSquadMember = m_pSquad->GetFirstMember( &iter ); pSquadMember; pSquadMember = m_pSquad->GetNextMember( &iter ) )
 			{
-				if (pSquadMember->HasStrategySlotRange( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK2 ))
+				if (pSquadMember->HasStrategySlotRange( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK4 ))
 				{
 					m_vSavePosition += pSquadMember->GetAbsOrigin() * 10;
 					count += 10;
@@ -2738,7 +2738,7 @@ void CNPC_Manhack::StartTask( const Task_t *pTask )
 				for (pSquadMember = m_pSquad->GetFirstMember( &iter ); pSquadMember; pSquadMember = m_pSquad->GetNextMember( &iter ) )
 				{
 					// are they attacking?
-					if (pSquadMember->HasStrategySlotRange( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK2 ))
+					if (pSquadMember->HasStrategySlotRange( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK4 ))
 					{
 						m_vSavePosition = pSquadMember->GetAbsOrigin();
 						break;

@@ -289,6 +289,19 @@ void CBaseViewModel::AddEffects( int nEffects )
 		SetControlPanelsActive( false );
 	}
 
+#ifdef MAPBASE
+	if (GetOwningWeapon() && GetOwningWeapon()->UsesHands())
+	{
+		// If using hands, apply effect changes to any viewmodel children as well
+		// (fixes hand models)
+		for (CBaseEntity *pChild = FirstMoveChild(); pChild != NULL; pChild = pChild->NextMovePeer())
+		{
+			if (pChild->GetClassname()[0] == 'h')
+				pChild->AddEffects( nEffects );
+		}
+	}
+#endif
+
 	BaseClass::AddEffects( nEffects );
 }
 
@@ -301,6 +314,19 @@ void CBaseViewModel::RemoveEffects( int nEffects )
 	{
 		SetControlPanelsActive( true );
 	}
+
+#ifdef MAPBASE
+	if (GetOwningWeapon() && GetOwningWeapon()->UsesHands())
+	{
+		// If using hands, apply effect changes to any viewmodel children as well
+		// (fixes hand models)
+		for (CBaseEntity *pChild = FirstMoveChild(); pChild != NULL; pChild = pChild->NextMovePeer())
+		{
+			if (pChild->GetClassname()[0] == 'h')
+				pChild->RemoveEffects( nEffects );
+		}
+	}
+#endif
 
 	BaseClass::RemoveEffects( nEffects );
 }
@@ -337,6 +363,18 @@ void CBaseViewModel::SetWeaponModel( const char *modelname, CBaseCombatWeapon *w
 
 		bool showControlPanels = weapon && weapon->ShouldShowControlPanels();
 		SetControlPanelsActive( showControlPanels );
+	}
+#endif
+
+#ifdef MAPBASE
+	// If our owning weapon doesn't support hands, disable the hands viewmodel(s)
+	bool bSupportsHands = weapon != NULL ? weapon->UsesHands() : false;
+	for (CBaseEntity *pChild = FirstMoveChild(); pChild != NULL; pChild = pChild->NextMovePeer())
+	{
+		if (pChild->GetClassname()[0] == 'h')
+		{
+			bSupportsHands ? pChild->RemoveEffects( EF_NODRAW ) : pChild->AddEffects( EF_NODRAW );
+		}
 	}
 #endif
 }
@@ -400,22 +438,19 @@ void CBaseViewModel::CalcViewModelView( CBasePlayer *owner, const Vector& eyePos
 		{
 			// add weapon-specific bob 
 			pWeapon->AddViewmodelBob( this, vmorigin, vmangles );
-#if defined ( CSTRIKE_DLL )
+
 			CalcViewModelLag( vmorigin, vmangles, vmangoriginal );
-#endif
 		}
 	}
 	// Add model-specific bob even if no weapon associated (for head bob for off hand models)
 	AddViewModelBob( owner, vmorigin, vmangles );
-#if !defined ( CSTRIKE_DLL )
-	// This was causing weapon jitter when rotating in updated CS:S; original Source had this in above InPrediction block  07/14/10
-	// Add lag
-	CalcViewModelLag( vmorigin, vmangles, vmangoriginal );
-#endif
 
 #if defined( CLIENT_DLL )
 	if ( !prediction->InPrediction() )
 	{
+		// Add lag
+		CalcViewModelLag( vmorigin, vmangles, vmangoriginal );
+
 		// Let the viewmodel shake at about 10% of the amplitude of the player's view
 		vieweffects->ApplyShake( vmorigin, vmangles, 0.1 );	
 	}
@@ -425,6 +460,21 @@ void CBaseViewModel::CalcViewModelView( CBasePlayer *owner, const Vector& eyePos
 	{
 		g_ClientVirtualReality.OverrideViewModelTransform( vmorigin, vmangles, pWeapon && pWeapon->ShouldUseLargeViewModelVROverride() );
 	}
+
+#ifdef MAPBASE
+	// Flip the view if we should be flipping
+	if (ShouldFlipViewModel())
+	{
+		Vector vecOriginDiff = (eyePosition - vmorigin);
+		QAngle angAnglesDiff = (eyeAngles - vmangles);
+
+		vmorigin.x = (eyePosition.x + vecOriginDiff.x);
+		vmorigin.y = (eyePosition.y + vecOriginDiff.y);
+		
+		vmangles.y = (eyeAngles.y + angAnglesDiff.y);
+		vmangles.z = (eyeAngles.z + angAnglesDiff.z);
+	}
+#endif
 
 	SetLocalOrigin( vmorigin );
 	SetLocalAngles( vmangles );
@@ -464,6 +514,8 @@ void CBaseViewModel::CalcViewModelView( CBasePlayer *owner, const Vector& eyePos
 //-----------------------------------------------------------------------------
 float g_fMaxViewModelLag = 1.5f;
 
+ConVar sv_viewmodel_lag_do_angles( "sv_viewmodel_lag_do_angles", "1", FCVAR_CHEAT | FCVAR_REPLICATED );
+
 void CBaseViewModel::CalcViewModelLag( Vector& origin, QAngle& angles, QAngle& original_angles )
 {
 	Vector vOriginalOrigin = origin;
@@ -479,6 +531,23 @@ void CBaseViewModel::CalcViewModelLag( Vector& origin, QAngle& angles, QAngle& o
 		VectorSubtract( forward, m_vecLastFacing, vDifference );
 
 		float flSpeed = 5.0f;
+
+#ifdef MAPBASE
+		CBaseCombatWeapon *pWeapon = m_hWeapon.Get();
+		if (pWeapon)
+		{
+			const FileWeaponInfo_t *pInfo = &pWeapon->GetWpnData();
+			if (pInfo->m_flSwayScale != 1.0f)
+			{
+				vDifference *= pInfo->m_flSwayScale;
+				pInfo->m_flSwayScale != 0.0f ? flSpeed /= pInfo->m_flSwayScale : flSpeed = 0.0f;
+			}
+			if (pInfo->m_flSwaySpeedScale != 1.0f)
+			{
+				flSpeed *= pInfo->m_flSwaySpeedScale;
+			}
+		}
+#endif
 
 		// If we start to lag too far behind, we'll increase the "catch up" speed.  Solves the problem with fast cl_yawspeed, m_yaw or joysticks
 		//  rotating quickly.  The old code would slam lastfacing with origin causing the viewmodel to pop to a new position
@@ -498,25 +567,28 @@ void CBaseViewModel::CalcViewModelLag( Vector& origin, QAngle& angles, QAngle& o
 		Assert( m_vecLastFacing.IsValid() );
 	}
 
-	Vector right, up;
-	AngleVectors( original_angles, &forward, &right, &up );
-
-	float pitch = original_angles[ PITCH ];
-	if ( pitch > 180.0f )
-		pitch -= 360.0f;
-	else if ( pitch < -180.0f )
-		pitch += 360.0f;
-
-	if ( g_fMaxViewModelLag == 0.0f )
+	if ( sv_viewmodel_lag_do_angles.GetBool() )
 	{
-		origin = vOriginalOrigin;
-		angles = vOriginalAngles;
-	}
+		Vector right, up;
+		AngleVectors( original_angles, &forward, &right, &up );
 
-	//FIXME: These are the old settings that caused too many exposed polys on some models
-	VectorMA( origin, -pitch * 0.035f,	forward,	origin );
-	VectorMA( origin, -pitch * 0.03f,		right,	origin );
-	VectorMA( origin, -pitch * 0.02f,		up,		origin);
+		float pitch = original_angles[ PITCH ];
+		if ( pitch > 180.0f )
+			pitch -= 360.0f;
+		else if ( pitch < -180.0f )
+			pitch += 360.0f;
+
+		if ( g_fMaxViewModelLag == 0.0f )
+		{
+			origin = vOriginalOrigin;
+			angles = vOriginalAngles;
+		}
+
+		//FIXME: These are the old settings that caused too many exposed polys on some models
+		VectorMA( origin, -pitch * 0.035f,	forward,	origin );
+		VectorMA( origin, -pitch * 0.03f,		right,	origin );
+		VectorMA( origin, -pitch * 0.02f,		up,		origin);
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -655,6 +727,15 @@ bool CBaseViewModel::GetAttachment( int number, matrix3x4_t &matrix )
 	return BaseClass::GetAttachment( number, matrix );
 }
 
+bool C_BaseViewModel::GetAttachmentDeferred( int number, matrix3x4_t& matrix )
+{
+	// Update priority for your own viewmodel (no deferral)
+	if ( m_hWeapon.Get() && m_hWeapon.Get()->WantsToOverrideViewmodelAttachments() )
+		return m_hWeapon.Get()->GetAttachment( number, matrix );
+
+	return BaseClass::GetAttachment( number, matrix );
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
@@ -688,4 +769,64 @@ bool CBaseViewModel::GetAttachmentVelocity( int number, Vector &originVel, Quate
 	return BaseClass::GetAttachmentVelocity( number, originVel, angleVel );
 }
 
+#endif
+
+#if defined(MAPBASE) && (defined(HL2_DLL) || defined(HL2_CLIENT_DLL))
+#if defined( CLIENT_DLL )
+#define CHandViewModel C_HandViewModel
+#endif
+
+// ---------------------------------------
+// OzxyBox's hand viewmodel code.
+// All credit goes to him.
+// ---------------------------------------
+class CHandViewModel : public CBaseViewModel
+{
+	DECLARE_CLASS( CHandViewModel, CBaseViewModel );
+public:
+	DECLARE_NETWORKCLASS();
+
+	CBaseViewModel	*GetVMOwner();
+
+	CBaseCombatWeapon *GetOwningWeapon( void );
+
+private:
+	CHandle<CBaseViewModel> m_hVMOwner;
+};
+
+LINK_ENTITY_TO_CLASS(hand_viewmodel, CHandViewModel);
+IMPLEMENT_NETWORKCLASS_ALIASED(HandViewModel, DT_HandViewModel)
+
+// for whatever reason the parent doesn't get sent 
+// I don't really want to mess with the baseviewmodel
+// so now it does
+BEGIN_NETWORK_TABLE(CHandViewModel, DT_HandViewModel)
+#ifndef CLIENT_DLL
+	SendPropEHandle(SENDINFO_NAME(m_hMoveParent, moveparent)),
+#else
+	RecvPropInt(RECVINFO_NAME(m_hNetworkMoveParent, moveparent), 0, RecvProxy_IntToMoveParent),
+#endif
+END_NETWORK_TABLE()
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+CBaseViewModel *CHandViewModel::GetVMOwner()
+{
+	if (!m_hVMOwner)
+		m_hVMOwner = assert_cast<CBaseViewModel*>(GetMoveParent());
+	return m_hVMOwner;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+CBaseCombatWeapon *CHandViewModel::GetOwningWeapon()
+{
+	CBaseViewModel *pVM = GetVMOwner();
+	if (pVM)
+		return pVM->GetOwningWeapon();
+	else
+		return NULL;
+}
 #endif

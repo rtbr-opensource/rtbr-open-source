@@ -29,6 +29,11 @@ enum SQUAD_SLOT_t {
 
 	SQUAD_SLOT_ATTACK1 = 0,		// reserve 2 attack slots for most squads
 	SQUAD_SLOT_ATTACK2,
+	SQUAD_SLOT_ATTACK3,
+	SQUAD_SLOT_ATTACK4,
+	// these two attack slots are unused (for now, anyway)
+	SQUAD_SLOT_ATTACK5,
+	SQUAD_SLOT_ATTACK6,
 
 	SQUAD_SLOT_INVESTIGATE_SOUND,
 

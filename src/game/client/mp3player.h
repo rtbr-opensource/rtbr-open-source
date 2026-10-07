@@ -9,6 +9,7 @@
 #ifndef MP3PLAYER_H
 #define MP3PLAYER_H
 
+#ifndef LINUX
 #ifdef _WIN32
 #pragma once
 #endif
@@ -381,5 +382,5 @@ private:
 
 	bool					m_bEnableAutoAdvance;
 };
-
+#endif // !LINUX
 #endif // !MP3PLAYER_H

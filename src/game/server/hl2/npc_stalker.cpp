@@ -245,7 +245,7 @@ bool CNPC_Stalker::IsValidEnemy( CBaseEntity *pEnemy )
 		}
 	}
 
-	if( IsStrategySlotRangeOccupied( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK2 ) && !HasStrategySlotRange( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK2 ) )
+	if( IsStrategySlotRangeOccupied( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK4 ) && !HasStrategySlotRange( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK4 ) )
 	{
 		return false;
 	}
@@ -738,7 +738,7 @@ int CNPC_Stalker::SelectSchedule( void )
 
 			if( HasCondition( COND_CAN_RANGE_ATTACK1 ) )
 			{
-				if( OccupyStrategySlotRange(SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK2) )
+				if( OccupyStrategySlotRange(SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK4) )
 				{
 					return SCHED_RANGE_ATTACK1;
 				}
@@ -1216,7 +1216,7 @@ int CNPC_Stalker::RangeAttack1Conditions( float flDot, float flDist )
 		return COND_NONE;
 	}
 
-	if( IsStrategySlotRangeOccupied( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK2 ) )
+	if( IsStrategySlotRangeOccupied( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK4 ) )
 	{
 		// Couldn't attack if I wanted to.
 		return COND_NONE;

@@ -20,6 +20,11 @@
 #include "byteswap.h"
 #include "worldvertextransitionfixup.h"
 
+#ifdef MAPBASE_VSCRIPT
+#include "vscript/ivscript.h"
+#include "vscript_vbsp.h"
+#endif
+
 extern float		g_maxLightmapDimension;
 
 char		source[1024];
@@ -43,7 +48,11 @@ qboolean	noshare;
 qboolean	nosubdiv;
 qboolean	notjunc;
 qboolean	noopt;
+#ifdef MAPBASE
+qboolean	noleaktest;
+#else
 qboolean	leaktest;
+#endif
 qboolean	verboseentities;
 qboolean	dumpcollide = false;
 qboolean	g_bLowPriority = false;
@@ -56,6 +65,17 @@ bool		g_NodrawTriggers = false;
 bool		g_DisableWaterLighting = false;
 bool		g_bAllowDetailCracks = false;
 bool		g_bNoVirtualMesh = false;
+bool		g_bNoHiddenManifestMaps = false;
+#ifdef MAPBASE
+bool		g_bNoDefaultCubemaps = true;
+bool		g_bSkyboxCubemaps = false;
+bool		g_bPropperInsertAllAsStatic = false;
+bool		g_bPropperStripEntities = false;
+int			g_iDefaultCubemapSize = 32;
+#endif
+#ifdef MAPBASE_VSCRIPT
+ScriptLanguage_t	g_iScripting = SL_NONE;
+#endif
 
 float		g_defaultLuxelSize = DEFAULT_LUXEL_SIZE;
 float		g_luxelScale = 1.0f;
@@ -83,6 +103,7 @@ int			entity_num;
 
 
 node_t		*block_nodes[BLOCKS_SPACE+2][BLOCKS_SPACE+2];
+
 
 //-----------------------------------------------------------------------------
 // Assign occluder areas (must happen *after* the world model is processed)
@@ -201,8 +222,10 @@ ProcessWorldModel
 ============
 */
 void SplitSubdividedFaces( node_t *headnode ); // garymcthack
+void ProcessSubModel(); // fwd decl
 void ProcessWorldModel (void)
 {
+
 	entity_t	*e;
 	tree_t		*tree = NULL;
 	qboolean	leaked;
@@ -296,7 +319,11 @@ void ProcessWorldModel (void)
 			Warning( ("**** leaked ****\n") );
 			leaked = true;
 			LeakFile (tree);
+#ifdef MAPBASE
+			if (!noleaktest)
+#else
 			if (leaktest)
+#endif
 			{
 				Warning( ("--- MAP LEAKED ---\n") );
 				exit (0);
@@ -392,32 +419,49 @@ void ProcessSubModel( )
 
 	mins[0] = mins[1] = mins[2] = MIN_COORD_INTEGER;
 	maxs[0] = maxs[1] = maxs[2] = MAX_COORD_INTEGER;
-	list = MakeBspBrushList (start, end, mins, maxs, FULL_DETAIL);
+	int nDetailScreen = FULL_DETAIL;
+	list = MakeBspBrushList( start, end, mins, maxs, nDetailScreen );
 
 	if (!nocsg)
 		list = ChopBrushes (list);
 	tree = BrushBSP (list, mins, maxs);
 	
 	// This would wind up crashing the engine because we'd have a negative leaf index in dmodel_t::headnode.
-	if ( tree->headnode->planenum == PLANENUM_LEAF )
+	if ( ( tree->headnode->planenum == PLANENUM_LEAF ) 
+		)
 	{
 		const char *pClassName = ValueForKey( e, "classname" );
 		const char *pTargetName = ValueForKey( e, "targetname" );
 		Error( "bmodel %d has no head node (class '%s', targetname '%s')", entity_num, pClassName, pTargetName );
 	}
 
-	MakeTreePortals (tree);
+	{
+		MakeTreePortals(tree);
+	}
 	
 #if DEBUG_BRUSHMODEL
 	if ( entity_num == DEBUG_BRUSHMODEL )
 		WriteGLView( tree, "tree_all" );
 #endif
 
-	MarkVisibleSides (tree, start, end, FULL_DETAIL);
+	MarkVisibleSides( tree, start, end, nDetailScreen );
 	MakeFaces (tree->headnode);
 
-	FixTjuncs( tree->headnode, NULL );
-	WriteBSP( tree->headnode, NULL );
+	if ( nDetailScreen == NO_DETAIL )
+	{
+		face_t* pLeafFaceList = NULL;
+		if ( !nodetail )
+		{
+			pLeafFaceList = MergeDetailTree( tree, start, end );
+		}
+		pLeafFaceList = FixTjuncs( tree->headnode, pLeafFaceList );
+		WriteBSP( tree->headnode, pLeafFaceList );
+	}
+	else
+	{
+		FixTjuncs( tree->headnode, NULL );
+		WriteBSP( tree->headnode, NULL );
+	}
 	
 #if DEBUG_BRUSHMODEL
 	if ( entity_num == DEBUG_BRUSHMODEL )
@@ -654,7 +698,9 @@ static void EmitOccluderBrushes()
 		occluderData.polycount = g_OccluderPolyData.Count() - occluderData.firstpoly;
 
 		// Mark this brush as not having brush geometry so it won't be re-emitted with a brush model
-		entities[entity_num].numbrushes = 0;
+		{
+			entities[ entity_num ].numbrushes = 0;
+		}
 	}
 
 	FreeTree( pOccluderTree );
@@ -670,6 +716,7 @@ void SetOccluderArea( int nOccluder, int nArea, int nEntityNum )
 	{
 		g_OccluderData[nOccluder].area = nArea;
 	}
+#ifndef MAPBASE
 	else if ( (nArea != 0) && (g_OccluderData[nOccluder].area != nArea) )
 	{
 		const char *pTargetName = ValueForKey( &entities[nEntityNum], "targetname" );
@@ -679,6 +726,7 @@ void SetOccluderArea( int nOccluder, int nArea, int nEntityNum )
 		}
 		Warning("Occluder \"%s\" straddles multiple areas. This is invalid!\n", pTargetName );
 	}
+#endif
 }
 
 
@@ -759,7 +807,6 @@ void FixupOnlyEntsOccluderEntities()
 	}
 }
 
-
 void MarkNoDynamicShadowSides()
 {
 	for ( int iSide=0; iSide < g_MainMap->nummapbrushsides; iSide++ )
@@ -837,6 +884,7 @@ void ProcessModels (void)
 		if ( !pEntity->numbrushes )
 			continue;
 
+
 		qprintf ("############### model %i ###############\n", nummodels);
 
 		BeginModel ();
@@ -859,7 +907,12 @@ void ProcessModels (void)
 	}
 
 	// Turn the skybox into a cubemap in case we don't build env_cubemap textures.
+#ifdef MAPBASE
+	if (!g_bNoDefaultCubemaps)
+		Cubemap_CreateDefaultCubemaps();
+#else
 	Cubemap_CreateDefaultCubemaps();
+#endif
 	EndBSPFile ();
 }
 
@@ -1000,11 +1053,19 @@ int RunVBSP( int argc, char **argv )
 			Msg ("microvolume = %f\n", microvolume);
 			i++;
 		}
+#ifdef MAPBASE
+		else if (!Q_stricmp(argv[i], "-noleaktest"))
+		{
+			Msg ("noleaktest = true\n");
+			noleaktest = true;
+		}
+#else
 		else if (!Q_stricmp(argv[i], "-leaktest"))
 		{
 			Msg ("leaktest = true\n");
 			leaktest = true;
 		}
+#endif
 		else if (!Q_stricmp(argv[i], "-verboseentities"))
 		{
 			Msg ("verboseentities = true\n");
@@ -1137,6 +1198,10 @@ int RunVBSP( int argc, char **argv )
 		{
 			EnableFullMinidumps( true );
 		}
+		else if ( !Q_stricmp( argv[i], "-nohiddenmaps" ) )
+		{
+			g_bNoHiddenManifestMaps = true;
+		}
 		else if ( !Q_stricmp( argv[i], "-embed" ) && i < argc - 1 )
 		{
 			V_MakeAbsolutePath( g_szEmbedDir, sizeof( g_szEmbedDir ), argv[++i], "." );
@@ -1150,6 +1215,104 @@ int RunVBSP( int argc, char **argv )
 			g_pFullFileSystem->AddSearchPath( g_szEmbedDir, "GAME", PATH_ADD_TO_TAIL );
 			g_pFullFileSystem->AddSearchPath( g_szEmbedDir, "MOD", PATH_ADD_TO_TAIL );
 		}
+#ifdef MAPBASE
+		// Thanks to Mapbase's shader changes, default all-black cubemaps are no longer needed.
+		// The command has been switched from "-nodefaultcubemap" to "-defaultcubemap",
+		// meaning maps are compiled without them by default.
+		else if ( !Q_stricmp( argv[i], "-defaultcubemap" ) )
+		{
+			g_bNoDefaultCubemaps = false;
+		}
+		// Default cubemaps are supposed to show the sky texture, but Valve disabled this
+		// because they didn't get it working for HDR cubemaps. As a result, all default
+		// cubemaps appear as all-black textures. However, this parameter has been added to
+		// re-enable skybox cubemaps for LDR cubemaps. (HDR skybox cubemaps are not supported)
+		else if ( !Q_stricmp( argv[i], "-skyboxcubemap" ) )
+		{
+			g_bNoDefaultCubemaps = false;
+			g_bSkyboxCubemaps = true;
+		}
+		else if ( !Q_stricmp( argv[i], "-defaultcubemapres" ) )
+		{
+			g_iDefaultCubemapSize = atoi( argv[i + 1] );
+			Msg( "Default cubemap size = %i\n", g_iDefaultCubemapSize );
+			i++;
+		}
+		else if ( !Q_stricmp( argv[i], "-defaultproppermodelsstatic" ) )
+		{
+			g_bPropperInsertAllAsStatic = true;
+		}
+		else if ( !Q_stricmp( argv[i], "-strippropperentities" ) )
+		{
+			g_bPropperStripEntities = true;
+		}
+#endif
+#ifdef MAPBASE_VSCRIPT
+		else if ( !Q_stricmp( argv[i], "-scripting" ) )
+		{
+			const char *pszScriptLanguage = argv[i + 1];
+			if( pszScriptLanguage[0] == '-')
+			{
+				// It's another command. Just use default
+				g_iScripting = SL_DEFAULT;
+			}
+			else
+			{
+				// Use a specific language
+				if( !Q_stricmp(pszScriptLanguage, "gamemonkey") )
+				{
+					g_iScripting = SL_GAMEMONKEY;
+				}
+				else if( !Q_stricmp(pszScriptLanguage, "squirrel") )
+				{
+					g_iScripting = SL_SQUIRREL;
+				}
+				else if( !Q_stricmp(pszScriptLanguage, "python") )
+				{
+					g_iScripting = SL_PYTHON;
+				}
+				else if( !Q_stricmp(pszScriptLanguage, "lua") )
+				{
+					g_iScripting = SL_LUA;
+				}
+				else
+				{
+					DevWarning("-server_script does not recognize a language named '%s'. virtual machine did NOT start.\n", pszScriptLanguage );
+					g_iScripting = SL_NONE;
+				}
+				i++;
+			}
+		}
+		else if ( !Q_stricmp( argv[i], "-doc" ) )
+		{
+			// Only print the documentation
+
+			if (g_iScripting)
+			{
+				scriptmanager = (IScriptManager*)Sys_GetFactoryThis()(VSCRIPT_INTERFACE_VERSION, NULL);
+				VScriptVBSPInit();
+
+				const char *pszArg1 = argv[i + 1];
+				if (pszArg1[0] == '-')
+				{
+					// It's another command. Just use *
+					pszArg1 = "*";
+				}
+
+				char szCommand[512];
+				_snprintf( szCommand, sizeof( szCommand ), "__Documentation.PrintHelp( \"%s\" );", pszArg1 );
+				g_pScriptVM->Run( szCommand );
+			}
+			else
+			{
+				Warning("Cannot print documentation without scripting enabled!\n");
+			}
+
+			DeleteCmdLine( argc, argv );
+			CmdLib_Cleanup();
+			CmdLib_Exit( 1 );
+		}
+#endif
 		else if (argv[i][0] == '-')
 		{
 			Warning("VBSP: Unknown option \"%s\"\n\n", argv[i]);
@@ -1196,8 +1359,9 @@ int RunVBSP( int argc, char **argv )
 			Warning(
 				"Other options  :\n"
 				"  -novconfig   : Don't bring up graphical UI on vproject errors.\n"
-				"  -threads     : Control the number of threads vbsp uses (defaults to the # of\n"
-				"                 processors on your machine).\n"
+				"  -threads #   : Control the number of threads vbsp uses (defaults to the #\n"
+				"                or processors on your machine).\n"
+				"				 Threads can be negative; if so, they will be subtracted from the total thread count.\n"
 				"  -verboseentities: If -v is on, this disables verbose output for submodels.\n"
 				"  -noweld      : Don't join face vertices together.\n"
 				"  -nocsg       : Don't chop out intersecting brush areas.\n"
@@ -1236,6 +1400,16 @@ int RunVBSP( int argc, char **argv )
 				"  -nox360		   : Disable generation Xbox360 version of vsp (default)\n"
 				"  -replacematerials : Substitute materials according to materialsub.txt in content\\maps\n"
 				"  -FullMinidumps  : Write large minidumps on crash.\n"
+				"  -nohiddenmaps   : Exclude manifest maps if they are currently hidden.\n"
+#ifdef MAPBASE
+				"  -defaultcubemap : Makes a dummy cubemap.\n"
+				"  -skyboxcubemap  : Makes a skybox cubemaps for LDR cubemaps. (HDR skybox cubemaps are not supported)\n"
+				"  -defaultcubemapres  : Sets the dummy cubemap resolution. (Default 32)\n"
+				"  -defaultproppermodelsstatic  : Inserts propper_model into the level.\n"
+				"  -strippropperentities  : Strip out any entities with 'propper_' in their classname, as they don't actually exist in-game.\n"
+				"  -scripting      : Vscript vbsp system.\n"
+				"  -doc			   : Prints all the related documentation of vbsp Vscript.\n"
+#endif
 				);
 			}
 
@@ -1297,6 +1471,15 @@ int RunVBSP( int argc, char **argv )
 	InitMaterialSystem( materialPath, CmdLib_GetFileSystemFactory() );
 	Msg( "materialPath: %s\n", materialPath );
 
+#ifdef MAPBASE_VSCRIPT
+	if (g_iScripting)
+	{
+		scriptmanager = (IScriptManager*)Sys_GetFactoryThis()(VSCRIPT_INTERFACE_VERSION, NULL);
+
+		VScriptVBSPInit();
+	}
+#endif
+	
 	// delete portal and line files
 	sprintf (path, "%s.prt", source);
 	remove (path);
@@ -1423,6 +1606,9 @@ int RunVBSP( int argc, char **argv )
 	ReleasePakFileLumps();
 	DeleteMaterialReplacementKeys();
 	ShutdownMaterialSystem();
+#ifdef MAPBASE_VSCRIPT
+	VScriptVBSPTerm();
+#endif
 	CmdLib_Cleanup();
 	return 0;
 }

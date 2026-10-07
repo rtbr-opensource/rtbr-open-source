@@ -115,15 +115,6 @@ float (*pfInvRSquared)(const float* v) = _InvRSquared;
 void  (*pfFastSinCos)(float x, float* s, float* c) = SinCos;
 float (*pfFastCos)(float x) = cosf;
 
-float SinCosTable[SIN_TABLE_SIZE];
-void InitSinCosTable()
-{
-	for( int i = 0; i < SIN_TABLE_SIZE; i++ )
-	{
-		SinCosTable[i] = sin(i * 2.0 * M_PI / SIN_TABLE_SIZE);
-	}
-}
-
 qboolean VectorsEqual( const float *v1, const float *v2 )
 {
 	Assert( s_bMathlibInitialized );
@@ -2676,7 +2667,7 @@ void Cubic_Spline(
 
 	output.Init();
 
-	Vector a, b, c, d;
+	Vector b, c;
 
 	// matrix row 1
 	VectorScale( p2, tSqrSqr * 2, b );
@@ -2811,7 +2802,7 @@ void Parabolic_Spline(
 
 	output.Init();
 
-	Vector a, b, c, d;
+	Vector a, b, c;
 
 	// matrix row 1
 	// no influence from t cubed
@@ -3402,7 +3393,6 @@ void MathLib_Init( float gamma, float texGamma, float brightness, int overbright
 
 	s_bMathlibInitialized = true;
 
-	InitSinCosTable();
 	BuildGammaTable( gamma, texGamma, brightness, overbright );
 }
 

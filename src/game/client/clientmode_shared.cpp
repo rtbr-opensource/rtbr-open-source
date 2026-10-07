@@ -36,6 +36,7 @@
 #include <vgui/ILocalize.h>
 #include "hud_vote.h"
 #include "ienginevgui.h"
+#include "viewpostprocess.h"
 #include "sourcevr/isourcevirtualreality.h"
 #if defined( _X360 )
 #include "xbox/xbox_console.h"
@@ -61,8 +62,14 @@ extern ConVar replay_rendersetting_renderglow;
 #endif
 
 #if defined( TF_CLIENT_DLL )
+#include "tf_gc_client.h"
 #include "c_tf_player.h"
 #include "econ_item_description.h"
+#include "c_tf_team.h"
+#endif
+
+#ifdef GLOWS_ENABLE
+#include "clienteffectprecachesystem.h"
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -77,12 +84,16 @@ class CHudVote;
 static vgui::HContext s_hVGuiContext = DEFAULT_VGUI_CONTEXT;
 
 ConVar cl_drawhud( "cl_drawhud", "1", FCVAR_CHEAT, "Enable the rendering of the hud" );
+#ifdef DEMO_AUTORECORD
+ConVar cl_autorecord("cl_autorecord", "0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE, "Start recording demos automatically with an incremental name based on this value.");
+#endif
 ConVar hud_takesshots( "hud_takesshots", "0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE, "Auto-save a scoreboard screenshot at the end of a map." );
 ConVar hud_freezecamhide( "hud_freezecamhide", "0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE, "Hide the HUD during freeze-cam" );
 ConVar cl_show_num_particle_systems( "cl_show_num_particle_systems", "0", FCVAR_CLIENTDLL, "Display the number of active particle systems." );
 
 extern ConVar v_viewmodel_fov;
 extern ConVar voice_modenable;
+extern ConVar cl_enable_text_chat;
 
 extern bool IsInCommentaryMode( void );
 extern const char* GetWearLocalizationString( float flWear );
@@ -92,12 +103,19 @@ CON_COMMAND( cl_reload_localization_files, "Reloads all localization files" )
 	g_pVGuiLocalize->ReloadLocalizationFiles();
 }
 
+#ifdef GLOWS_ENABLE
+CLIENTEFFECT_REGISTER_BEGIN( PrecachePostProcessingEffectsGlow )
+CLIENTEFFECT_MATERIAL( "dev/glow_color" )
+CLIENTEFFECT_MATERIAL( "dev/halo_add_to_screen" )
+CLIENTEFFECT_REGISTER_END_CONDITIONAL( engine->GetDXSupportLevel() >= 90 )
+#endif
+
 #ifdef VOICE_VOX_ENABLE
 void VoxCallback( IConVar *var, const char *oldString, float oldFloat )
 {
 	if ( engine && engine->IsConnected() )
 	{
-		ConVarRef voice_vox( var->GetName() );
+		const ConVarRef voice_vox( var );
 		if ( voice_vox.GetBool() && voice_modenable.GetBool() )
 		{
 			engine->ClientCmd_Unrestricted( "voicerecord_toggle on\n" );
@@ -254,6 +272,13 @@ static void __MsgFunc_VGUIMenu( bf_read &msg )
 		{
 			gHUD.SetScreenShotTime( gpGlobals->curtime + 1.0 ); // take a screenshot in 1 second
 		}
+
+		IGameEvent *event = gameeventmanager->CreateEvent( "ds_screenshot" );
+		if ( event )
+		{
+			event->SetFloat( "delay", 0.5f );
+			gameeventmanager->FireEventClientSide( event );
+		}
 	}
 
 	// is the server trying to show an MOTD panel? Check that it's allowed right now.
@@ -283,6 +308,12 @@ ClientModeShared::ClientModeShared()
 	m_pWeaponSelection = NULL;
 	m_nRootSize[ 0 ] = m_nRootSize[ 1 ] = -1;
 
+#ifdef MAPBASE // From Alien Swarm SDK
+	m_pCurrentPostProcessController = NULL;
+	m_PostProcessLerpTimer.Invalidate();
+	m_pCurrentColorCorrection = NULL;
+#endif
+
 #if defined( REPLAY_ENABLED )
 	m_pReplayReminderPanel = NULL;
 	m_flReplayStartRecordTime = 0.0f;
@@ -306,8 +337,9 @@ void ClientModeShared::ReloadScheme( bool flushLowLevel )
 		KeyValuesSystem()->InvalidateCache();
 	}
 
+	BuildGroup::ClearResFileCache();
+
 	m_pViewport->ReloadScheme( "resource/ClientScheme.res" );
-	ClearKeyValuesCache();
 }
 
 
@@ -365,6 +397,10 @@ void ClientModeShared::Init()
 	ListenForGameEvent( "replay_replaysavailable" );
 	ListenForGameEvent( "replay_servererror" );
 	ListenForGameEvent( "game_newmap" );
+#endif
+
+#ifdef MAPBASE_MP
+	ListenForGameEvent( "player_afk" );
 #endif
 
 #ifndef _XBOX
@@ -611,6 +647,8 @@ void ClientModeShared::Update()
 		m_pViewport->SetVisible( cl_drawhud.GetBool() );
 	}
 
+	UpdatePostProcessingEffects();
+
 	UpdateRumbleEffects();
 
 	if ( cl_show_num_particle_systems.GetBool() )
@@ -635,6 +673,43 @@ void ClientModeShared::Update()
 		engine->Con_NPrintf( 0, "# Active particle systems: %i", nCount );
 	}
 }
+
+#ifdef MAPBASE // From Alien Swarm SDK
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void ClientModeShared::OnColorCorrectionWeightsReset( void )
+{
+	C_ColorCorrection *pNewColorCorrection = NULL;
+	C_ColorCorrection *pOldColorCorrection = m_pCurrentColorCorrection;
+	C_BasePlayer* pPlayer = C_BasePlayer::GetLocalPlayer();
+	if ( pPlayer )
+	{
+		pNewColorCorrection = pPlayer->GetActiveColorCorrection();
+	}
+
+	if ( pNewColorCorrection != pOldColorCorrection )
+	{
+		if ( pOldColorCorrection )
+		{
+			pOldColorCorrection->EnableOnClient( false );
+		}
+		if ( pNewColorCorrection )
+		{
+			pNewColorCorrection->EnableOnClient( true, pOldColorCorrection == NULL );
+		}
+		m_pCurrentColorCorrection = pNewColorCorrection;
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+float ClientModeShared::GetColorCorrectionScale( void ) const
+{
+	return 1.0f;
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // This processes all input before SV Move messages are sent
@@ -674,7 +749,23 @@ int	ClientModeShared::KeyInput( int down, ButtonCode_t keynum, const char *pszCu
 		}
 		return 0;
 	}
-	
+	else if ( pszCurrentBinding &&
+		( Q_strcmp( pszCurrentBinding, "messagemode3" ) == 0 ||
+			  Q_strcmp( pszCurrentBinding, "say_party" ) == 0 ) )
+	{
+		if ( down && BCanSendPartyChatMessages() )
+		{
+			StartMessageMode( MM_SAY_PARTY );
+		}
+		return 0;
+	}
+#ifdef RTBMP
+	else if ( keynum == KEY_F4 )
+	{
+		engine->ServerCmd( "player_ready_toggle" );
+	}
+#endif
+
 	// If we're voting...
 #ifdef VOTING_ENABLED
 	CHudVote *pHudVote = GET_HUDELEMENT( CHudVote );
@@ -782,6 +873,10 @@ int ClientModeShared::HudElementKeyInput( int down, ButtonCode_t keynum, const c
 //-----------------------------------------------------------------------------
 bool ClientModeShared::DoPostScreenSpaceEffects( const CViewSetup *pSetup )
 {
+#ifdef GLOWS_ENABLE
+	g_GlowObjectManager.RenderGlowEffects( pSetup, 0 );
+#endif
+
 #if defined( REPLAY_ENABLED )
 	if ( engine->IsPlayingDemo() )
 	{
@@ -814,6 +909,31 @@ void ClientModeShared::StartMessageMode( int iMessageModeType )
 	{
 		return;
 	}
+	
+#if defined( TF_CLIENT_DLL )
+	if ( iMessageModeType == MM_SAY || iMessageModeType == MM_SAY_TEAM )
+	{
+		bool bSuspensionInMatch = GTFGCClientSystem() && GTFGCClientSystem()->BHaveChatSuspensionInCurrentMatch();
+		if ( !cl_enable_text_chat.GetBool() || bSuspensionInMatch )
+		{
+			CBaseHudChat *pHUDChat = ( CBaseHudChat * ) GET_HUDELEMENT( CHudChat );
+			if ( pHUDChat )
+			{
+				const char *pszReason = "#TF_Chat_Disabled";
+				if ( bSuspensionInMatch )
+				{
+					pszReason = "#TF_Chat_Unavailable";
+				}
+
+				char szLocalized[100];
+				g_pVGuiLocalize->ConvertUnicodeToANSI( g_pVGuiLocalize->Find( pszReason ), szLocalized, sizeof( szLocalized ) );
+				pHUDChat->ChatPrintf( 0, CHAT_FILTER_NONE, "%s ", szLocalized );
+			}
+			return;
+		}
+	}
+#endif // TF_CLIENT_DLL
+
 	if ( m_pChatElement )
 	{
 		m_pChatElement->StartMessageMode( iMessageModeType );
@@ -851,7 +971,53 @@ void ClientModeShared::LevelInit( const char *newmap )
 	// Reset any player explosion/shock effects
 	CLocalPlayerFilter filter;
 	enginesound->SetPlayerDSP( filter, 0, true );
+
+#ifdef DEMO_AUTORECORD
+	AutoRecord(newmap);
+#endif
 }
+
+#ifdef DEMO_AUTORECORD
+void ClientModeShared::AutoRecord(const char *map)
+{
+	if (!cl_autorecord.GetBool()) {
+		return;
+	}
+
+	if (map == nullptr) {
+		Warning("null map in ClientModeShared::AutoRecord");
+		return;
+	}
+
+	// stop any demo to make sure they're saved
+	engine->ClientCmd("stop");
+
+	// KLEMS: sanitize space in client name because having to type "" while playing back lots of demos is annoying
+	ConVarRef name("name");
+	char nameStr[128];
+	memset(nameStr, 0, sizeof(nameStr));
+	Q_snprintf(nameStr, sizeof(nameStr), "%s", name.GetString());
+	int i = 0;
+	while (nameStr[i]) {
+		char c = nameStr[i];
+		if (!(	(c >= '0' && c <= '9') ||
+				(c >= 'a' && c <= 'z') ||
+				(c >= 'A' && c <= 'Z'))) {
+			nameStr[i] = '_';
+		}
+		i++;
+	}
+	nameStr[127] = 0;
+
+	char cmd[256];
+	Q_snprintf(cmd, sizeof(cmd), "record \"%s_%04d_%s\"", nameStr, cl_autorecord.GetInt(), map);
+	cl_autorecord.SetValue(cl_autorecord.GetInt() + 1);
+	engine->ClientCmd(cmd);
+
+	// write to config to make sure the cvar is recorded
+	engine->ClientCmd("host_writeconfig");
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -870,6 +1036,17 @@ void ClientModeShared::LevelShutdown( void )
 		vgui::ivgui()->DestroyContext( s_hVGuiContext );
  		s_hVGuiContext = DEFAULT_VGUI_CONTEXT;
 	}
+
+#ifdef MAPBASE
+	// Always reset post-processing on level unload
+	//if (m_pCurrentPostProcessController)
+	{
+		m_CurrentPostProcessParameters = PostProcessParameters_t();
+		m_LerpEndPostProcessParameters = PostProcessParameters_t();
+		m_pCurrentPostProcessController = NULL;
+		SetPostProcessParams( &m_CurrentPostProcessParameters );
+	}
+#endif
 
 	// Reset any player explosion/shock effects
 	CLocalPlayerFilter filter;
@@ -945,18 +1122,81 @@ float ClientModeShared::GetViewModelFOV( void )
 	return v_viewmodel_fov.GetFloat();
 }
 
+#ifdef MAPBASE
+extern bool g_bPostProcessNeedsRestore;
+#endif
+
+void ClientModeShared::UpdatePostProcessingEffects()
+{
+	C_PostProcessController* pNewPostProcessController = NULL;
+	C_BasePlayer* pPlayer = C_BasePlayer::GetLocalPlayer();
+
+	if (pPlayer)
+		pNewPostProcessController = pPlayer->GetActivePostProcessController();
+
+	if (!pNewPostProcessController)
+	{
+		m_CurrentPostProcessParameters = PostProcessParameters_t();
+		m_pCurrentPostProcessController = NULL;
+		SetPostProcessParams( &m_CurrentPostProcessParameters );
+		return;
+	}
+
+	if (pNewPostProcessController != m_pCurrentPostProcessController)
+		m_pCurrentPostProcessController = pNewPostProcessController;
+
+	// Start a lerp timer if the parameters changed, regardless of whether the controller changed
+	if (m_LerpEndPostProcessParameters != pNewPostProcessController->m_PostProcessParameters)
+	{
+		m_LerpStartPostProcessParameters = m_CurrentPostProcessParameters;
+		m_LerpEndPostProcessParameters = pNewPostProcessController ? pNewPostProcessController->m_PostProcessParameters : m_CurrentPostProcessParameters;
+
+		float flFadeTime = pNewPostProcessController ? pNewPostProcessController->m_PostProcessParameters.m_flParameters[PPPN_FADE_TIME] : 0.0f;
+		if (flFadeTime <= 0.0f)
+		{
+			flFadeTime = 0.001f;
+		}
+
+		m_PostProcessLerpTimer.Start( flFadeTime );
+	}
+#ifdef MAPBASE
+	// HACKHACK: Needs to be checked here because OnRestore() doesn't seem to run before a lerp begins
+	else if (g_bPostProcessNeedsRestore)
+	{
+		// The player just loaded a saved game.
+		// Don't fade parameters from 0; instead, take what's already there and assume they were already active.
+		// (we have no way of knowing if they were in the middle of a lerp)
+		m_PostProcessLerpTimer.Invalidate();
+		g_bPostProcessNeedsRestore = false;
+	}
+#endif
+
+	// Lerp between old and new parameters
+	float flLerpFactor = 1.0f - m_PostProcessLerpTimer.GetRemainingRatio();
+	for (int nParameter = 0; nParameter < POST_PROCESS_PARAMETER_COUNT; ++nParameter)
+	{
+		m_CurrentPostProcessParameters.m_flParameters[nParameter] =
+			Lerp(
+			flLerpFactor,
+			m_LerpStartPostProcessParameters.m_flParameters[nParameter],
+			m_LerpEndPostProcessParameters.m_flParameters[nParameter] );
+	}
+
+	SetPostProcessParams( &m_CurrentPostProcessParameters );
+}
+
 class CHudChat;
 
 bool PlayerNameNotSetYet( const char *pszName )
 {
-	if ( pszName && pszName[0] )
-	{
-		// Don't show "unconnected" if we haven't got the players name yet
-		if ( Q_strnicmp(pszName,"unconnected",11) == 0 )
-			return true;
-		if ( Q_strnicmp(pszName,"NULLNAME",11) == 0 )
-			return true;
-	}
+	if ( !pszName || !pszName[0] )
+		return true;
+
+	// Don't show "unconnected" if we haven't got the players name yet
+	if ( Q_strnicmp(pszName,"unconnected",11) == 0 )
+		return true;
+	if ( Q_strnicmp(pszName,"NULLNAME",11) == 0 )
+		return true;
 
 	return false;
 }
@@ -977,9 +1217,10 @@ void ClientModeShared::FireGameEvent( IGameEvent *event )
 		if ( !IsInCommentaryMode() )
 		{
 			wchar_t wszLocalized[100];
-			wchar_t wszPlayerName[MAX_PLAYER_NAME_LENGTH];
-			g_pVGuiLocalize->ConvertANSIToUnicode( event->GetString("name"), wszPlayerName, sizeof(wszPlayerName) );
-			g_pVGuiLocalize->ConstructString( wszLocalized, sizeof( wszLocalized ), g_pVGuiLocalize->Find( "#game_player_joined_game" ), 1, wszPlayerName );
+			wchar_t wszPlayerName[ MAX_PLAYER_NAME_LENGTH ];
+			int iPlayerIndex = engine->GetPlayerForUserID( event->GetInt( "userid" ) );
+			UTIL_GetFilteredPlayerNameAsWChar( iPlayerIndex, event->GetString( "name" ), wszPlayerName );
+			g_pVGuiLocalize->ConstructString_safe( wszLocalized, g_pVGuiLocalize->Find( "#game_player_joined_game" ), 1, wszPlayerName );
 
 			char szLocalized[100];
 			g_pVGuiLocalize->ConvertUnicodeToANSI( wszLocalized, szLocalized, sizeof(szLocalized) );
@@ -989,17 +1230,24 @@ void ClientModeShared::FireGameEvent( IGameEvent *event )
 	}
 	else if ( Q_strcmp( "player_disconnect", eventname ) == 0 )
 	{
-		C_BasePlayer *pPlayer = USERID2PLAYER( event->GetInt("userid") );
-
-		if ( !hudChat || !pPlayer )
+		// Josh: There used to be code here that would get the player entity here to get the name
+		// Big problem with that. The player entity is probably already gone -- they disconnected after all!
+		// So there used to be a bug where most of the time, disconnect messages just wouldn't show up in chat.
+		//
+		// The player's name who disconnected is already provided in the event, so there was no reason for all
+		// of this logic anyway...
+		if ( !hudChat )
 			return;
-		if ( PlayerNameNotSetYet(event->GetString("name")) )
+
+		const char* pszPlayerName = event->GetString( "name" );
+
+		if ( PlayerNameNotSetYet( pszPlayerName ) )
 			return;
 
 		if ( !IsInCommentaryMode() )
 		{
 			wchar_t wszPlayerName[MAX_PLAYER_NAME_LENGTH];
-			g_pVGuiLocalize->ConvertANSIToUnicode( pPlayer->GetPlayerName(), wszPlayerName, sizeof(wszPlayerName) );
+			g_pVGuiLocalize->ConvertANSIToUnicode( pszPlayerName, wszPlayerName, sizeof(wszPlayerName) );
 
 			wchar_t wszReason[64];
 			const char *pszReason = event->GetString( "reason" );
@@ -1015,11 +1263,11 @@ void ClientModeShared::FireGameEvent( IGameEvent *event )
 			wchar_t wszLocalized[100];
 			if (IsPC())
 			{
-				g_pVGuiLocalize->ConstructString( wszLocalized, sizeof( wszLocalized ), g_pVGuiLocalize->Find( "#game_player_left_game" ), 2, wszPlayerName, wszReason );
+				g_pVGuiLocalize->ConstructString_safe( wszLocalized, g_pVGuiLocalize->Find( "#game_player_left_game" ), 2, wszPlayerName, wszReason );
 			}
 			else
 			{
-				g_pVGuiLocalize->ConstructString( wszLocalized, sizeof( wszLocalized ), g_pVGuiLocalize->Find( "#game_player_left_game" ), 1, wszPlayerName );
+				g_pVGuiLocalize->ConstructString_safe( wszLocalized, g_pVGuiLocalize->Find( "#game_player_left_game" ), 1, wszPlayerName );
 			}
 
 			char szLocalized[100];
@@ -1050,8 +1298,15 @@ void ClientModeShared::FireGameEvent( IGameEvent *event )
 		if ( !bSilent )
 		{
 			wchar_t wszPlayerName[MAX_PLAYER_NAME_LENGTH];
-			g_pVGuiLocalize->ConvertANSIToUnicode( pszName, wszPlayerName, sizeof(wszPlayerName) );
+			int iPlayerIndex = engine->GetPlayerForUserID( event->GetInt( "userid" ) );
+			UTIL_GetFilteredPlayerNameAsWChar( iPlayerIndex, pszName, wszPlayerName );
 
+			bool bUsingCustomTeamName = false;
+#ifdef TF_CLIENT_DLL
+			C_TFTeam *pTeam = GetGlobalTFTeam( team );
+			const wchar_t *wszTeam = pTeam ? pTeam->Get_Localized_Name() : L"";
+			bUsingCustomTeamName = pTeam ? pTeam->IsUsingCustomTeamName() : false;
+#else
 			wchar_t wszTeam[64];
 			C_Team *pTeam = GetGlobalTeam( team );
 			if ( pTeam )
@@ -1062,17 +1317,18 @@ void ClientModeShared::FireGameEvent( IGameEvent *event )
 			{
 				_snwprintf ( wszTeam, sizeof( wszTeam ) / sizeof( wchar_t ), L"%d", team );
 			}
+#endif
 
 			if ( !IsInCommentaryMode() )
 			{
 				wchar_t wszLocalized[100];
 				if ( bAutoTeamed )
 				{
-					g_pVGuiLocalize->ConstructString( wszLocalized, sizeof( wszLocalized ), g_pVGuiLocalize->Find( "#game_player_joined_autoteam" ), 2, wszPlayerName, wszTeam );
+					g_pVGuiLocalize->ConstructString_safe( wszLocalized, bUsingCustomTeamName ? g_pVGuiLocalize->Find( "#game_player_joined_autoteam_party_leader" ) : g_pVGuiLocalize->Find( "#game_player_joined_autoteam" ), 2, wszPlayerName, wszTeam );
 				}
 				else
 				{
-					g_pVGuiLocalize->ConstructString( wszLocalized, sizeof( wszLocalized ), g_pVGuiLocalize->Find( "#game_player_joined_team" ), 2, wszPlayerName, wszTeam );
+					g_pVGuiLocalize->ConstructString_safe( wszLocalized, bUsingCustomTeamName ? g_pVGuiLocalize->Find( "#game_player_joined_team_party_leader" ) : g_pVGuiLocalize->Find( "#game_player_joined_team" ), 2, wszPlayerName, wszTeam );
 				}
 
 				char szLocalized[100];
@@ -1097,27 +1353,29 @@ void ClientModeShared::FireGameEvent( IGameEvent *event )
 		if ( PlayerNameNotSetYet(pszOldName) )
 			return;
 
-		wchar_t wszOldName[MAX_PLAYER_NAME_LENGTH];
-		g_pVGuiLocalize->ConvertANSIToUnicode( pszOldName, wszOldName, sizeof(wszOldName) );
+		int iPlayerIndex = engine->GetPlayerForUserID( event->GetInt( "userid" ) );
 
-		wchar_t wszNewName[MAX_PLAYER_NAME_LENGTH];
-		g_pVGuiLocalize->ConvertANSIToUnicode( event->GetString( "newname" ), wszNewName, sizeof(wszNewName) );
+		wchar_t wszOldName[ MAX_PLAYER_NAME_LENGTH ];
+		UTIL_GetFilteredPlayerNameAsWChar( iPlayerIndex, pszOldName, wszOldName );
+
+		wchar_t wszNewName[ MAX_PLAYER_NAME_LENGTH ];
+		UTIL_GetFilteredPlayerNameAsWChar( iPlayerIndex, event->GetString( "newname" ), wszNewName );
 
 		wchar_t wszLocalized[100];
-		g_pVGuiLocalize->ConstructString( wszLocalized, sizeof( wszLocalized ), g_pVGuiLocalize->Find( "#game_player_changed_name" ), 2, wszOldName, wszNewName );
+		g_pVGuiLocalize->ConstructString_safe( wszLocalized, g_pVGuiLocalize->Find( "#game_player_changed_name" ), 2, wszOldName, wszNewName );
 
 		char szLocalized[100];
 		g_pVGuiLocalize->ConvertUnicodeToANSI( wszLocalized, szLocalized, sizeof(szLocalized) );
 
 		hudChat->Printf( CHAT_FILTER_NAMECHANGE, "%s", szLocalized );
 	}
-	else if (Q_strcmp( "teamplay_broadcast_audio", eventname ) == 0 )
+	else if ( Q_strcmp( "teamplay_broadcast_audio", eventname ) == 0 )
 	{
 		int team = event->GetInt( "team" );
 
 		bool bValidTeam = false;
 
-		if ( (GetLocalTeam() && GetLocalTeam()->GetTeamNumber() == team) )
+		if ( GetLocalTeam() && ( GetLocalTeam()->GetTeamNumber() == team ) )
 		{
 			bValidTeam = true;
 		}
@@ -1127,7 +1385,7 @@ void ClientModeShared::FireGameEvent( IGameEvent *event )
 		{
 			CBasePlayer *pSpectatorTarget = UTIL_PlayerByIndex( GetSpectatorTarget() );
 
-			if ( pSpectatorTarget && (GetSpectatorMode() == OBS_MODE_IN_EYE || GetSpectatorMode() == OBS_MODE_CHASE || GetSpectatorMode() == OBS_MODE_POI) )
+			if ( pSpectatorTarget && ( GetSpectatorMode() == OBS_MODE_IN_EYE || GetSpectatorMode() == OBS_MODE_CHASE || GetSpectatorMode() == OBS_MODE_POI ) )
 			{
 				if ( pSpectatorTarget->GetTeamNumber() == team )
 				{
@@ -1136,7 +1394,7 @@ void ClientModeShared::FireGameEvent( IGameEvent *event )
 			}
 		}
 
-		if ( team == 0 && GetLocalTeam() > 0 )
+		if ( team == 0 && GetLocalTeam() != nullptr )
 		{
 			bValidTeam = false;
 		}
@@ -1149,8 +1407,20 @@ void ClientModeShared::FireGameEvent( IGameEvent *event )
 		if ( bValidTeam == true )
 		{
 			EmitSound_t et;
-			et.m_pSoundName = event->GetString("sound");
-			et.m_nFlags = event->GetInt("additional_flags");
+			et.m_pSoundName = event->GetString( "sound" );
+			et.m_nFlags = event->GetInt( "additional_flags" );
+
+#ifdef TF_CLIENT_DLL
+			int iPlayerIndex = event->GetInt( "player" );
+			if ( iPlayerIndex > 0 )
+			{
+				CTFPlayer *pTFPlayer = ToTFPlayer( UTIL_PlayerByIndex( iPlayerIndex ) );
+				if ( pTFPlayer )
+				{
+					pTFPlayer->ClientAdjustStartSoundParams( et );
+				}
+			}
+#endif // TF_CLIENT_DLL
 
 			CLocalPlayerFilter filter;
 			C_BaseEntity::EmitSound( filter, SOUND_FROM_LOCAL_PLAYER, et );
@@ -1167,7 +1437,7 @@ void ClientModeShared::FireGameEvent( IGameEvent *event )
 			g_pVGuiLocalize->ConvertANSIToUnicode( event->GetString("cvarvalue"), wszCvarValue, sizeof(wszCvarValue) );
 
 			wchar_t wszLocalized[256];
-			g_pVGuiLocalize->ConstructString( wszLocalized, sizeof( wszLocalized ), g_pVGuiLocalize->Find( "#game_server_cvar_changed" ), 2, wszCvarName, wszCvarValue );
+			g_pVGuiLocalize->ConstructString_safe( wszLocalized, g_pVGuiLocalize->Find( "#game_server_cvar_changed" ), 2, wszCvarName, wszCvarValue );
 
 			char szLocalized[256];
 			g_pVGuiLocalize->ConvertUnicodeToANSI( wszLocalized, szLocalized, sizeof(szLocalized) );
@@ -1200,7 +1470,6 @@ void ClientModeShared::FireGameEvent( IGameEvent *event )
 					// no particle effect if the local player is the one with the achievement or the player is dead
 					if ( !pPlayer->IsLocalPlayer() && pPlayer->IsAlive() ) 
 					{
-						//tagES using the "head" attachment won't work for CS and DoD
 						pPlayer->ParticleProp()->Create( "achieved", PATTACH_POINT_FOLLOW, "head" );
 					}
 
@@ -1216,7 +1485,7 @@ void ClientModeShared::FireGameEvent( IGameEvent *event )
 					if ( pchLocalizedAchievement )
 					{
 						wchar_t wszLocalizedString[128];
-						g_pVGuiLocalize->ConstructString( wszLocalizedString, sizeof( wszLocalizedString ), g_pVGuiLocalize->Find( "#Achievement_Earned" ), 2, wszPlayerName, pchLocalizedAchievement );
+						g_pVGuiLocalize->ConstructString_safe( wszLocalizedString, g_pVGuiLocalize->Find( "#Achievement_Earned" ), 2, wszPlayerName, pchLocalizedAchievement );
 
 						char szLocalized[128];
 						g_pVGuiLocalize->ConvertUnicodeToANSI( wszLocalizedString, szLocalized, sizeof( szLocalized ) );
@@ -1286,73 +1555,57 @@ void ClientModeShared::FireGameEvent( IGameEvent *event )
 				}
 
 				// TODO: Update the localization strings to only have two format parameters since that's all we need.
-				wchar_t wszLocalizedString[256];
-				g_pVGuiLocalize->ConstructString( 
-					wszLocalizedString, 
-					sizeof( wszLocalizedString ), 
-					LOCCHAR( "%s1" ),
-					1, 
-					CEconItemLocalizedFullNameGenerator( GLocalizationProvider(), pItemDefinition, iItemQuality ).GetFullName()
+				locchar_t wszLocalizedString[256];
+
+				locchar_t szItemname[64] = LOCCHAR( "" );
+				locchar_t szRarity[64] = LOCCHAR( "" );
+				locchar_t szWear[64] = LOCCHAR( "" );
+				locchar_t szStrange[64] = LOCCHAR( "" );
+				locchar_t szUnusual[64] = LOCCHAR( "" );
+
+				loc_scpy_safe(
+					szItemname, 
+					CConstructLocalizedString(g_pVGuiLocalize->Find("TFUI_InvTooltip_ItemFound_Itemname"), 
+					CEconItemLocalizedFullNameGenerator(GLocalizationProvider(), pItemDefinition, iItemQuality).GetFullName() )
 				);
 
+				/*g_pVGuiLocalize->ConstructString_safe( 
+					szItemname, 
+					LOCCHAR( "%s1 " ),
+					1, 
+					CEconItemLocalizedFullNameGenerator( GLocalizationProvider(), pItemDefinition, iItemQuality ).GetFullName()
+				);*/
+
 				locchar_t tempName[MAX_ITEM_NAME_LENGTH];
+				// If items have rarity
 				if ( pItemRarity )
 				{
-					// grade and Wear
-					loc_scpy_safe( tempName, wszLocalizedString );
-
-					const locchar_t *loc_WearText = LOCCHAR("");
-					const char *pszTooltipText = "TFUI_InvTooltip_Rarity";
-
+					// Weapon Wear
 					if ( !IsWearableSlot( pItemDefinition->GetDefaultLoadoutSlot() ) )
 					{
-						loc_WearText = g_pVGuiLocalize->Find( GetWearLocalizationString( flWear ) );
-					}
-					else
-					{
-						pszTooltipText = "TFUI_InvTooltip_RarityNoWear";
+						loc_scpy_safe(szWear, CConstructLocalizedString( g_pVGuiLocalize->Find("TFUI_InvTooltip_ItemFound_Wear"), g_pVGuiLocalize->Find(GetWearLocalizationString(flWear) ) ) );
 					}
 
-					g_pVGuiLocalize->ConstructString( wszLocalizedString,
-						ARRAYSIZE( wszLocalizedString ) * sizeof( locchar_t ),
-						g_pVGuiLocalize->Find( pszTooltipText ),
-						3,
-						g_pVGuiLocalize->Find( pItemRarity->GetLocKey() ),
-						tempName,
-						loc_WearText
-					);
-
-					if ( bIsUnusual )
-					{
-						loc_scpy_safe( tempName, wszLocalizedString );
-
-						g_pVGuiLocalize->ConstructString( wszLocalizedString,
-							ARRAYSIZE( wszLocalizedString ) * sizeof( locchar_t ),
-							LOCCHAR( "%s1 %s2" ),
-							2,
-							g_pVGuiLocalize->Find( "rarity4" ),
-							tempName 
-						);
-					}
-
-					if ( bIsStrange )
-					{
-						loc_scpy_safe( tempName, wszLocalizedString );
-
-						g_pVGuiLocalize->ConstructString( wszLocalizedString,
-							ARRAYSIZE( wszLocalizedString ) * sizeof( locchar_t ),
-							LOCCHAR( "%s1 %s2" ),
-							2,
-							g_pVGuiLocalize->Find( "strange" ),
-							tempName
-						);
-					}
+					// Rarity / grade
+					loc_scpy_safe(szRarity, CConstructLocalizedString(g_pVGuiLocalize->Find("TFUI_InvTooltip_ItemFound_Rarity"), g_pVGuiLocalize->Find(pItemRarity->GetLocKey() ) ) );
 				}
-				
+
+				if ( bIsUnusual )
+				{
+					loc_scpy_safe(szUnusual, CConstructLocalizedString(g_pVGuiLocalize->Find("TFUI_InvTooltip_ItemFound_Unusual"), g_pVGuiLocalize->Find("rarity4")));
+				}
+
+				if ( bIsStrange )
+				{
+					loc_scpy_safe(szStrange, CConstructLocalizedString(g_pVGuiLocalize->Find("TFUI_InvTooltip_ItemFound_Strange"), g_pVGuiLocalize->Find("strange")));
+				}
+
+				// // Strange Unusual Item Grade 		
+				loc_scpy_safe( wszLocalizedString, CConstructLocalizedString( g_pVGuiLocalize->Find( "TFUI_InvTooltip_ItemFound" ), szStrange, szUnusual, szItemname, szRarity, szWear ) );
+
 				loc_scpy_safe( tempName, wszLocalizedString );
-				g_pVGuiLocalize->ConstructString(
+				g_pVGuiLocalize->ConstructString_safe(
 					wszLocalizedString,
-					sizeof( wszLocalizedString ),
 					wszItemFound,
 					3,
 					wszPlayerName, tempName, L"" );
@@ -1387,6 +1640,36 @@ void ClientModeShared::FireGameEvent( IGameEvent *event )
 	{
 		// Make sure the instance count is reset to 0.  Sometimes the count stay in sync and we get replay messages displaying lower than they should.
 		CReplayMessagePanel::RemoveAll();
+	}
+#endif
+#ifdef MAPBASE_MP
+	else if ( V_strcmp( "player_afk", eventname ) == 0 )
+	{
+		if ( !hudChat )
+			return;
+
+		int iPlayerIndex = engine->GetPlayerForUserID( event->GetInt( "userid" ) );
+		C_BasePlayer *pPlayer = UTIL_PlayerByIndex( iPlayerIndex );
+		if ( pPlayer )
+		{
+			const char *pszPlayerName = pPlayer->GetPlayerName();
+			if (PlayerNameNotSetYet( pszPlayerName ))
+				return;
+
+			CSteamID steamID;
+			pPlayer->GetSteamID( &steamID );
+
+			wchar_t wszPlayerName[MAX_PLAYER_NAME_LENGTH];
+			UTIL_GetFilteredPlayerNameAsWChar( steamID, pszPlayerName, wszPlayerName );
+
+			wchar_t wszLocalized[100];
+			g_pVGuiLocalize->ConstructString_safe( wszLocalized, g_pVGuiLocalize->Find( "#game_idle_spectator" ), 1, wszPlayerName );
+
+			char szLocalized[100];
+			g_pVGuiLocalize->ConvertUnicodeToANSI( wszLocalized, szLocalized, sizeof( szLocalized ) );
+
+			hudChat->Printf( CHAT_FILTER_TEAMCHANGE, "%s", szLocalized );
+		}
 	}
 #endif
 
@@ -1488,7 +1771,7 @@ void ClientModeShared::DisplayReplayMessage( const char *pLocalizeName, float fl
 void ClientModeShared::DisplayReplayReminder()
 {
 #if defined( REPLAY_ENABLED )
-	if ( m_pReplayReminderPanel && g_pReplay->IsRecording() )
+	if ( m_pReplayReminderPanel && g_pReplay->IsRecording() && !::input->IsSteamControllerActive() )
 	{
 		// Only display the panel if we haven't already requested a replay for the given life
 		CReplay *pCurLifeReplay = static_cast< CReplay * >( g_pClientReplayContext->GetReplayManager()->GetReplayForCurrentLife() );
@@ -1514,4 +1797,6 @@ void ClientModeShared::DeactivateInGameVGuiContext()
 {
 	vgui::ivgui()->ActivateContext( DEFAULT_VGUI_CONTEXT );
 }
+
+
 

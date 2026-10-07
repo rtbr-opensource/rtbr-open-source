@@ -123,6 +123,8 @@ public:
 	CGameRules(void);
 	virtual ~CGameRules( void );
 
+	virtual void	LevelShutdownPostEntity() OVERRIDE;
+
 	// Damage Queries - these need to be implemented by the various subclasses (single-player, multi-player, etc).
 	// The queries represent queries against damage types and properties.
 	virtual bool	Damage_IsTimeBased( int iDmgType ) = 0;			// Damage types that are time-based.
@@ -176,7 +178,12 @@ public:
 	//Allow thirdperson camera.
 	virtual bool AllowThirdPersonCamera( void ) { return false; }
 
-	virtual void ClientCommandKeyValues( edict_t *pEntity, KeyValues *pKeyValues ) {} 
+#ifdef MAPBASE
+	virtual void ClientCommandKeyValues(edict_t* pEntity, KeyValues* pKeyValues);
+#else
+	virtual void ClientCommandKeyValues(edict_t* pEntity, KeyValues* pKeyValues) {}
+#endif // MAPBASE
+
 
 	// IsConnectedUserInfoChangeAllowed allows the clients to change
 	// cvars with the FCVAR_NOT_CONNECTED rule if it returns true
@@ -201,7 +208,7 @@ public:
 
 	virtual void ModifySentChat( char *pBuf, int iBufSize ) { return; }
 
-	virtual bool ShouldWarnOfAbandonOnQuit() { return false; }
+	virtual bool ShouldConfirmOnDisconnect() { return false; }
 	
 #else
 
@@ -235,7 +242,11 @@ public:
 
 	virtual bool IsSkillLevel( int iLevel ) { return GetSkillLevel() == iLevel; }
 	virtual int	GetSkillLevel() { return g_iSkillLevel; }
+#ifdef MAPBASE
+	virtual void OnSkillLevelChanged( int iNewLevel );
+#else
 	virtual void OnSkillLevelChanged( int iNewLevel ) {};
+#endif
 	virtual void SetSkillLevel( int iLevel )
 	{
 		int oldLevel = g_iSkillLevel; 
@@ -279,7 +290,7 @@ public:
 	virtual int	GetAutoAimMode()	{ return AUTOAIM_ON; }
 
 	virtual bool ShouldUseRobustRadiusDamage(CBaseEntity *pEntity) { return false; }
-	virtual void  RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore );
+	virtual void  RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore, int iFlags = 0 );
 	// Let the game rules specify if fall death should fade screen to black
 	virtual bool  FlPlayerFallDeathDoesScreenFade( CBasePlayer *pl ) { return TRUE; }
 
@@ -294,6 +305,10 @@ public:
 	virtual CBaseEntity *GetPlayerSpawnSpot( CBasePlayer *pPlayer );// Place this player on their spawnspot and face them the proper direction.
 	virtual bool IsSpawnPointValid( CBaseEntity *pSpot, CBasePlayer *pPlayer );
 
+#ifdef MAPBASE
+	virtual bool AllowSPRespawn() { return false; }
+#endif
+
 	virtual bool AllowAutoTargetCrosshair( void ) { return TRUE; };
 	virtual bool ClientCommand( CBaseEntity *pEdict, const CCommand &args );  // handles the user commands;  returns TRUE if command handled properly
 	virtual void ClientSettingsChanged( CBasePlayer *pPlayer );		 // the player has changed cvars
@@ -301,6 +316,9 @@ public:
 // Client kills/scoring
 	virtual int IPointsForKill( CBasePlayer *pAttacker, CBasePlayer *pKilled ) = 0;// how many points do I award whoever kills this player?
 	virtual void PlayerKilled( CBasePlayer *pVictim, const CTakeDamageInfo &info ) = 0;// Called each time a player dies
+#ifdef MAPBASE
+	virtual void NPCKilled( CAI_BaseNPC *pVictim, const CTakeDamageInfo &info ) {} // Called each time a NPC dies
+#endif
 	virtual void DeathNotice( CBasePlayer *pVictim, const CTakeDamageInfo &info )=  0;// Call this from within a GameRules class to report an obituary.
 	virtual const char *GetDamageCustomString( const CTakeDamageInfo &info ) { return NULL; }
 
@@ -419,6 +437,19 @@ public:
 	virtual bool IsHolidayActive( /*EHoliday*/ int eHoliday ) const { return false; }
 
 	virtual bool IsManualMapChangeOkay( const char **pszReason ){ return true; }
+
+	virtual void RegisterScriptFunctions() { }
+
+	virtual void SaveConvar( const ConVarRef & cvar );
+	virtual void RevertSavedConvars();
+	virtual bool HasSavedConvar( const string_t cvarName );
+
+#ifdef GAME_DLL
+	virtual bool IsOfficialMap() { return false; }
+#endif
+
+protected:
+	CUtlVector< string_t > m_SavedConvars;
 
 #ifndef CLIENT_DLL
 private:

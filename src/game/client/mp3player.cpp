@@ -6,7 +6,7 @@
 
 #include "cbase.h"
 
-#if 0
+#ifndef LINUX
 #include "mp3player.h"
 #include "KeyValues.h"
 #include "filesystem.h"
@@ -954,6 +954,10 @@ void CMP3Player::SetVisible( bool state )
 	BaseClass::SetVisible( state );
 	if ( m_bFirstTime && state )
 	{
+		// Options menu's activation type is setting to ACTIVATE_ONPRESSEDANDRELEASED even though it gets set in the constructor of MenuButton.
+		// We set the activation type here to get around it.
+		m_pOptions->SetButtonActivationType( vgui::Button::ACTIVATE_ONPRESSED );
+
 		MoveToCenterOfScreen();
 
 		m_bFirstTime = false;

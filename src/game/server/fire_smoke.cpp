@@ -95,6 +95,7 @@ IMPLEMENT_SERVERCLASS_ST( CFireSmoke, DT_FireSmoke )
 	SendPropFloat(	SENDINFO( m_flScale ),		0,	SPROP_NOSCALE),
 	SendPropFloat(	SENDINFO( m_flScaleTime ),	0,	SPROP_NOSCALE),
 	SendPropInt(	SENDINFO( m_nFlags ),		8,  SPROP_UNSIGNED ),
+	SendPropBool( SENDINFO( m_bIsFlareFire ) ),
 	SendPropModelIndex(	SENDINFO( m_nFlameModelIndex ) ),
 	SendPropModelIndex(	SENDINFO( m_nFlameFromAboveModelIndex ) ),
 END_SEND_TABLE()

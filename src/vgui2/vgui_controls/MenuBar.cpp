@@ -184,16 +184,16 @@ void MenuBar::PerformLayout()
 	GetSize( nBarWidth, nBarHeight );
 
 	// Now position + resize all buttons
-	int x = MENUBARINDENT;
+	int x = QuickPropScale( MENUBARINDENT );
 	for ( int i = 0; i < m_pMenuButtons.Count(); ++i )
 	{
 		int nWide, nTall;
 
 		m_pMenuButtons[i]->GetContentSize(nWide, nTall);
-		m_pMenuButtons[i]->SetPos( x, MENUBARINDENT );
-		m_pMenuButtons[i]->SetSize( nWide + Label::Content, nBarHeight - 2 * MENUBARINDENT );
+		m_pMenuButtons[i]->SetPos( x, QuickPropScale( MENUBARINDENT ) );
+		m_pMenuButtons[i]->SetSize( nWide + QuickPropScale( Label::Content ), nBarHeight - 2 * QuickPropScale( MENUBARINDENT ) );
 
-		x += nWide + MENUBARINDENT;
+		x += nWide + QuickPropScale( MENUBARINDENT );
 	}
 
 	m_nRightEdge = x;
@@ -206,7 +206,7 @@ void MenuBar::PerformLayout()
 //-----------------------------------------------------------------------------
 void MenuBar::GetContentSize( int& w, int&h )
 {
-	w = m_nRightEdge + 2;
+	w = m_nRightEdge + QuickPropScale( 2 );
 	h = GetTall();
 }
 
@@ -221,7 +221,11 @@ void MenuBar::OnMenuClose()
 //-----------------------------------------------------------------------------
 // Purpose: Message map
 //-----------------------------------------------------------------------------
+#ifdef PLATFORM_64BITS
+void MenuBar::OnCursorEnteredMenuButton(vgui::Panel* VPanel)
+#else
 void MenuBar::OnCursorEnteredMenuButton(int VPanel)
+#endif
 {
 	VPANEL menuButton = (VPANEL)VPanel;
 	// see if we had a menu open

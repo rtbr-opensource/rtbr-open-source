@@ -5,6 +5,7 @@
 //=============================================================================//
 
 #include "weapon_hl2mpbase.h"
+#include "weapon_hl2mpbasehlmpcombatweapon.h"
 
 #ifndef BASEHLCOMBATWEAPON_H
 #define BASEHLCOMBATWEAPON_H
@@ -19,10 +20,10 @@
 //=========================================================
 // Machine gun base class
 //=========================================================
-class CHL2MPMachineGun : public CWeaponHL2MPBase
+class CHL2MPMachineGun : public CBaseHL2MPCombatWeapon
 {
 public:
-	DECLARE_CLASS( CHL2MPMachineGun, CWeaponHL2MPBase );
+	DECLARE_CLASS( CHL2MPMachineGun, CBaseHL2MPCombatWeapon );
 	DECLARE_DATADESC();
 
 	CHL2MPMachineGun();
@@ -30,7 +31,7 @@ public:
 	DECLARE_NETWORKCLASS(); 
 	DECLARE_PREDICTABLE();
 
-	void	PrimaryAttack( void );
+	void	PrimaryAttack( WeaponSound_t weaponSound = SINGLE );
 
 	// Default calls through to m_hOwner, but plasma weapons can override and shoot projectiles here.
 	virtual void	ItemPostFrame( void );
@@ -43,6 +44,15 @@ public:
 
 	// utility function
 	static void DoMachineGunKick( CBasePlayer *pPlayer, float dampEasy, float maxVerticleKickAngle, float fireDurationTime, float slideLimitTime );
+
+#if defined(MAPBASE_MP) && !defined(CLIENT_DLL)
+	virtual int		WeaponRangeAttack1Condition( float flDot, float flDist );
+#endif
+
+	Activity GetPrimaryAttackActivity( void );
+
+	virtual void	AddViewmodelBob( CBaseViewModel *viewmodel, Vector &origin, QAngle &angles );
+	virtual	float	CalcViewmodelBob( void );
 
 private:
 	

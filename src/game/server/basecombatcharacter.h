@@ -30,6 +30,10 @@
 #include "ai_utils.h"
 #include "physics_impact_damage.h"
 
+#ifdef TF_DLL
+#include "tf_shareddefs.h"
+#endif // TF_DLL
+
 class CNavArea;
 class CScriptedTarget;
 typedef CHandle<CBaseCombatWeapon> CBaseCombatWeaponHandle;
@@ -119,6 +123,7 @@ public:
 	DECLARE_SERVERCLASS();
 	DECLARE_DATADESC();
 	DECLARE_PREDICTABLE();
+	DECLARE_ENT_SCRIPTDESC();
 
 public:
 
@@ -135,6 +140,10 @@ public:
 	virtual	bool		FVisible ( CBaseEntity *pEntity, int traceMask = MASK_BLOCKLOS, CBaseEntity **ppBlocker = NULL ); // true iff the parameter can be seen by me.
 	virtual bool		FVisible( const Vector &vecTarget, int traceMask = MASK_BLOCKLOS, CBaseEntity **ppBlocker = NULL )	{ return BaseClass::FVisible( vecTarget, traceMask, ppBlocker ); }
 	static void			ResetVisibilityCache( CBaseCombatCharacter *pBCC = NULL );
+
+#ifdef MAPBASE
+	virtual bool		ShouldUseVisibilityCache( CBaseEntity *pEntity );
+#endif
 
 #ifdef PORTAL
 	virtual	bool		FVisibleThroughPortal( const CProp_Portal *pPortal, CBaseEntity *pEntity, int traceMask = MASK_BLOCKLOS, CBaseEntity **ppBlocker = NULL );
@@ -154,8 +163,10 @@ public:
 	virtual bool		ShouldShootMissTarget( CBaseCombatCharacter *pAttacker );
 	virtual CBaseEntity *FindMissTarget( void );
 
+#ifndef MAPBASE // This function now exists in CBaseEntity
 	// Do not call HandleInteraction directly, use DispatchInteraction
 	bool				DispatchInteraction( int interactionType, void *data, CBaseCombatCharacter* sourceEnt )	{ return ( interactionType > 0 ) ? HandleInteraction( interactionType, data, sourceEnt ) : false; }
+#endif
 	virtual bool		HandleInteraction( int interactionType, void *data, CBaseCombatCharacter* sourceEnt );
 
 	virtual QAngle		BodyAngles();
@@ -225,7 +236,14 @@ public:
 	virtual void		Weapon_HandleAnimEvent( animevent_t *pEvent );
 	CBaseCombatWeapon*	Weapon_OwnsThisType( const char *pszWeapon, int iSubType = 0 ) const;  // True if already owns a weapon of this class
 	virtual bool		Weapon_CanUse( CBaseCombatWeapon *pWeapon );		// True is allowed to use this class of weapon
+#ifdef MAPBASE
+	virtual Activity	Weapon_BackupActivity( Activity activity, bool weaponTranslationWasRequired = false, CBaseCombatWeapon *pSpecificWeapon = NULL );
 	virtual void		Weapon_Equip( CBaseCombatWeapon *pWeapon );			// Adds weapon to player
+	virtual void		Weapon_EquipHolstered( CBaseCombatWeapon *pWeapon );	// Pretty much only useful for NPCs
+	virtual void		Weapon_HandleEquip( CBaseCombatWeapon *pWeapon );
+#else
+	virtual void		Weapon_Equip( CBaseCombatWeapon *pWeapon );			// Adds weapon to player
+#endif
 	virtual bool		Weapon_EquipAmmoOnly( CBaseCombatWeapon *pWeapon );	// Adds weapon ammo to player, leaves weapon
 	bool				Weapon_Detach( CBaseCombatWeapon *pWeapon );		// Clear any pointers to the weapon.
 	virtual void		Weapon_Drop( CBaseCombatWeapon *pWeapon, const Vector *pvecTarget = NULL, const Vector *pVelocity = NULL );
@@ -246,6 +264,10 @@ public:
 	virtual bool			RemovePlayerItem( CBaseCombatWeapon *pItem ) { return false; }
 
 	virtual bool			CanBecomeServerRagdoll( void ) { return true; }
+
+#ifdef MAPBASE
+	virtual void			OnEnemyRangeAttackedMe( CBaseEntity *pEnemy, const Vector &vecDir, const Vector &vecEnd ) {}
+#endif
 
 	// -----------------------
 	// Damage
@@ -288,7 +310,29 @@ public:
 
 	// Killed a character
 	void InputKilledNPC( inputdata_t &inputdata );
+#ifdef MAPBASE
+
+	void InputGiveWeapon( inputdata_t &inputdata );
+	void InputDropWeapon( inputdata_t &inputdata );
+	void InputPickupWeaponInstant( inputdata_t &inputdata );
+	COutputEvent	m_OnWeaponEquip;
+	COutputEvent	m_OnWeaponDrop;
+
+	virtual void	InputHolsterWeapon( inputdata_t &inputdata );
+	virtual void	InputHolsterAndDestroyWeapon( inputdata_t &inputdata );
+	virtual void	InputUnholsterWeapon( inputdata_t &inputdata );
+	void			InputSwitchToWeapon( inputdata_t &inputdata );
+
+	COutputEHANDLE	m_OnKilledEnemy;
+	COutputEHANDLE	m_OnKilledPlayer;
+	virtual void OnKilledNPC( CBaseCombatCharacter *pKilled ); 
+
+	virtual	CBaseEntity *FindNamedEntity( const char *pszName, IEntityFindFilter *pFilter = NULL );
+
+	COutputFloat	m_OnHealthChanged;
+#else
 	virtual void OnKilledNPC( CBaseCombatCharacter *pKilled ) {}; 
+#endif
 
 	// Exactly one of these happens immediately after killed (gibbed may happen later when the corpse gibs)
 	// Character gibbed or faded out (violence controls) (only fired once)
@@ -303,6 +347,15 @@ public:
 	virtual void			FixupBurningServerRagdoll( CBaseEntity *pRagdoll );
 
 	virtual bool			BecomeRagdollBoogie( CBaseEntity *pKiller, const Vector &forceVector, float duration, int flags );
+	virtual bool			CanBoogie() { return true; }
+
+#ifdef MAPBASE
+	// A version of BecomeRagdollBoogie() that allows the color to change and returns the entity itself instead.
+	// In order to avoid breaking anything, it doesn't change the original function.
+	virtual CBaseEntity		*BecomeRagdollBoogie( CBaseEntity *pKiller, const Vector &forceVector, float duration, int flags, const Vector *vecColor );
+
+	bool					ShouldFadeServerRagdolls() const;
+#endif
 
 	CBaseEntity				*FindHealthItem( const Vector &vecPosition, const Vector &range );
 
@@ -327,6 +380,11 @@ public:
 	virtual Disposition_t	IRelationType( CBaseEntity *pTarget );
 	virtual int				IRelationPriority( CBaseEntity *pTarget );
 
+#ifdef MAPBASE
+	void					AddRelationship( const char *pszRelationship, CBaseEntity *pActivator );
+	void					InputSetRelationship( inputdata_t &inputdata );
+#endif
+
 	virtual void			SetLightingOriginRelative( CBaseEntity *pLightingOrigin );
 
 protected:
@@ -342,6 +400,9 @@ public:
 
 	// Blood color (see BLOOD_COLOR_* macros in baseentity.h)
 	void SetBloodColor( int nBloodColor );
+#ifdef MAPBASE
+	void InputSetBloodColor( inputdata_t &inputdata );
+#endif
 
 	// Weapons..
 	CBaseCombatWeapon*	GetActiveWeapon() const;
@@ -349,12 +410,60 @@ public:
 	CBaseCombatWeapon*	GetWeapon( int i ) const;
 	bool				RemoveWeapon( CBaseCombatWeapon *pWeapon );
 	virtual void		RemoveAllWeapons();
-	WeaponProficiency_t GetCurrentWeaponProficiency() { return m_CurrentWeaponProficiency; }
+	WeaponProficiency_t GetCurrentWeaponProficiency()
+	{
+#ifdef MAPBASE
+		// Mapbase adds proficiency override
+		return (m_ProficiencyOverride > WEAPON_PROFICIENCY_INVALID) ? m_ProficiencyOverride : m_CurrentWeaponProficiency;
+#else
+		return m_CurrentWeaponProficiency;
+#endif
+	}
 	void				SetCurrentWeaponProficiency( WeaponProficiency_t iProficiency ) { m_CurrentWeaponProficiency = iProficiency; }
 	virtual WeaponProficiency_t CalcWeaponProficiency( CBaseCombatWeapon *pWeapon );
+#ifdef MAPBASE
+	inline bool			OverridingWeaponProficiency() { return (m_ProficiencyOverride > WEAPON_PROFICIENCY_INVALID); }
+#endif
 	virtual	Vector		GetAttackSpread( CBaseCombatWeapon *pWeapon, CBaseEntity *pTarget = NULL );
 	virtual	float		GetSpreadBias(  CBaseCombatWeapon *pWeapon, CBaseEntity *pTarget );
 	virtual void		DoMuzzleFlash();
+
+#ifdef MAPBASE_VSCRIPT
+	HSCRIPT				ScriptGetActiveWeapon();
+	HSCRIPT				ScriptGetWeapon( int i );
+	HSCRIPT				ScriptGetWeaponByType( const char *pszWeapon, int iSubType = 0 );
+	void				ScriptGetAllWeapons( HSCRIPT hTable );
+	int					ScriptGetCurrentWeaponProficiency() { return GetCurrentWeaponProficiency(); }
+
+	void				ScriptDropWeapon( HSCRIPT hWeapon );
+	void				ScriptEquipWeapon( HSCRIPT hWeapon );
+	
+	int					ScriptGiveAmmo( int iCount, int iAmmoIndex, bool bSuppressSound = false );
+	void				ScriptRemoveAmmo( int iCount, int iAmmoIndex );
+	int					ScriptGetAmmoCount( int iType ) const;
+	void				ScriptSetAmmoCount( int iType, int iCount );
+
+	const Vector&		ScriptGetAttackSpread( HSCRIPT hWeapon, HSCRIPT hTarget );
+	float				ScriptGetSpreadBias( HSCRIPT hWeapon, HSCRIPT hTarget );
+
+	int					ScriptRelationType( HSCRIPT pTarget );
+	int					ScriptRelationPriority( HSCRIPT pTarget );
+	void				ScriptSetRelationship( HSCRIPT pTarget, int disposition, int priority );
+	void				ScriptSetClassRelationship( int classify, int disposition, int priority );
+
+	HSCRIPT				ScriptGetVehicleEntity();
+
+	bool				ScriptInViewCone( const Vector &vecSpot ) { return FInViewCone( vecSpot ); }
+	bool				ScriptEntInViewCone( HSCRIPT pEntity ) { return FInViewCone( ToEnt( pEntity ) ); }
+
+	bool				ScriptInAimCone( const Vector &vecSpot ) { return FInAimCone( vecSpot ); }
+	bool				ScriptEntInAimCone( HSCRIPT pEntity ) { return FInAimCone( ToEnt( pEntity ) ); }
+
+	const Vector&		ScriptBodyAngles( void ) { static Vector vec; QAngle qa = BodyAngles(); vec.x = qa.x; vec.y = qa.y; vec.z = qa.z; return vec; }
+
+	static ScriptHook_t		g_Hook_RelationshipType;
+	static ScriptHook_t		g_Hook_RelationshipPriority;
+#endif
 
 	// Interactions
 	static void			InitInteractionSystem();
@@ -362,12 +471,21 @@ public:
 	// Relationships
 	static void			AllocateDefaultRelationships( );
 	static void			SetDefaultRelationship( Class_T nClass, Class_T nClassTarget,  Disposition_t nDisposition, int nPriority );
+#ifdef MAPBASE
+	static bool			DefaultRelationshipsLoaded();
+	static Disposition_t	GetDefaultRelationshipDisposition( Class_T nClassSource, Class_T nClassTarget );
+	static int				GetDefaultRelationshipPriority( Class_T nClassSource, Class_T nClassTarget );
+	int						GetDefaultRelationshipPriority( Class_T nClassTarget );
+#endif
 	Disposition_t		GetDefaultRelationshipDisposition( Class_T nClassTarget );
 	virtual void		AddEntityRelationship( CBaseEntity *pEntity, Disposition_t nDisposition, int nPriority );
 	virtual bool		RemoveEntityRelationship( CBaseEntity *pEntity );
 	virtual void		AddClassRelationship( Class_T nClass, Disposition_t nDisposition, int nPriority );
+#ifdef MAPBASE
+	virtual bool		RemoveClassRelationship( Class_T nClass );
+#endif
 
-	virtual void		ChangeTeam( int iTeamNum );
+	virtual void		ChangeTeam( int iTeamNum ) OVERRIDE;
 
 	// Nav hull type
 	Hull_t	GetHullType() const				{ return m_eHull; }
@@ -401,22 +519,42 @@ public:
 	bool				m_bPreventWeaponPickup;
 
 	virtual CNavArea *GetLastKnownArea( void ) const		{ return m_lastNavArea; }		// return the last nav area the player occupied - NULL if unknown
+	HSCRIPT ScriptGetLastKnownArea( void ) const;
 	virtual bool IsAreaTraversable( const CNavArea *area ) const;							// return true if we can use the given area 
 	virtual void ClearLastKnownArea( void );
 	virtual void UpdateLastKnownArea( void );										// invoke this to update our last known nav area (since there is no think method chained to CBaseCombatCharacter)
 	virtual void OnNavAreaChanged( CNavArea *enteredArea, CNavArea *leftArea ) { }	// invoked (by UpdateLastKnownArea) when we enter a new nav area (or it is reset to NULL)
 	virtual void OnNavAreaRemoved( CNavArea *removedArea );
 
+#ifdef RTBMP
+	// immolator damage tracking
+	// todo: refactor to something better
+	bool IsImmolatorBurning( void ) { return m_bIsImmolatorBurning; }
+	void SetImmolatorBurning( bool bBurning ) { m_bIsImmolatorBurning = bBurning; }
+	CBaseCombatCharacter *GetLastImmolatorAttacker( void ) { return m_hLastImmolatorAttacker; }
+	void SetLastImmolatorAttacker( CBaseCombatCharacter *pAttacker ) { m_hLastImmolatorAttacker = pAttacker; }
+
+private:
+	bool m_bIsImmolatorBurning;
+	CBaseCombatCharacter *m_hLastImmolatorAttacker;
+
+public:
+#endif
 	// -----------------------
 	// Notification from INextBots.
 	// -----------------------
 	virtual void		OnPursuedBy( INextBot * RESTRICT pPursuer ){} // called every frame while pursued by a bot in DirectChase.
+
+#ifdef TF_DLL
+	virtual HalloweenBossType GetBossType() const { return HALLOWEEN_BOSS_INVALID; }
+#endif // TF_DLL
 
 #ifdef GLOWS_ENABLE
 	// Glows
 	void				AddGlowEffect( void );
 	void				RemoveGlowEffect( void );
 	bool				IsGlowEffectActive( void );
+	void				SetGlowColor( float red, float green, float blue, float alpha );
 #endif // GLOWS_ENABLE
 
 #ifdef INVASION_DLL
@@ -450,7 +588,9 @@ public:
 public:
 	// returns the last body region that took damage
 	int	LastHitGroup() const				{ return m_LastHitGroup; }
+#ifndef MAPBASE // For filter_damage_transfer
 protected:
+#endif
 	void SetLastHitGroup( int nHitGroup )	{ m_LastHitGroup = nHitGroup; }
 
 public:
@@ -459,6 +599,8 @@ public:
 #ifdef GLOWS_ENABLE
 protected:
 	CNetworkVar( bool, m_bGlowEnabled );
+	CNetworkVector( m_GlowColor );
+	CNetworkVar( float, m_GlowAlpha );
 #endif // GLOWS_ENABLE
 
 private:
@@ -468,7 +610,11 @@ private:
 	void				DestroyGlowEffect( void );
 
 protected:
+#ifdef MAPBASE_MP
+	CNetworkVarForDerived( int, m_bloodColor );
+#else
 	int			m_bloodColor;			// color of blood particless
+#endif
 
 	// -------------------
 	// combat ability data
@@ -480,6 +626,11 @@ protected:
 
 public:
 	static int					GetInteractionID();	// Returns the next interaction #
+
+#ifdef MAPBASE
+	// Mapbase's new method for adding interactions which allows them to be handled with their names, currently for VScript
+	static void					AddInteractionWithString( int &interaction, const char *szName );
+#endif
 
 protected:
 	// Visibility-related stuff
@@ -502,6 +653,11 @@ private:
 	// Weapon proficiency gets calculated each time an NPC changes his weapon, and then
 	// cached off as the CurrentWeaponProficiency.
 	WeaponProficiency_t m_CurrentWeaponProficiency;
+
+#ifdef MAPBASE
+	// Weapon proficiency can be overridden with this.
+	WeaponProficiency_t m_ProficiencyOverride = WEAPON_PROFICIENCY_INVALID;
+#endif
 
 	// ---------------
 	//  Relationships
@@ -572,7 +728,7 @@ inline void	CBaseCombatCharacter::PowerupThink( int iPowerup )						{ return; }
 
 EXTERN_SEND_TABLE(DT_BaseCombatCharacter);
 
-void RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore );
+void RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore, int iFlags = 0 );
 
 //-----------------------------------------------------------------------------
 // Purpose: 

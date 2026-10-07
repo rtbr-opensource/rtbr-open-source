@@ -954,7 +954,11 @@ void CPropJeepEpisodic::UpdateRadar( bool forceUpdate )
 
 	//Msg("Server detected %d objects\n", m_iNumRadarContacts );
 
+#ifdef MAPBASE_MP // From SecobMod
+	CBasePlayer *pPlayer = UTIL_GetNearestPlayer( GetAbsOrigin() );
+#else
 	CBasePlayer *pPlayer = AI_GetSinglePlayer();
+#endif
 	CSingleUserRecipientFilter filter(pPlayer);
 	UserMessageBegin( filter, "UpdateJalopyRadar" );
 	WRITE_BYTE( 0 ); // end marker
@@ -1129,7 +1133,11 @@ CBaseEntity *CPropJeepEpisodic::OnFailedPhysGunPickup( Vector vPhysgunPos )
 	{
 		// Player's forward direction
 		Vector vecPlayerForward;
+#ifdef MAPBASE_MP // From SecobMod
+		CBasePlayer *pPlayer = UTIL_GetNearestPlayer( GetAbsOrigin() );
+#else
 		CBasePlayer *pPlayer = AI_GetSinglePlayer();
+#endif
 		if ( pPlayer == NULL )
 			return NULL;
 
@@ -1310,6 +1318,14 @@ static void KillBlockingEnemyNPCs( CBasePlayer *pPlayer, CBaseEntity *pVehicleEn
 
 			CTakeDamageInfo dmgInfo( pVehicleEntity, pVehicleEntity, damageForce, contactList[i], 200.0f, DMG_CRUSH|DMG_VEHICLE );
 			npcList[i]->TakeDamage( dmgInfo );
+
+#ifdef MAPBASE_MP // From SecobMod
+			//SecobMod__Information Occasionally on hitting an AI the game would crash, so fix the null error here.
+			IPhysicsObject *physicsObj = npcList[i]->VPhysicsGetObject();
+			if (physicsObj == NULL)
+				return;
+#endif
+
 			pVehiclePhysics->ApplyForceOffset( vehicleForce, contactList[i] );
 			PhysCollisionSound( pVehicleEntity, npcList[i]->VPhysicsGetObject(), CHAN_BODY, pVehiclePhysics->GetMaterialIndex(), npcList[i]->VPhysicsGetObject()->GetMaterialIndex(), gpGlobals->frametime, 200.0f );
 		}
@@ -1590,7 +1606,11 @@ int	CPropJeepEpisodic::DrawDebugTextOverlays( void )
 void CPropJeepEpisodic::InputOutsideTransition( inputdata_t &inputdata )
 {
 	// Teleport into the new map
+#ifdef MAPBASE_MP // From SecobMod
+	CBasePlayer *pPlayer = UTIL_GetLocalPlayer();
+#else
 	CBasePlayer *pPlayer = AI_GetSinglePlayer();
+#endif
 	Vector vecTeleportPos;
 	QAngle vecTeleportAngles;
 

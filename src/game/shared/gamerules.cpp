@@ -10,10 +10,15 @@
 #include "tier0/vprof.h"
 #include "KeyValues.h"
 #include "iachievementmgr.h"
+#include "gamestringpool.h"
+#ifdef RTBMP
+#include "rtbr_shareddefs.h"
+#endif
 
 #ifdef CLIENT_DLL
 
 	#include "usermessages.h"
+	#include "c_user_message_register.h"
 
 #else
 
@@ -27,6 +32,10 @@
 	#include "player_resource.h"
 	#include "tactical_mission.h"
 	#include "gamestats.h"
+	#include "ai_basenpc.h"
+#ifdef MAPBASE
+	#include "maprules.h"
+#endif
 
 #endif
 
@@ -70,6 +79,67 @@ IMPLEMENT_NETWORKCLASS_ALIASED( GameRulesProxy, DT_GameRulesProxy )
 // Don't send any of the CBaseEntity stuff..
 BEGIN_NETWORK_TABLE_NOBASE( CGameRulesProxy, DT_GameRulesProxy )
 END_NETWORK_TABLE()
+
+#ifdef MAPBASE_VSCRIPT
+BEGIN_SCRIPTDESC_ROOT( CGameRules, SCRIPT_SINGLETON "The container of the game's rules, handling behavior which could be different on a game-by-game basis." )
+
+	DEFINE_SCRIPTFUNC( Name, "Gets the name of these rules." )
+
+	DEFINE_SCRIPTFUNC( Damage_IsTimeBased, "Damage types that are time-based." )
+	DEFINE_SCRIPTFUNC( Damage_ShouldGibCorpse, "Damage types that gib the corpse." )
+	DEFINE_SCRIPTFUNC( Damage_ShowOnHUD, "Damage types that have client HUD art." )
+	DEFINE_SCRIPTFUNC( Damage_NoPhysicsForce, "Damage types that don't have to supply a physics force & position." )
+	DEFINE_SCRIPTFUNC( Damage_ShouldNotBleed, "Damage types that don't make the player bleed." )
+
+	DEFINE_SCRIPTFUNC( ShouldCollide, "Returns whether two collision groups collide with each other in this game." )
+
+	DEFINE_SCRIPTFUNC( DefaultFOV, "Default player FOV in this game." )
+
+	DEFINE_SCRIPTFUNC( GetDamageMultiplier, "Ammo type damage multiplier." )
+
+	DEFINE_SCRIPTFUNC( IsMultiplayer, "Returns true if this is a multiplayer game (like co-op or deathmatch)." )
+
+	DEFINE_SCRIPTFUNC( InRoundRestart, "Returns true if the round is restarting." )
+
+	DEFINE_SCRIPTFUNC( AllowThirdPersonCamera, "Returns true if third-person camera is allowed." )
+
+#ifdef CLIENT_DLL
+
+	DEFINE_SCRIPTFUNC( IsBonusChallengeTimeBased, "" )
+	DEFINE_SCRIPTFUNC( AllowMapParticleEffect, "" )
+	DEFINE_SCRIPTFUNC( AllowWeatherParticles, "" )
+	DEFINE_SCRIPTFUNC( AllowMapVisionFilterShaders, "" )
+	DEFINE_SCRIPTFUNC( TranslateEffectForVisionFilter, "" )
+	DEFINE_SCRIPTFUNC( IsLocalPlayer, "" )
+	//DEFINE_SCRIPTFUNC( ShouldWarnOfAbandonOnQuit, "" )
+
+#else
+
+	DEFINE_SCRIPTFUNC( RefreshSkillData, "" )
+
+	DEFINE_SCRIPTFUNC( IsSkillLevel, "Returns true if the game is set to the specified difficulty/skill level." )
+	DEFINE_SCRIPTFUNC( GetSkillLevel, "Returns the game's difficulty/skill level." )
+	DEFINE_SCRIPTFUNC( SetSkillLevel, "Sets the game's difficulty/skill level." )
+
+	DEFINE_SCRIPTFUNC_NAMED( FAllowFlashlight, "AllowFlashlight", "Returns true if players are allowed to switch on their flashlight." )
+
+	DEFINE_SCRIPTFUNC( IsDeathmatch, "" )
+	DEFINE_SCRIPTFUNC( IsTeamplay, "" )
+	DEFINE_SCRIPTFUNC( IsCoOp, "" )
+
+	DEFINE_SCRIPTFUNC( GetGameDescription, "This is the game description that gets seen in server browsers." )
+
+	DEFINE_SCRIPTFUNC( AllowSPRespawn, "" )
+
+	DEFINE_SCRIPTFUNC_NAMED( FAllowNPCs, "AllowNPCs", "Returns true if NPCs are allowed." )
+
+#endif
+
+	DEFINE_SCRIPTFUNC( GetGameTypeName, "" )
+	DEFINE_SCRIPTFUNC( GetGameType, "" )
+
+END_SCRIPTDESC()
+#endif
 
 
 CGameRulesProxy::CGameRulesProxy()
@@ -318,7 +388,7 @@ bool IsExplosionTraceBlocked( trace_t *ptr )
 // Default implementation of radius damage
 //-----------------------------------------------------------------------------
 #define ROBUST_RADIUS_PROBE_DIST 16.0f // If a solid surface blocks the explosion, this is how far to creep along the surface looking for another way to the target
-void CGameRules::RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrcIn, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore )
+void CGameRules::RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrcIn, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore, int iFlags /* = 0 */ )
 {
 	const int MASK_RADIUS_DAMAGE = MASK_SHOT&(~CONTENTS_HITBOX);
 	CBaseEntity *pEntity = NULL;
@@ -327,12 +397,19 @@ void CGameRules::RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc
 	Vector		vecSpot;
 
 	Vector vecSrc = vecSrcIn;
-
+#ifdef RTBMP
+	if (flRadius && !(iFlags & RD_NOFALLOFF))
+		falloff = info.GetDamage() / flRadius;
+	else if (!flRadius)
+		falloff = 1.0;
+	else
+		falloff = 0;
+#else
 	if ( flRadius )
 		falloff = info.GetDamage() / flRadius;
 	else
 		falloff = 1.0;
-
+#endif
 	int bInWater = (UTIL_PointContents ( vecSrc ) & MASK_WATER) ? true : false;
 
 #ifdef HL2_DLL
@@ -499,6 +576,19 @@ void CGameRules::RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc
 			adjustedInfo.AdjustPlayerDamageInflictedForSkillLevel();
 		}
 
+#if !defined(CLIENT_DLL) && defined(RTBMP)
+		if (pEntity->IsNPC())
+		{
+			CAI_BaseNPC *pNPC = static_cast<CAI_BaseNPC *>(pEntity);
+			if (pNPC->GetState() != NPC_STATE_SCRIPT && (iFlags & RD_STUNNPC) && pNPC->IRelationType( info.GetAttacker() ) <= D_FR) {
+				// stun the NPC if it is an enemy of the player
+				pNPC->ResetActivity();
+				pNPC->SetActivity( ACT_IDLE );
+				pNPC->SetSchedule( SCHED_FAIL ); // i hope that nobody besides me has the displeasure of seeing this -50iq monstrosity
+			}
+		}
+#endif
+
 		Vector dir = vecSpot - vecSrc;
 		VectorNormalize( dir );
 
@@ -558,6 +648,27 @@ bool CGameRules::ClientCommand( CBaseEntity *pEdict, const CCommand &args )
 	{
 		if( GetVoiceGameMgr()->ClientCommand( static_cast<CBasePlayer*>(pEdict), args ) )
 			return true;
+
+#ifdef MAPBASE
+		if ( FStrEq( args[0], "menuselect" ) )
+		{
+			if ( args.ArgC() >= 2 )
+			{
+				int slot = atoi( args[1] );
+
+				// See if this is from a game_menu
+				for ( int i = 0; i < IGameMenuAutoList::AutoList().Count(); i++ )
+				{
+					CGameMenu *pMenu = static_cast<CGameMenu*>( IGameMenuAutoList::AutoList()[i] );
+					if ( pMenu->IsActiveOnTarget( pEdict ) )
+					{
+						pMenu->MenuSelected( slot, pEdict );
+						return true;
+					}
+				}
+			}
+		}
+#endif
 	}
 
 	return false;
@@ -570,14 +681,19 @@ void CGameRules::FrameUpdatePostEntityThink()
 	Think();
 }
 
+#ifndef RTBMP
 // Hook into the convar from the engine
 ConVar skill( "skill", "1" );
+#endif
 
 void CGameRules::Think()
 {
 	GetVoiceGameMgr()->Update( gpGlobals->frametime );
+#ifdef RTBMP
+	SetSkillLevel( SKILL_MEDIUM );
+#else
 	SetSkillLevel( skill.GetInt() );
-
+#endif
 	if ( log_verbose_enable.GetBool() )
 	{
 		if ( m_flNextVerboseLogOutput < gpGlobals->curtime )
@@ -606,6 +722,30 @@ void CGameRules::EndGameFrame( void )
 		ApplyMultiDamage();
 	}
 }
+
+#ifdef MAPBASE
+void CGameRules::OnSkillLevelChanged( int iNewLevel )
+{
+	variant_t varNewLevel;
+	varNewLevel.SetInt(iNewLevel);
+
+	// Iterate through all logic_skill entities and fire them
+	CBaseEntity *pEntity = gEntList.FindEntityByClassname(NULL, "logic_skill");
+	while (pEntity)
+	{
+		pEntity->AcceptInput("SkillLevelChanged", UTIL_GetLocalPlayer(), NULL, varNewLevel, 0);
+		pEntity = gEntList.FindEntityByClassname(pEntity, "logic_skill");
+	}
+
+	// Fire game event for difficulty level changed
+	IGameEvent *event = gameeventmanager->CreateEvent("skill_changed");
+	if (event)
+	{
+		event->SetInt("skill_level", iNewLevel);
+		gameeventmanager->FireEvent(event);
+	}
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // trace line rules
@@ -648,8 +788,17 @@ void CGameRules::MarkAchievement( IRecipientFilter& filter, char const *pchAchie
 
 CGameRules::~CGameRules()
 {
+	RevertSavedConvars();
+
 	Assert( g_pGameRules == this );
 	g_pGameRules = NULL;
+}
+
+void CGameRules::LevelShutdownPostEntity()
+{
+#ifdef CLIENT_DLL
+	RevertSavedConvars();
+#endif
 }
 
 bool CGameRules::SwitchToNextBestWeapon( CBaseCombatCharacter *pPlayer, CBaseCombatWeapon *pCurrentWeapon )
@@ -878,3 +1027,97 @@ CTacticalMissionManager *CGameRules::TacticalMissionManagerFactory( void )
 }
 
 #endif
+
+void CGameRules::SaveConvar( const ConVarRef & cvar )
+{
+	Assert( cvar.IsValid() );
+
+	const string_t cvarName = AllocPooledString( cvar.GetName() );
+	if ( HasSavedConvar( cvarName ) )
+		return;
+
+#ifdef GAME_DLL
+	// Send saved replicated convars to the client so that it can reset them if the player disconnects during the mission.
+	if ( cvar.IsFlagSet( FCVAR_REPLICATED ) )
+	{
+		CReliableBroadcastRecipientFilter filter;
+		UserMessageBegin( filter, "SavedConvar" );
+		WRITE_STRING( cvar.GetName() );
+		MessageEnd();
+	}
+#endif
+	m_SavedConvars.AddToTail( cvarName );
+}
+
+void CGameRules::RevertSavedConvars()
+{
+	// revert saved convars
+	FOR_EACH_VEC( m_SavedConvars, iter )
+	{
+		const char *pszName = STRING( m_SavedConvars[ iter ] );
+		ConVarRef cvar( pszName );
+		if ( cvar.IsValid() )
+		{
+			//Msg( ">>> [%s] Revert %s: %s -> %s\n", (IsServerDll()?"SV":"CL"), cvar.GetName(), cvar.GetString(), cvar.GetDefault() );
+			cvar.SetValue( cvar.GetDefault() );
+		}
+	}
+	m_SavedConvars.Purge();
+}
+
+bool CGameRules::HasSavedConvar( const string_t cvarName )
+{
+	int idx = m_SavedConvars.Find( cvarName );
+	return idx != m_SavedConvars.InvalidIndex();
+}
+
+#ifdef CLIENT_DLL
+void __MsgFunc_SavedConvar( bf_read &msg )
+{
+	Assert( GameRules() );
+	if ( !GameRules() )
+	{
+		return;
+	}
+
+	char szKey[ 2048 ];
+	bool bReadKey = msg.ReadString( szKey, sizeof( szKey ) );
+	Assert( bReadKey );
+	if ( bReadKey )
+	{
+		ConVarRef cvar( szKey );
+		Assert( cvar.IsValid() );
+		Assert( cvar.IsFlagSet( FCVAR_REPLICATED ) );
+		if ( cvar.IsValid() && cvar.IsFlagSet( FCVAR_REPLICATED ) )
+		{
+			GameRules()->SaveConvar( cvar );
+		}
+	}
+}
+USER_MESSAGE_REGISTER( SavedConvar );
+#endif
+
+#ifdef MAPBASE
+void CGameRules::ClientCommandKeyValues(edict_t* pEntity, KeyValues* pKeyValues)
+{
+#ifndef CLIENT_DLL
+	static int s_nEntityCommandSymbol = KeyValues::CallGetSymbolForString("EntityCommand");
+	static int s_nEntIndexSymbol = KeyValues::CallGetSymbolForString("entindex");
+	static int s_nCommandDataSymbol = KeyValues::CallGetSymbolForString("command_data");
+
+	CBasePlayer* pPlayer = (CBasePlayer*)GetContainingEntity(pEntity);
+	if (!pPlayer)
+		return;
+
+	if (pKeyValues->GetNameSymbol() == s_nEntityCommandSymbol)
+	{
+		CBaseEntity* pEntity = CBaseEntity::Instance(pKeyValues->GetInt(s_nEntIndexSymbol));
+		KeyValues* pkvCommand = pKeyValues->FindKey(s_nCommandDataSymbol);
+		if (pEntity && pkvCommand)
+		{
+			pEntity->HandleEntityCommand(pPlayer, pkvCommand);
+		}
+	}
+#endif // GAME_DLL
+}
+#endif // MAPBASE

@@ -15,6 +15,7 @@
 	#include "c_hl2mp_player.h"
 #else
 
+	#include "nav_mesh.h"
 	#include "eventqueue.h"
 	#include "player.h"
 	#include "gamerules.h"
@@ -32,9 +33,14 @@
 	#include "voice_gamemgr.h"
 	#include "hl2mp_gameinterface.h"
 	#include "hl2mp_cvars.h"
-
-#ifdef DEBUG	
-	#include "hl2mp_bot_temp.h"
+#ifdef MAPBASE
+	#include "bot/hl2mp_bot_manager.h"
+	#include "mapbase/protagonist_system.h"
+	#include "ai_basenpc.h"
+	#include "hl2mp_player_resource.h"
+#endif
+#ifdef RTBMP
+	#include "grenade_ar2.h"
 #endif
 
 extern void respawn(CBaseEntity *pEdict, bool fCopyCorpse);
@@ -44,6 +50,15 @@ extern bool FindInList( const char **pStrings, const char *pToFind );
 ConVar sv_hl2mp_weapon_respawn_time( "sv_hl2mp_weapon_respawn_time", "20", FCVAR_GAMEDLL | FCVAR_NOTIFY );
 ConVar sv_hl2mp_item_respawn_time( "sv_hl2mp_item_respawn_time", "30", FCVAR_GAMEDLL | FCVAR_NOTIFY );
 ConVar sv_report_client_settings("sv_report_client_settings", "0", FCVAR_GAMEDLL | FCVAR_NOTIFY );
+#ifdef MAPBASE
+ConVar sv_hl2mp_npc_deathnotice_as_killer( "sv_hl2mp_npc_deathnotice_as_killer", "1", FCVAR_GAMEDLL, "If enabled, NPCs which kill players will be recognized in death notices." );
+ConVar sv_hl2mp_npc_deathnotice_as_victim( "sv_hl2mp_npc_deathnotice_as_victim", "1", FCVAR_GAMEDLL, "If enabled, killed NPCs will be recognized in death notices. (Requires 'npc_death' in mod events)" );
+
+ConVar mp_coop( "mp_coop", "0", FCVAR_NOTIFY, "Basic co-op mode. Makes unassigned players friendly to each other." );
+
+ConVar sv_hl2mp_item_respawn_coop( "sv_hl2mp_item_respawn_coop", "0", FCVAR_GAMEDLL | FCVAR_NOTIFY );
+ConVar sv_hl2mp_weapon_respawn_coop( "sv_hl2mp_weapon_respawn_coop", "0", FCVAR_GAMEDLL | FCVAR_NOTIFY );
+#endif
 
 extern ConVar mp_chattime;
 
@@ -54,6 +69,11 @@ extern CBaseEntity	 *g_pLastRebelSpawn;
 
 #endif
 
+#ifdef MAPBASE
+ConVar sv_hl2mp_npc_target_id( "sv_hl2mp_npc_target_id", "1", FCVAR_REPLICATED, "If enabled, NPCs will be identified when players look at them with their crosshairs." );
+ConVar hl2mp_avoidteammates( "hl2mp_avoidteammates", "1", FCVAR_REPLICATED, "If enabled, players on the same team will not collide with each other." );
+#endif
+
 
 REGISTER_GAMERULES_CLASS( CHL2MPRules );
 
@@ -61,8 +81,14 @@ BEGIN_NETWORK_TABLE_NOBASE( CHL2MPRules, DT_HL2MPRules )
 
 	#ifdef CLIENT_DLL
 		RecvPropBool( RECVINFO( m_bTeamPlayEnabled ) ),
+		#ifdef BASIC_HL2MP_COOP
+			RecvPropBool( RECVINFO( m_bCoOpEnabled ) ),
+		#endif
 	#else
 		SendPropBool( SENDINFO( m_bTeamPlayEnabled ) ),
+		#ifdef BASIC_HL2MP_COOP
+			SendPropBool( SENDINFO( m_bCoOpEnabled ) ),
+		#endif
 	#endif
 
 END_NETWORK_TABLE()
@@ -70,6 +96,233 @@ END_NETWORK_TABLE()
 
 LINK_ENTITY_TO_CLASS( hl2mp_gamerules, CHL2MPGameRulesProxy );
 IMPLEMENT_NETWORKCLASS_ALIASED( HL2MPGameRulesProxy, DT_HL2MPGameRulesProxy )
+
+#if defined(MAPBASE) && defined(GAME_DLL)
+BEGIN_DATADESC( CHL2MPGameRulesProxy )
+	
+	DEFINE_KEYFIELD( m_bCoOpEnabled, FIELD_BOOLEAN, "coopenabled" ),
+	DEFINE_KEYFIELD( m_bCoOpPickupRespawn, FIELD_BOOLEAN, "cooppickuprespawn" ),
+
+	// These get the gamerules values on save and write to them on restore
+	DEFINE_FIELD( m_save_AllowDefaultItems, FIELD_BOOLEAN ),
+	DEFINE_FIELD( m_save_AllowDefaultSuit, FIELD_BOOLEAN ),
+
+	// Inputs
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetAllowDefaultItems", InputSetAllowDefaultItems ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetAllowDefaultSuit", InputSetAllowDefaultSuit ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "GetPlayerCount", InputGetPlayerCount ),
+#ifdef RTBMP
+	DEFINE_INPUTFUNC( FIELD_VOID, "ForceRespawnAllPlayers", InputForceRespawnAllPlayers ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "EnableRespawn", InputEnableRespawn ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "DisableRespawn", InputDisableRespawn ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "EnableReadyVote", InputEnableReadyVote ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "DisableReadyVote", InputDisableReadyVote ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "ResetPlayerReadyVotes", InputResetPlayerReadyVotes ),
+#endif
+	
+	DEFINE_OUTPUT( m_OnGetPlayerCount, "OnGetPlayerCount" ),
+	DEFINE_OUTPUT( m_OnPlayerCountChanged, "OnPlayerCountChanged" ),
+	DEFINE_OUTPUT( m_OnTeam1PlayersChanged, "OnTeam1PlayersChanged" ),
+	DEFINE_OUTPUT( m_OnTeam2PlayersChanged, "OnTeam2PlayersChanged" ),
+	DEFINE_OUTPUT( m_OnPlayerVoteReady, "OnPlayerVoteReady" ),
+
+END_DATADESC()
+
+void CHL2MPGameRulesProxy::InputSetAllowDefaultItems( inputdata_t &inputdata ) { KeyValue( "SetAllowDefaultItems", inputdata.value.String() ); }
+void CHL2MPGameRulesProxy::InputSetAllowDefaultSuit( inputdata_t &inputdata ) { KeyValue( "SetAllowDefaultSuit", inputdata.value.String() ); }
+
+void CHL2MPGameRulesProxy::InputGetPlayerCount( inputdata_t &inputdata )
+{
+	m_OnGetPlayerCount.Set( CountActivePlayers(), inputdata.pActivator, inputdata.pCaller );
+}
+
+#ifdef RTBMP
+void CHL2MPGameRulesProxy::InputForceRespawnAllPlayers( inputdata_t &inputdata )
+{
+	HL2MPRules()->RespawnAllPlayers();
+	UTIL_ClientPrintAll( HUD_PRINTTALK, "All players have been respawned." );
+}
+
+void CHL2MPGameRulesProxy::InputEnableRespawn( inputdata_t &inputdata )
+{
+	HL2MPRules()->RespawnAllPlayers();
+	m_bRespawnEnabled = true;
+	UTIL_ClientPrintAll( HUD_PRINTTALK, "Respawning has been enabled." );
+}
+
+void CHL2MPGameRulesProxy::InputDisableRespawn( inputdata_t &inputdata )
+{
+	m_bRespawnEnabled = false;
+	UTIL_ClientPrintAll( HUD_PRINTTALK, "Respawning has been disabled." );
+}
+
+void CHL2MPGameRulesProxy::InputEnableReadyVote( inputdata_t &inputdata )
+{
+	HL2MPRules()->SetAcceptingReadyVote( true );
+}
+
+void CHL2MPGameRulesProxy::InputDisableReadyVote( inputdata_t &inputdata )
+{
+	HL2MPRules()->SetAcceptingReadyVote( false );
+}
+
+void CHL2MPGameRulesProxy::InputResetPlayerReadyVotes( inputdata_t &inputdata )
+{
+	HL2MPRules()->ResetPlayerReadyVotes();
+}
+
+void CHL2MPGameRulesProxy::OnPlayerVoteReady( int iPlayers, CBasePlayer *pPlayer )
+{
+	m_OnPlayerVoteReady.Set( iPlayers, pPlayer, this );
+}
+#endif
+
+//-----------------------------------------------------------------------------
+// Purpose: Cache user entity field values until spawn is called.
+// Input  : szKeyName - Key to handle.
+//			szValue - Value for key.
+// Output : Returns true if the key was handled, false if not.
+//-----------------------------------------------------------------------------
+bool CHL2MPGameRulesProxy::KeyValue( const char *szKeyName, const char *szValue )
+{
+	if (FStrEq(szKeyName, "SetAllowDefaultItems"))
+	{
+		HL2MPRules()->SetAllowDefaultItems(!FStrEq(szValue, "0"));
+	}
+	else if (FStrEq(szKeyName, "SetAllowDefaultSuit"))
+	{
+		HL2MPRules()->SetAllowDefaultSuit(!FStrEq(szValue, "0"));
+	}
+	else if ( FStrEq( szKeyName, "readyvote" ) )
+	{
+		HL2MPRules()->SetAcceptingReadyVote( !FStrEq( szValue, "0" ) );
+	}
+	else if ( FStrEq( szKeyName, "forcemodelteam" ) )
+	{
+		HL2MPRules()->SetForcedPlayerModelTeam( atoi( szValue ) );
+	}
+	else
+	{
+		return BaseClass::KeyValue( szKeyName, szValue );
+	}
+
+	return true;
+}
+
+bool CHL2MPGameRulesProxy::GetKeyValue( const char *szKeyName, char *szValue, int iMaxLen )
+{
+	if (FStrEq(szKeyName, "SetAllowDefaultItems"))
+	{
+		Q_snprintf( szValue, iMaxLen, "%i", HL2MPRules()->AllowDefaultItems() );
+	}
+	else if (FStrEq(szKeyName, "SetAllowDefaultSuit"))
+	{
+		Q_snprintf( szValue, iMaxLen, "%i", HL2MPRules()->AllowDefaultSuit() );
+	}
+	else
+	{
+		return BaseClass::GetKeyValue( szKeyName, szValue, iMaxLen );
+	}
+
+	return true;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Saves the current object out to disk, by iterating through the objects
+//			data description hierarchy
+// Input  : &save - save buffer which the class data is written to
+// Output : int	- 0 if the save failed, 1 on success
+//-----------------------------------------------------------------------------
+int CHL2MPGameRulesProxy::Save( ISave &save )
+{
+	m_save_AllowDefaultItems = HL2MPRules()->AllowDefaultItems();
+	m_save_AllowDefaultSuit = HL2MPRules()->AllowDefaultSuit();
+
+	return BaseClass::Save(save);
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Restores the current object from disk, by iterating through the objects
+//			data description hierarchy
+// Input  : &restore - restore buffer which the class data is read from
+// Output : int	- 0 if the restore failed, 1 on success
+//-----------------------------------------------------------------------------
+int CHL2MPGameRulesProxy::Restore( IRestore &restore )
+{
+	int base = BaseClass::Restore(restore);
+
+	HL2MPRules()->SetAllowDefaultItems( m_save_AllowDefaultItems );
+	HL2MPRules()->SetAllowDefaultSuit( m_save_AllowDefaultSuit );
+
+	return base;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CHL2MPGameRulesProxy::Activate()
+{
+	if (m_bCoOpEnabled)
+		HL2MPRules()->SetCoOp( m_bCoOpEnabled );
+	HL2MPRules()->SetCoOpPickupRespawn( m_bCoOpPickupRespawn );
+
+	BaseClass::Activate();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CHL2MPGameRulesProxy::TeamPlayerCountChanged( CTeam *pTeam )
+{
+	if ( pTeam->GetTeamNumber() == TEAM_COMBINE )
+	{
+		m_OnTeam1PlayersChanged.Set( pTeam->GetNumPlayers(), this, this );
+	}
+	else if ( pTeam->GetTeamNumber() == TEAM_REBELS )
+	{
+		m_OnTeam2PlayersChanged.Set( pTeam->GetNumPlayers(), this, this );
+	}
+
+	// Tell the clients
+	IGameEvent *event = gameeventmanager->CreateEvent( "teams_changed" );
+	if (event)
+	{
+		gameeventmanager->FireEvent( event );
+	}
+}
+
+void CHL2MPGameRulesProxy::PlayerCountChanged()
+{
+	m_OnPlayerCountChanged.Set( CountActivePlayers(), this, this );
+}
+
+int CHL2MPGameRulesProxy::CountActivePlayers()
+{
+	// This seems inefficient.
+	int iPlayers = 0;
+
+	for (int i = 1; i <= gpGlobals->maxClients; i++)
+	{
+		CBasePlayer *player = UTIL_PlayerByIndex( i );
+
+		if (player == NULL)
+			continue;
+
+		if (!player->IsPlayer())
+			continue;
+
+		if (!player->IsConnected())
+			continue;
+
+		if (player->GetTeamNumber() == TEAM_SPECTATOR)
+			continue;
+
+		iPlayers++;
+	}
+
+	return iPlayers;
+}
+#endif
 
 static HL2MPViewVectors g_HL2MPViewVectors(
 	Vector( 0, 0, 64 ),       //VEC_VIEW (m_vView) 
@@ -130,6 +383,9 @@ static const char *s_PreserveEnts[] =
 	"predicted_viewmodel",
 	"worldspawn",
 	"point_devshot_camera",
+#ifdef MAPBASE
+	"hl2mp_player_manager",
+#endif
 	"", // END Marker
 };
 
@@ -196,6 +452,15 @@ CHL2MPRules::CHL2MPRules()
 	}
 
 	m_bTeamPlayEnabled = teamplay.GetBool();
+#ifdef BASIC_HL2MP_COOP
+	if (!m_bCoOpEnabled)
+		m_bCoOpEnabled = mp_coop.GetBool();
+#ifdef RTBMP
+	ResetPlayerReadyVotes();
+	m_bAcceptingReadyVote = false;
+	m_iForcedPlayerModelTeam = TEAM_UNASSIGNED;
+#endif
+#endif
 	m_flIntermissionEndTime = 0.0f;
 	m_flGameStartTime = 0;
 
@@ -235,7 +500,17 @@ void CHL2MPRules::CreateStandardEntities( void )
 #ifndef CLIENT_DLL
 	// Create the entity that will send our data to the client.
 
+#ifdef MAPBASE
+	// Create the player resource
+	g_pPlayerResource = (CPlayerResource*)CBaseEntity::Create( "hl2mp_player_manager", vec3_origin, vec3_angle );
+	if (g_pPlayerResource)
+	{
+		// Some maps may assume it's called player_manager
+		g_pPlayerResource->SetName( MAKE_STRING( "player_manager" ) );
+	}
+#else
 	BaseClass::CreateStandardEntities();
+#endif
 
 	g_pLastCombineSpawn = NULL;
 	g_pLastRebelSpawn = NULL;
@@ -264,6 +539,9 @@ float CHL2MPRules::FlWeaponRespawnTime( CBaseCombatWeapon *pWeapon )
 		}
 	}
 
+	if (pWeapon->GetRespawnTime() != 0)
+		return pWeapon->GetRespawnTime();
+
 	return sv_hl2mp_weapon_respawn_time.GetFloat();
 #endif
 
@@ -289,6 +567,89 @@ void CHL2MPRules::PlayerKilled( CBasePlayer *pVictim, const CTakeDamageInfo &inf
 #endif
 }
 
+#if defined(MAPBASE) && !defined(CLIENT_DLL)
+void CHL2MPRules::NPCKilled( CAI_BaseNPC *pVictim, const CTakeDamageInfo &info )
+{
+	// Ignore bullseyes, actors, etc.
+	if ( pVictim->GetEffects() & EF_NODRAW || pVictim->Classify() == CLASS_NONE )
+		return;
+
+	DeathNotice( pVictim, info );
+
+	if ( IsCoOp() )
+	{
+		CBasePlayer *pScorer = GetDeathScorer( info.GetAttacker(), info.GetInflictor(), pVictim );
+		if (pScorer)
+		{
+			// Award points for NPC kills in co-op
+			// (compensating for IPointsForKill() only accepting players)
+			int nPoints = 1;
+
+			if ( pScorer->IRelationType( pVictim ) == D_LI )
+				nPoints = -1;
+
+			pScorer->IncrementFragCount( nPoints );
+		}
+	}
+
+	BaseClass::NPCKilled( pVictim, info );
+}
+
+void CHL2MPRules::PlayerSpawn( CBasePlayer *pPlayer )
+{
+	// Don't spawn with items when a bot is taking over a player, or vice versa
+	if (TheHL2MPBots().IsPerformingBotTakeover())
+		return;
+
+	BaseClass::PlayerSpawn( pPlayer );
+}
+
+void CHL2MPRules::PlayerIdle( CBasePlayer *pPlayer )
+{
+	IGameEvent *event = gameeventmanager->CreateEvent( "player_afk" );
+	if( event )
+	{
+		event->SetInt( "userid", pPlayer->GetUserID() );
+		event->SetInt( "priority", 5 );
+		gameeventmanager->FireEvent( event );
+	}
+
+	//BaseClass::PlayerIdle( pPlayer );
+}
+
+//-----------------------------------------------------------------------------
+// Gets our default items setting.
+//-----------------------------------------------------------------------------
+bool CHL2MPRules::AllowDefaultItems()
+{
+	return m_bAllowDefaultItems;
+}
+
+//-----------------------------------------------------------------------------
+// Sets our default items setting.
+//-----------------------------------------------------------------------------
+void CHL2MPRules::SetAllowDefaultItems( bool toggle )
+{
+	m_bAllowDefaultItems = toggle;
+}
+
+//-----------------------------------------------------------------------------
+// Gets our default suit setting.
+//-----------------------------------------------------------------------------
+bool CHL2MPRules::AllowDefaultSuit()
+{
+	return m_bAllowDefaultSuit;
+}
+
+//-----------------------------------------------------------------------------
+// Sets our default suit setting.
+//-----------------------------------------------------------------------------
+void CHL2MPRules::SetAllowDefaultSuit( bool toggle )
+{
+	m_bAllowDefaultSuit = toggle;
+}
+#endif
+
 
 void CHL2MPRules::Think( void )
 {
@@ -313,14 +674,15 @@ void CHL2MPRules::Think( void )
 	}
 
 //	float flTimeLimit = mp_timelimit.GetFloat() * 60;
+#ifndef RTBMP
 	float flFragLimit = fraglimit.GetFloat();
-	
+#endif
 	if ( GetMapRemainingTime() < 0 )
 	{
 		GoToIntermission();
 		return;
 	}
-
+#ifndef RTBMP
 	if ( flFragLimit )
 	{
 		if( IsTeamplay() == true )
@@ -349,7 +711,7 @@ void CHL2MPRules::Think( void )
 			}
 		}
 	}
-
+#endif
 	if ( gpGlobals->curtime > m_tmNextPeriodicThink )
 	{		
 		CheckAllPlayersReady();
@@ -482,7 +844,8 @@ bool GetObjectsOriginalParameters( CBaseEntity *pObject, Vector &vOriginalOrigin
 		vOriginalOrigin = pItem->GetOriginalSpawnOrigin();
 		vOriginalAngles = pItem->GetOriginalSpawnAngles();
 
-		pItem->m_flNextResetCheckTime = gpGlobals->curtime + sv_hl2mp_item_respawn_time.GetFloat();
+		float flRespawnTime = pItem->GetRespawnTime() != 0 ? pItem->GetRespawnTime() : sv_hl2mp_item_respawn_time.GetFloat();
+		pItem->m_flNextResetCheckTime = gpGlobals->curtime + flRespawnTime;
 		return true;
 	}
 	else if ( CWeaponHL2MPBase *pWeapon = IsManagedObjectAWeapon( pObject )) 
@@ -493,7 +856,8 @@ bool GetObjectsOriginalParameters( CBaseEntity *pObject, Vector &vOriginalOrigin
 		vOriginalOrigin = pWeapon->GetOriginalSpawnOrigin();
 		vOriginalAngles = pWeapon->GetOriginalSpawnAngles();
 
-		pWeapon->m_flNextResetCheckTime = gpGlobals->curtime + sv_hl2mp_weapon_respawn_time.GetFloat();
+		float flRespawnTime = pWeapon->GetRespawnTime() != 0 ? pWeapon->GetRespawnTime() : sv_hl2mp_weapon_respawn_time.GetFloat();
+		pWeapon->m_flNextResetCheckTime = gpGlobals->curtime + flRespawnTime;
 		return true;
 	}
 
@@ -575,6 +939,20 @@ void CHL2MPRules::RemoveLevelDesignerPlacedObject( CBaseEntity *pEntity )
 }
 
 //=========================================================
+//=========================================================
+int CHL2MPRules::ItemShouldRespawn( CItem *pItem )
+{
+#ifdef MAPBASE
+	if ( IsCoOp() && !CoOpItemShouldRespawn() )
+	{
+		return GR_ITEM_RESPAWN_NO;
+	}
+#endif
+
+	return BaseClass::ItemShouldRespawn( pItem );
+}
+
+//=========================================================
 // Where should this item respawn?
 // Some game variations may choose to randomize spawn locations
 //=========================================================
@@ -596,6 +974,9 @@ QAngle CHL2MPRules::VecItemRespawnAngles( CItem *pItem )
 //=========================================================
 float CHL2MPRules::FlItemRespawnTime( CItem *pItem )
 {
+	if (pItem->GetRespawnTime() != 0)
+		return pItem->GetRespawnTime();
+
 	return sv_hl2mp_item_respawn_time.GetFloat();
 }
 
@@ -614,7 +995,6 @@ bool CHL2MPRules::CanHavePlayerItem( CBasePlayer *pPlayer, CBaseCombatWeapon *pI
 
 	return BaseClass::CanHavePlayerItem( pPlayer, pItem );
 }
-
 #endif
 
 //=========================================================
@@ -628,10 +1008,124 @@ int CHL2MPRules::WeaponShouldRespawn( CBaseCombatWeapon *pWeapon )
 	{
 		return GR_WEAPON_RESPAWN_NO;
 	}
+	
+#ifdef MAPBASE
+	if ( IsCoOp() && !CoOpWeaponShouldRespawn() )
+	{
+		return GR_ITEM_RESPAWN_NO;
+	}
+#endif
 #endif
 
 	return GR_WEAPON_RESPAWN_YES;
 }
+
+#if defined(BASIC_HL2MP_COOP) && !defined(CLIENT_DLL)
+bool CHL2MPRules::CoOpItemShouldRespawn( void )
+{
+	if ( m_bCoOpPickupRespawn )
+		return true;
+
+	return sv_hl2mp_item_respawn_coop.GetBool();
+}
+
+bool CHL2MPRules::CoOpWeaponShouldRespawn( void )
+{
+	if ( m_bCoOpPickupRespawn )
+		return true;
+
+	return sv_hl2mp_weapon_respawn_coop.GetBool();
+}
+
+#ifdef RTBMP
+bool CHL2MPRules::AnyPlayerAlive( void )
+{
+	CBasePlayer *pPlayer;
+	for ( int i = 1; i <= gpGlobals->maxClients; i++ )
+	{
+		pPlayer = ToBasePlayer( UTIL_PlayerByIndex( i ) );
+
+		if ( !pPlayer )
+			continue;
+
+		if ( pPlayer->IsAlive() )
+			return true;
+	}
+
+	return false;
+}
+
+void CHL2MPRules::RespawnAllPlayers( void )
+{
+	CBasePlayer *pPlayer;
+	for ( int i = 1; i <= gpGlobals->maxClients; i++ )
+	{
+		pPlayer = ToBasePlayer( UTIL_PlayerByIndex( i ) );
+
+		if ( !pPlayer )
+			continue;
+
+		if ( !pPlayer->IsAlive() )
+			// Respawn this player
+			pPlayer->ForceRespawn();
+	}
+}
+
+void CHL2MPRules::SetPlayerReady( int index, bool setting )
+{
+	m_bPlayersReady[index] = setting;
+	if ( setting && m_hGamerulesProxy )
+	{
+		int iPlayersReady = 0;
+		for ( int i = 0; i < gpGlobals->maxClients; i++ )
+		{
+			if ( m_bPlayersReady[i] )
+				iPlayersReady++;
+		}
+
+		CBasePlayer *pPlayer = UTIL_PlayerByIndex( index );
+		m_hGamerulesProxy->OnPlayerVoteReady( iPlayersReady, pPlayer );
+		UTIL_ClientPrintAll( HUD_PRINTTALK, "%s1 is ready.\n", pPlayer->GetPlayerName() );
+	}
+}
+
+void CHL2MPRules::ResetPlayerReadyVotes()
+{
+	for ( int i = 0; i < gpGlobals->maxClients; i++ )
+	{
+		SetPlayerReady( i, false );
+	}
+}
+
+bool CHL2MPRules::IsPlayerReady( CBasePlayer *pPlayer )
+{
+	return m_bPlayersReady[pPlayer->entindex()];
+}
+
+bool CHL2MPRules::CanPlayerVoteReady( CBasePlayer *pPlayer )
+{
+	return m_bAcceptingReadyVote && !IsPlayerReady( pPlayer ) && pPlayer->GetTeamNumber() != TEAM_SPECTATOR;
+}
+
+void CHL2MPRules::SetAcceptingReadyVote( bool setting )
+{
+	m_bAcceptingReadyVote = setting;
+}
+
+void CHL2MPRules::SetForcedPlayerModelTeam( int iTeam )
+{
+	m_iForcedPlayerModelTeam = iTeam;
+}
+
+int CHL2MPRules::GetForcedPlayerModelTeam()
+{
+	if ( IsCoOp() )
+		return m_iForcedPlayerModelTeam;
+
+	return TEAM_UNASSIGNED;
+}
+#endif
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: Player has just left the game
@@ -644,6 +1138,29 @@ void CHL2MPRules::ClientDisconnected( edict_t *pClient )
 	CBasePlayer *pPlayer = (CBasePlayer *)CBaseEntity::Instance( pClient );
 	if ( pPlayer )
 	{
+#ifdef MAPBASE
+		CHL2MP_Player *pHL2MPPlayer = ToHL2MPPlayer( pPlayer );
+		if ( pHL2MPPlayer && pHL2MPPlayer->GetBotTakeOverAvatar() )
+		{
+			if ( pHL2MPPlayer->IsFakeClient() )
+			{
+				// This was a bot taking over for a real player. Add the real player back in before we leave
+				CHL2MP_Player *pAvatar = pHL2MPPlayer->GetBotTakeOverAvatar();
+				TheHL2MPBots().PlayerTakeOverBot( pAvatar, (CHL2MPBot *)pHL2MPPlayer, false );
+
+				// Remove flags set in CServerGameClients::ClientDisconnect
+				pAvatar->AddFlag( FL_AIMTARGET );
+				pAvatar->RemoveFlag( FL_DONTTOUCH | FL_NOTARGET );
+				pAvatar->RemoveSolidFlags( FSOLID_NOT_SOLID );
+			}
+			else
+			{
+				// This was a real player with a bot taking over. Kick the bot
+				engine->ServerCommand( UTIL_VarArgs( "kickid %d\n", pHL2MPPlayer->GetBotTakeOverAvatar()->GetUserID() ) );
+			}
+		}
+#endif
+
 		// Remove the player from his team
 		if ( pPlayer->GetTeam() )
 		{
@@ -653,6 +1170,7 @@ void CHL2MPRules::ClientDisconnected( edict_t *pClient )
 
 	BaseClass::ClientDisconnected( pClient );
 
+	PlayerCountChanged();
 #endif
 }
 
@@ -660,7 +1178,11 @@ void CHL2MPRules::ClientDisconnected( edict_t *pClient )
 //=========================================================
 // Deathnotice. 
 //=========================================================
+#ifdef MAPBASE
+void CHL2MPRules::DeathNotice( CBaseCombatCharacter *pVictim, const CTakeDamageInfo &info )
+#else
 void CHL2MPRules::DeathNotice( CBasePlayer *pVictim, const CTakeDamageInfo &info )
+#endif
 {
 #ifndef CLIENT_DLL
 	// Work out what killed the player, and send a message to all clients about it
@@ -704,8 +1226,33 @@ void CHL2MPRules::DeathNotice( CBasePlayer *pVictim, const CTakeDamageInfo &info
 				}
 			}
 		}
+#ifdef MAPBASE
+		else if ( pKiller && pKiller->IsNPC() && sv_hl2mp_npc_deathnotice_as_killer.GetBool() )
+		{
+			killer_ID = pKiller->entindex();
+
+			if ( pInflictor )
+			{
+				if ( pInflictor == pKiller )
+				{
+					// If the inflictor is the killer,  then it must be their current weapon doing the damage
+					if ( pKiller->MyCombatCharacterPointer()->GetActiveWeapon() )
+					{
+						killer_weapon_name = pKiller->MyCombatCharacterPointer()->GetActiveWeapon()->GetClassname();
+					}
+				}
+				else
+				{
+					killer_weapon_name = pInflictor->GetClassname();  // it's just that easy
+				}
+			}
+		}
+#endif
 		else
 		{
+#ifdef MAPBASE
+			if ( pInflictor )
+#endif
 			killer_weapon_name = pInflictor->GetClassname();
 		}
 
@@ -733,20 +1280,59 @@ void CHL2MPRules::DeathNotice( CBasePlayer *pVictim, const CTakeDamageInfo &info
 		}
 		else if ( strcmp( killer_weapon_name, "grenade_ar2" ) == 0 )
 		{
-			killer_weapon_name = "smg1_grenade";
+			CGrenadeAR2 *pGrenade = static_cast<CGrenadeAR2 *>(pInflictor);
+
+			if ( pGrenade->m_bIsFireGrenade )
+				killer_weapon_name = "flaregun";
+			else
+				killer_weapon_name = "smg1_grenade";
+		}
+		else if ( strcmp( killer_weapon_name, "env_fire" ) == 0 && pInflictor != pVictim )
+		{
+			killer_weapon_name = "flaregun";
 		}
 		else if ( strcmp( killer_weapon_name, "satchel" ) == 0 || strcmp( killer_weapon_name, "tripmine" ) == 0)
 		{
 			killer_weapon_name = "slam";
 		}
+		else if ( strcmp( killer_weapon_name, "immolator_plasma_ball" ) == 0 || ( ( pVictim->IsImmolatorBurning() || pVictim->GetLastImmolatorAttacker() ) && ( info.GetDamageType() & DMG_BURN ) ) )
+		{
+			killer_weapon_name = "immolator";
+		}
 
 
 	}
 
+#ifdef MAPBASE
+	if ( !pVictim->IsPlayer() )
+	{
+		if ( sv_hl2mp_npc_deathnotice_as_victim.GetBool() && *pVictim->MyNPCPointer()->GetNetName() )
+		{
+			IGameEvent *event = gameeventmanager->CreateEvent( "npc_death" );
+			if( event )
+			{
+				if (pScorer)
+					killer_ID = pScorer->entindex();
+
+				event->SetInt("victim_entindex", pVictim->entindex() );
+				event->SetInt("attacker_entindex", killer_ID );
+				event->SetString("weapon", killer_weapon_name );
+				event->SetInt( "priority", 6 );
+				gameeventmanager->FireEvent( event );
+			}
+		}
+		return;
+	}
+#endif
+
 	IGameEvent *event = gameeventmanager->CreateEvent( "player_death" );
 	if( event )
 	{
+#ifdef MAPBASE
+		event->SetInt("userid", static_cast<CBasePlayer*>(pVictim)->GetUserID() );
+#else
 		event->SetInt("userid", pVictim->GetUserID() );
+#endif
 		event->SetInt("attacker", killer_ID );
 		event->SetString("weapon", killer_weapon_name );
 		event->SetInt( "priority", 7 );
@@ -765,6 +1351,7 @@ void CHL2MPRules::ClientSettingsChanged( CBasePlayer *pPlayer )
 	if ( pHL2Player == NULL )
 		return;
 
+#ifndef RTBMP
 	const char *pCurrentModel = modelinfo->GetModelName( pPlayer->GetModel() );
 	const char *szModelName = engine->GetClientConVarValue( engine->IndexOfEdict( pPlayer->edict() ), "cl_playermodel" );
 
@@ -799,6 +1386,26 @@ void CHL2MPRules::ClientSettingsChanged( CBasePlayer *pPlayer )
 		}
 		else
 		{
+#ifdef MAPBASE
+			if (szModelName[0] == '#')
+			{
+				int nProtagonist = g_ProtagonistSystem.FindProtagonistIndex( szModelName + 1 );
+				if (nProtagonist != -1)
+				{
+					int nTeam = g_ProtagonistSystem.GetProtagonist_Team( nProtagonist );
+					if ( nTeam == TEAM_REBELS )
+					{
+						pHL2Player->ChangeTeam( TEAM_REBELS );
+					}
+					else if ( nTeam == TEAM_COMBINE )
+					{
+						pHL2Player->ChangeTeam( TEAM_COMBINE );
+					}
+				}
+			}
+			else
+#endif
+
 			if ( Q_stristr( szModelName, "models/human") )
 			{
 				pHL2Player->ChangeTeam( TEAM_REBELS );
@@ -809,10 +1416,16 @@ void CHL2MPRules::ClientSettingsChanged( CBasePlayer *pPlayer )
 			}
 		}
 	}
+#endif
 	if ( sv_report_client_settings.GetInt() == 1 )
 	{
 		UTIL_LogPrintf( "\"%s\" cl_cmdrate = \"%s\"\n", pHL2Player->GetPlayerName(), engine->GetClientConVarValue( pHL2Player->entindex(), "cl_cmdrate" ));
 	}
+
+	const char *pszFov = engine->GetClientConVarValue( pPlayer->entindex(), "fov_desired" );
+	int iFov = atoi(pszFov);
+	iFov = clamp(iFov, 75, MAX_FOV);
+	pHL2Player->SetDefaultFOV(iFov);
 
 	BaseClass::ClientSettingsChanged( pPlayer );
 #endif
@@ -822,12 +1435,48 @@ void CHL2MPRules::ClientSettingsChanged( CBasePlayer *pPlayer )
 int CHL2MPRules::PlayerRelationship( CBaseEntity *pPlayer, CBaseEntity *pTarget )
 {
 #ifndef CLIENT_DLL
+#ifdef MAPBASE
+	if ( !pPlayer || !pTarget || !pTarget->IsPlayer() )
+		return GR_NOTTEAMMATE;
+
+	// Check for an ai_relationship override
+	if ( Disposition_t nRel = pPlayer->MyCombatCharacterPointer()->IRelationType( pTarget ) )
+	{
+		if ( nRel == D_HT || nRel == D_FR )
+			return GR_NOTTEAMMATE;
+		else if ( nRel == D_LI )
+			return GR_TEAMMATE;
+	}
+#else
 	// half life multiplay has a simple concept of Player Relationships.
 	// you are either on another player's team, or you are not.
 	if ( !pPlayer || !pTarget || !pTarget->IsPlayer() || IsTeamplay() == false )
 		return GR_NOTTEAMMATE;
 
 	if ( (*GetTeamID(pPlayer) != '\0') && (*GetTeamID(pTarget) != '\0') && !stricmp( GetTeamID(pPlayer), GetTeamID(pTarget) ) )
+	{
+		return GR_TEAMMATE;
+	}
+#endif
+#endif
+
+#ifdef MAPBASE
+	if ( IsTeamplay() == false )
+	{
+#ifdef BASIC_HL2MP_COOP
+		// All players are friendly by default in co-op
+		if ( IsCoOp() )
+			return GR_TEAMMATE;
+#endif
+
+		return GR_NOTTEAMMATE;
+	}
+
+#ifdef CLIENT_DLL
+	if ( pPlayer->GetTeamNumber() != TEAM_UNASSIGNED && pTarget->GetTeamNumber() != TEAM_UNASSIGNED && pPlayer->GetTeamNumber() == pTarget->GetTeamNumber() )
+#else
+	if ( (*GetTeamID(pPlayer) != '\0') && (*GetTeamID(pTarget) != '\0') && !stricmp( GetTeamID(pPlayer), GetTeamID(pTarget) ) )
+#endif
 	{
 		return GR_TEAMMATE;
 	}
@@ -840,6 +1489,11 @@ const char *CHL2MPRules::GetGameDescription( void )
 { 
 	if ( IsTeamplay() )
 		return "Team Deathmatch"; 
+
+#ifdef BASIC_HL2MP_COOP
+	if ( IsCoOp() )
+		return "Co-Op";
+#endif
 
 	return "Deathmatch"; 
 } 
@@ -869,6 +1523,37 @@ void CHL2MPRules::Precache( void )
 {
 	CBaseEntity::PrecacheScriptSound( "AlyxEmp.Charge" );
 }
+
+#ifdef GAME_DLL
+bool CHL2MPRules::IsOfficialMap( void )
+{ 
+	static const char *s_OfficialMaps[] =
+	{
+		"devtest",
+		"dm_lockdown",
+		"dm_overwatch",
+		"dm_powerhouse",
+		"dm_resistance",
+		"dm_runoff",
+		"dm_steamlab",
+		"dm_underpass",
+		"halls3",
+	};
+
+	char szCurrentMap[MAX_MAP_NAME];
+	Q_strncpy( szCurrentMap, STRING( gpGlobals->mapname ), sizeof( szCurrentMap ) );
+
+	for ( int i = 0; i < ARRAYSIZE( s_OfficialMaps ); ++i )
+	{
+		if ( !Q_stricmp( s_OfficialMaps[i], szCurrentMap ) )
+		{
+			return true;
+		}
+	}
+
+	return BaseClass::IsOfficialMap();
+}
+#endif
 
 bool CHL2MPRules::ShouldCollide( int collisionGroup0, int collisionGroup1 )
 {
@@ -904,6 +1589,18 @@ bool CHL2MPRules::ClientCommand( CBaseEntity *pEdict, const CCommand &args )
 	return false;
 }
 
+void CHL2MPRules::LevelInitPostEntity( void )
+{
+	BaseClass::LevelInitPostEntity();
+
+#ifdef GAME_DLL
+	// Refind our proxy, because we might have had it deleted due to a mapmaker placed one
+	m_hGamerulesProxy = dynamic_cast<CHL2MPGameRulesProxy *>(gEntList.FindEntityByClassname( NULL, "hl2mp_gamerules" ));
+#endif // GAME_DLL
+}
+
+#ifndef HL2MP_USES_HL2_GAMERULES
+
 // shared ammo definition
 // JAY: Trying to make a more physical bullet response
 #define BULLET_MASS_GRAINS_TO_LB(grains)	(0.002285*(grains)/16.0f)
@@ -927,18 +1624,20 @@ CAmmoDef *GetAmmoDef()
 		def.AddAmmoType("AR2",				DMG_BULLET,					TRACER_LINE_AND_WHIZ,	0,			0,			60,			BULLET_IMPULSE(200, 1225),	0 );
 		def.AddAmmoType("AR2AltFire",		DMG_DISSOLVE,				TRACER_NONE,			0,			0,			3,			0,							0 );
 		def.AddAmmoType("Pistol",			DMG_BULLET,					TRACER_LINE_AND_WHIZ,	0,			0,			150,		BULLET_IMPULSE(200, 1225),	0 );
-		def.AddAmmoType("SMG1",				DMG_BULLET,					TRACER_LINE_AND_WHIZ,	0,			0,			225,		BULLET_IMPULSE(200, 1225),	0 );
-		def.AddAmmoType("357",				DMG_BULLET,					TRACER_LINE_AND_WHIZ,	0,			0,			12,			BULLET_IMPULSE(800, 5000),	0 );
+		def.AddAmmoType("SMG1",				DMG_BULLET,					TRACER_LINE_AND_WHIZ,	0,			0,			210,		BULLET_IMPULSE(200, 1225),	0 );
+		def.AddAmmoType("357",				DMG_BULLET,					TRACER_LINE_AND_WHIZ,	0,			0,			30,			BULLET_IMPULSE(800, 5000),	0 );
 		def.AddAmmoType("XBowBolt",			DMG_BULLET,					TRACER_LINE,			0,			0,			10,			BULLET_IMPULSE(800, 8000),	0 );
-		def.AddAmmoType("Buckshot",			DMG_BULLET | DMG_BUCKSHOT,	TRACER_LINE,			0,			0,			30,			BULLET_IMPULSE(400, 1200),	0 );
+		def.AddAmmoType("Buckshot",			DMG_BULLET | DMG_BUCKSHOT,	TRACER_LINE,			0,			0,			32,			BULLET_IMPULSE(400, 1200),	0 );
 		def.AddAmmoType("RPG_Round",		DMG_BURN,					TRACER_NONE,			0,			0,			3,			0,							0 );
-		def.AddAmmoType("SMG1_Grenade",		DMG_BURN,					TRACER_NONE,			0,			0,			3,			0,							0 );
+		def.AddAmmoType("SMG1_Grenade",		DMG_BURN,					TRACER_NONE,			0,			0,			6,			0,							0 );
 		def.AddAmmoType("Grenade",			DMG_BURN,					TRACER_NONE,			0,			0,			5,			0,							0 );
 		def.AddAmmoType("slam",				DMG_BURN,					TRACER_NONE,			0,			0,			5,			0,							0 );
 	}
 
 	return &def;
 }
+
+#endif
 
 #ifdef CLIENT_DLL
 
@@ -949,32 +1648,6 @@ CAmmoDef *GetAmmoDef()
 		"Automatically switch to picked up weapons (if more powerful)" );
 
 #else
-
-#ifdef DEBUG
-
-	// Handler for the "bot" command.
-	void Bot_f()
-	{		
-		// Look at -count.
-		int count = 1;
-		count = clamp( count, 1, 16 );
-
-		int iTeam = TEAM_COMBINE;
-				
-		// Look at -frozen.
-		bool bFrozen = false;
-			
-		// Ok, spawn all the bots.
-		while ( --count >= 0 )
-		{
-			BotPutInServer( bFrozen, iTeam );
-		}
-	}
-
-
-	ConCommand cc_Bot( "bot", Bot_f, "Add a bot.", FCVAR_CHEAT );
-
-#endif
 
 	bool CHL2MPRules::FShouldSwitchWeapon( CBasePlayer *pPlayer, CBaseCombatWeapon *pWeapon )
 	{		
@@ -994,6 +1667,13 @@ CAmmoDef *GetAmmoDef()
 #endif
 
 #ifndef CLIENT_DLL
+bool CHL2MPRules::FPlayerCanRespawn( CBasePlayer *pPlayer )
+{
+	if ( IsCoOp() && m_hGamerulesProxy )
+		return m_hGamerulesProxy->RespawnEnabled();
+
+	return BaseClass::FPlayerCanRespawn( pPlayer );
+}
 
 void CHL2MPRules::RestartGame()
 {
@@ -1058,6 +1738,13 @@ void CHL2MPRules::RestartGame()
 		gameeventmanager->FireEvent( event );
 	}
 }
+
+#ifdef GAME_DLL
+void CHL2MPRules::OnNavMeshLoad( void )
+{
+	TheNavMesh->SetPlayerSpawnName( "info_player_deathmatch" );
+}
+#endif
 
 void CHL2MPRules::CleanUpMap()
 {
@@ -1277,4 +1964,22 @@ const char *CHL2MPRules::GetChatFormat( bool bTeamOnly, CBasePlayer *pPlayer )
 	return pszFormat;
 }
 
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CHL2MPRules::TeamPlayerCountChanged( CTeam *pTeam )
+{
+	if (m_hGamerulesProxy)
+	{
+		m_hGamerulesProxy->TeamPlayerCountChanged( pTeam );
+	}
+}
+
+void CHL2MPRules::PlayerCountChanged()
+{
+	if (m_hGamerulesProxy)
+	{
+		m_hGamerulesProxy->PlayerCountChanged();
+	}
+}
 #endif

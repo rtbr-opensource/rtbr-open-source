@@ -34,7 +34,11 @@
 // sub dialogs
 #include "clientscoreboarddialog.h"
 #include "spectatorgui.h"
+#ifdef RTBMP
+#include "vgui/rtba_teammenu.h"
+#else
 #include "teammenu.h"
+#endif
 #include "vguitextwindow.h"
 #include "IGameUIFuncs.h"
 #include "mapoverview.h"
@@ -156,6 +160,32 @@ bool CBaseViewport::LoadHudAnimations( void )
 	return true;
 }
 
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Purpose: Reloads HUD animations after loading a map-specific HUD animations file.
+//-----------------------------------------------------------------------------
+void CBaseViewport::ReloadHudAnimations( void )
+{
+	// Force a reload
+	if ( LoadHudAnimations() == false )
+	{
+		// Fall back to just the main
+		if ( m_pAnimController->SetScriptFile( GetVPanel(), "scripts/HudAnimations.txt", true ) == false )
+		{
+			Assert(0);
+		}
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Loads a map-specific HUD animations file.
+//-----------------------------------------------------------------------------
+bool CBaseViewport::LoadCustomHudAnimations( const char *pszFile )
+{
+	return m_pAnimController->SetScriptFile( GetVPanel(), pszFile, true );
+}
+#endif
+
 //================================================================
 CBaseViewport::CBaseViewport() : vgui::EditablePanel( NULL, "CBaseViewport")
 {
@@ -243,6 +273,9 @@ void CBaseViewport::CreateDefaultPanels( void )
 	AddNewPanel( CreatePanelByName( PANEL_SPECMENU ), "PANEL_SPECMENU" );
 	AddNewPanel( CreatePanelByName( PANEL_NAV_PROGRESS ), "PANEL_NAV_PROGRESS" );
 #endif // !TF_CLIENT_DLL
+#ifdef RTBMP
+	AddNewPanel( CreatePanelByName( PANEL_TEAM ), "PANEL_TEAM" );
+#endif
 #endif // !_XBOX
 }
 
@@ -259,6 +292,43 @@ void CBaseViewport::UpdateAllPanels( void )
 			p->Update();
 		}
 	}
+}
+
+// Check if we have any visible panel (that's not the MainMenuOverride or the Scoreboard)
+bool CBaseViewport::IsAnyPanelVisibleExceptScores()
+{
+	int count = m_Panels.Count();
+	for ( int i = 0; i < count; i++ )
+	{
+		IViewPortPanel *p = m_Panels[i];
+
+		if ( p->IsVisible() && Q_strcmp("MainMenuOverride", p->GetName()) && Q_strcmp("scores", p->GetName()) )
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool CBaseViewport::IsPanelVisible( const char* panel )
+{
+	int count = m_Panels.Count();
+
+	for ( int i = 0; i < count; i++ )
+	{
+		IViewPortPanel *p = m_Panels[i];
+		if ( p->IsVisible() )
+		{
+			const char* panel_name = p->GetName();
+			if ( !Q_strcmp( panel, panel_name ) )
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
 }
 
 IViewPortPanel* CBaseViewport::CreatePanelByName(const char *szPanelName)
@@ -281,7 +351,11 @@ IViewPortPanel* CBaseViewport::CreatePanelByName(const char *szPanelName)
 	*/
 	else if ( Q_strcmp(PANEL_TEAM, szPanelName) == 0 )
 	{
+#ifdef RTBMP
+		newpanel = new CRTBATeamMenu( this );
+#else
 		newpanel = new CTeamMenu( this );
+#endif
 	}
 	else if ( Q_strcmp(PANEL_SPECMENU, szPanelName) == 0 )
 	{
@@ -484,6 +558,9 @@ void CBaseViewport::RemoveAllPanels( void)
 CBaseViewport::~CBaseViewport()
 {
 	m_bInitialized = false;
+
+	if ( gViewPortInterface == this )
+		gViewPortInterface = NULL;
 
 #ifndef _XBOX
 	if ( !m_bHasParent && m_pBackGround )
@@ -715,7 +792,15 @@ void CBaseViewport::ReloadScheme(const char *fromFile)
 
 int CBaseViewport::GetDeathMessageStartHeight( void )
 {
-	return YRES(2);
+#ifdef RTBMP
+	int ypos = YRES(16);
+	if ( g_pSpectatorGUI && g_pSpectatorGUI->IsVisible() )
+		ypos += g_pSpectatorGUI->GetTopBarHeight();
+	
+	return ypos;
+#else
+	return YRES(16);
+#endif
 }
 
 void CBaseViewport::Paint()

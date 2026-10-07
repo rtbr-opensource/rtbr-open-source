@@ -28,6 +28,7 @@ public:
 	CEntityFlame( void );
 
 	static CEntityFlame	*Create( CBaseEntity *pTarget, bool useHitboxes = true );
+	static CEntityFlame *CreateGreen( CBaseEntity *pTarget, bool useHitboxes = true );	
 
 	void	AttachToEntity( CBaseEntity *pTarget );
 	void	SetLifetime( float lifetime );
@@ -53,6 +54,8 @@ protected:
 	void	FlameThink( void );
 
 	CNetworkHandle( CBaseEntity, m_hEntAttached );		// The entity that we are burning (attached to).
+
+	CNetworkVar( bool, m_bIsGreen );
 
 	CNetworkVar( float, m_flSize );
 	CNetworkVar( bool, m_bUseHitboxes );

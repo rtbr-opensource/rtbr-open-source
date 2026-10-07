@@ -6,11 +6,21 @@
 
 #include "cbase.h"
 #include "weapon_hl2mpbasehlmpcombatweapon.h"
+#include "animation.h"
+#include "npcevent.h"
+#include "eventlist.h"
+#ifdef CLIENT_DLL
+#include "prediction.h"
+#endif
 
 #include "hl2mp_player_shared.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+
+#ifdef MAPBASE
+ConVar	hl2mp_allow_weapon_lower( "hl2mp_allow_weapon_lower", "0", FCVAR_REPLICATED );
+#endif
 
 LINK_ENTITY_TO_CLASS( basehl2mpcombatweapon, CBaseHL2MPCombatWeapon );
 
@@ -19,8 +29,12 @@ IMPLEMENT_NETWORKCLASS_ALIASED( BaseHL2MPCombatWeapon , DT_BaseHL2MPCombatWeapon
 BEGIN_NETWORK_TABLE( CBaseHL2MPCombatWeapon , DT_BaseHL2MPCombatWeapon )
 #if !defined( CLIENT_DLL )
 //	SendPropInt( SENDINFO( m_bReflectViewModelAnimations ), 1, SPROP_UNSIGNED ),
+	SendPropTime( SENDINFO( m_flReloadEndTime ) ),
+	SendPropBool( SENDINFO( m_bReloadFinished ) ),
 #else
 //	RecvPropInt( RECVINFO( m_bReflectViewModelAnimations ) ),
+	RecvPropTime( RECVINFO( m_flReloadEndTime ) ),
+	RecvPropBool( RECVINFO( m_bReloadFinished ) ),
 #endif
 END_NETWORK_TABLE()
 
@@ -37,19 +51,73 @@ BEGIN_DATADESC( CBaseHL2MPCombatWeapon )
 	DEFINE_FIELD( m_bLowered,			FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_flRaiseTime,		FIELD_TIME ),
 	DEFINE_FIELD( m_flHolsterTime,		FIELD_TIME ),
+	DEFINE_FIELD( m_flReloadEndTime,	FIELD_FLOAT ),
 
 END_DATADESC()
 
-#endif
+#else
 
 BEGIN_PREDICTION_DATA( CBaseHL2MPCombatWeapon )
+	// misyl: We are not perfect at predicting these, and we also don't have to be.
+	DEFINE_PRED_FIELD( m_flTimeWeaponIdle, FIELD_FLOAT, FTYPEDESC_OVERRIDE | FTYPEDESC_NOERRORCHECK ),
+	DEFINE_PRED_FIELD( m_flNextPrimaryAttack, FIELD_FLOAT, FTYPEDESC_OVERRIDE | FTYPEDESC_NOERRORCHECK ),
+	DEFINE_PRED_FIELD( m_flNextSecondaryAttack, FIELD_FLOAT, FTYPEDESC_OVERRIDE | FTYPEDESC_NOERRORCHECK ),
+	DEFINE_PRED_FIELD_TOL( m_flReloadEndTime, FIELD_FLOAT, FTYPEDESC_INSENDTABLE, TD_MSECTOLERANCE ),
+	DEFINE_PRED_FIELD( m_bInReload, FIELD_BOOLEAN, FTYPEDESC_OVERRIDE ),
+	DEFINE_PRED_FIELD( m_bReloadFinished, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
 END_PREDICTION_DATA()
+
+#endif
 
 extern ConVar sk_auto_reload_time;
 
 CBaseHL2MPCombatWeapon::CBaseHL2MPCombatWeapon( void )
 {
+}
 
+//-----------------------------------------------------------------------------
+// Purpose: Override to reset draw frames.
+//-----------------------------------------------------------------------------
+bool CBaseHL2MPCombatWeapon::DefaultDeploy( char *szViewModel, char *szWeaponModel, int iActivity, char *szAnimExt )
+{
+	if (!BaseClass::DefaultDeploy( szViewModel, szWeaponModel, iActivity, szAnimExt ))
+		return false;
+
+	SetDrawFramesTime();
+
+	return true;
+}
+
+bool CBaseHL2MPCombatWeapon::DefaultReload( int iClipSize1, int iClipSize2, int iActivity )
+{
+	if (!BaseClass::DefaultReload( iClipSize1, iClipSize2, iActivity ))
+		return false;
+
+	m_flReloadEndTime = GetAnimEventTime( AE_WPN_RELOAD );
+	m_bReloadFinished = false;
+
+	SetDrawFramesTime();
+
+	return true;
+}
+
+void CBaseHL2MPCombatWeapon::FinishReload()
+{
+	if (m_bReloadFinished)
+		return;
+
+	BaseClass::FinishReload();
+}
+
+void CBaseHL2MPCombatWeapon::ItemBusyFrame( void )
+{
+	BaseClass::ItemBusyFrame();
+
+	if (m_bInReload && !m_bReloadsSingly && Clip1() < GetMaxClip1() && gpGlobals->curtime > m_flReloadEndTime && !m_bReloadFinished)
+	{
+		FinishReload();
+		m_bReloadFinished = true;
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -67,13 +135,34 @@ void CBaseHL2MPCombatWeapon::ItemHolsterFrame( void )
 	if ( GetOwner()->GetActiveWeapon() == this )
 		return;
 
-	// If it's been longer than three seconds, reload
-	if ( ( gpGlobals->curtime - m_flHolsterTime ) > sk_auto_reload_time.GetFloat() )
+#ifdef RTBMP
+	float flReloadTime = GetWeaponAutoReloadTime();
+	if ( flReloadTime == -1.f )
+		flReloadTime = sk_auto_reload_time.GetFloat();
+
+	if ( flReloadTime >= 0.0f && ((gpGlobals->curtime - m_flHolsterTime) > flReloadTime) )
+#else
+	if ( sk_auto_reload_time.GetFloat() >= 0.0f && ((gpGlobals->curtime - m_flHolsterTime) > sk_auto_reload_time.GetFloat()) )
+#endif
 	{
 		// Just load the clip with no animations
 		FinishReload();
 		m_flHolsterTime = gpGlobals->curtime;
 	}
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+bool CBaseHL2MPCombatWeapon::CanLower()
+{
+#ifdef MAPBASE
+	if ( !hl2mp_allow_weapon_lower.GetBool() )
+		return BaseClass::CanLower();
+#endif
+
+	if ( SelectWeightedSequence( ACT_VM_IDLE_LOWERED ) == ACTIVITY_NOT_AVAILABLE )
+		return false;
+	return true;
 }
 
 //-----------------------------------------------------------------------------
@@ -212,6 +301,50 @@ void CBaseHL2MPCombatWeapon::WeaponIdle( void )
 	}
 }
 
+void CBaseHL2MPCombatWeapon::SetDrawFramesTime()
+{
+	CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
+
+	if (!pOwner)
+		return;
+
+	float flDrawFramesTime = GetAnimEventTime( AE_WPN_DRAWN );
+	pOwner->SetNextAttack( flDrawFramesTime );
+	m_flNextPrimaryAttack = m_flNextSecondaryAttack = flDrawFramesTime;
+}
+
+//--------------------------------------------------------------------------
+// Determine the time an anim event fires in the weapon's current sequence.
+//--------------------------------------------------------------------------
+float CBaseHL2MPCombatWeapon::GetAnimEventTime( int iAnimEvent )
+{
+	int iSequence = GetSequence();
+
+#ifdef CLIENT_DLL
+	if (!prediction->IsFirstTimePredicted())
+		return gpGlobals->curtime + GetViewModelSequenceDuration();
+#endif
+
+	animevent_t	event;
+
+	if (iSequence != ACT_INVALID)
+	{
+		float flCycleRate = GetSequenceCycleRate( GetModelPtr(), iSequence );
+
+		int index = 0;
+		while ( (index = GetAnimationEvent( GetModelPtr(), iSequence, &event, 0.0f, 1.0f, index ) ) != 0 )
+		{
+			if (event.event != iAnimEvent)
+				continue;
+			
+			if (flCycleRate > 0.0)
+				return gpGlobals->curtime + (event.cycle - GetCycle()) / flCycleRate;
+		}
+	}
+
+	return gpGlobals->curtime + GetViewModelSequenceDuration();
+}
+
 #if defined( CLIENT_DLL )
 
 #define	HL2_BOB_CYCLE_MIN	1.0f
@@ -302,6 +435,14 @@ float CBaseHL2MPCombatWeapon::CalcViewmodelBob( void )
 	g_lateralBob = speed*0.005f;
 	g_lateralBob = g_lateralBob*0.3 + g_lateralBob*0.7*sin(cycle);
 	g_lateralBob = clamp( g_lateralBob, -7.0f, 4.0f );
+
+#ifdef MAPBASE
+	if (GetBobScale() != 1.0f)
+	{
+		//g_verticalBob *= GetBobScale();
+		g_lateralBob *= GetBobScale();
+	}
+#endif
 	
 	//NOTENOTE: We don't use this return value in our case (need to restructure the calculation function setup!)
 	return 0.0f;

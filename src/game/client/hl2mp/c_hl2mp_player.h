@@ -14,6 +14,37 @@ class C_HL2MP_Player;
 #include "hl2mp_player_shared.h"
 #include "beamdraw.h"
 
+extern ConVar hl2_walkspeed;
+extern ConVar hl2_normspeed;
+extern ConVar hl2_sprintspeed;
+
+#define	HL2_WALK_SPEED hl2_walkspeed.GetFloat()
+#define	HL2_NORM_SPEED hl2_normspeed.GetFloat()
+#define	HL2_SPRINT_SPEED hl2_sprintspeed.GetFloat()
+
+//=============================================================================
+//=============================================================================
+class CSuitPowerDevice
+{
+public:
+	CSuitPowerDevice( int bitsID, float flDrainRate ) { m_bitsDeviceID = bitsID; m_flDrainRate = flDrainRate; }
+private:
+	int		m_bitsDeviceID;	// tells what the device is. DEVICE_SPRINT, DEVICE_FLASHLIGHT, etc. BITMASK!!!!!
+	float	m_flDrainRate;	// how quickly does this device deplete suit power? ( percent per second )
+
+public:
+	int		GetDeviceID( void ) const { return m_bitsDeviceID; }
+	float	GetDeviceDrainRate( void ) const
+	{
+		//if ( g_pGameRules->GetSkillLevel() == SKILL_EASY && hl2_episodic.GetBool() && !( GetDeviceID() & bits_SUIT_DEVICE_SPRINT ) )
+		//	return m_flDrainRate * 0.5f;
+		//else
+			return m_flDrainRate;
+	}
+};
+
+extern ConVar hl2_sprintspeed;
+
 //=============================================================================
 // >> HL2MP_Player
 //=============================================================================
@@ -44,7 +75,9 @@ public:
 	// Should this object cast shadows?
 	virtual ShadowType_t		ShadowCastType( void );
 	virtual C_BaseAnimating *BecomeRagdollOnClient();
+#ifndef SP_ANIM_STATE
 	virtual const QAngle& GetRenderAngles();
+#endif
 	virtual bool ShouldDraw( void );
 	virtual void OnDataChanged( DataUpdateType_t type );
 	virtual float GetFOV( void );
@@ -65,11 +98,28 @@ public:
 	virtual void CalcView( Vector &eyeOrigin, QAngle &eyeAngles, float &zNear, float &zFar, float &fov );
 	virtual const QAngle& EyeAngles( void );
 
+	void SuitPower_Update( void );
+	bool SuitPower_Drain( float flPower ); // consume some of the suit's power.
+	void SuitPower_Charge( float flPower ); // add suit power.
+	void SuitPower_SetCharge( float flPower ) { m_HL2Local.m_flSuitPower = flPower; }
+	void SuitPower_Initialize( void );
+	bool SuitPower_IsDeviceActive( const CSuitPowerDevice& device );
+	bool SuitPower_AddDevice( const CSuitPowerDevice& device );
+	bool SuitPower_RemoveDevice( const CSuitPowerDevice& device );
+	bool SuitPower_ShouldRecharge( void );
+	float SuitPower_GetCurrentPercentage( void ) { return m_HL2Local.m_flSuitPower; }
+
+#ifdef MAPBASE
+	virtual void	DispatchTraceAttack( const CTakeDamageInfo &info, const Vector &vecDir, trace_t *ptr, CDmgAccumulator *pAccumulator = NULL );
+
+	virtual bool	ShouldCollide( int collisionGroup, int contentsMask ) const;
+#endif
 	
 	bool	CanSprint( void );
-	void	StartSprinting( void );
-	void	StopSprinting( void );
-	void	HandleSpeedChanges( void );
+	virtual void	StartSprinting( void ) {};
+	void	StopSprinting( void ) {};
+	virtual void	HandleSpeedChanges( CMoveData *mv ) OVERRIDE;
+	virtual void	ReduceTimers( CMoveData* mv ) OVERRIDE;
 	void	UpdateLookAt( void );
 	void	Initialize( void );
 	int		GetIDTarget() const;
@@ -81,16 +131,25 @@ public:
 
 	// Walking
 	void StartWalking( void );
-	void StopWalking( void );
+	virtual void StopWalking( void );
 	bool IsWalking( void ) { return m_fIsWalking; }
 
+#ifdef SP_ANIM_STATE
+	Activity Weapon_TranslateActivity( Activity baseAct, bool *pRequired = NULL );
+#endif
+
 	virtual void PostThink( void );
+
+protected:
+	bool m_fIsWalking = false;
 
 private:
 	
 	C_HL2MP_Player( const C_HL2MP_Player & );
 
+#ifndef SP_ANIM_STATE
 	CPlayerAnimState m_PlayerAnimState;
+#endif
 
 	QAngle	m_angEyeAngles;
 
@@ -125,8 +184,6 @@ private:
 	Beam_t	*m_pFlashlightBeam;
 
 	CNetworkVar( HL2MPPlayerState, m_iPlayerState );	
-
-	bool m_fIsWalking;
 };
 
 inline C_HL2MP_Player *ToHL2MPPlayer( CBaseEntity *pEntity )
@@ -168,6 +225,10 @@ private:
 	EHANDLE	m_hPlayer;
 	CNetworkVector( m_vecRagdollVelocity );
 	CNetworkVector( m_vecRagdollOrigin );
+#ifdef RTBMP
+	int m_nRagdollSkin;
+	int m_nRagdollBody;
+#endif
 };
 
 #endif //HL2MP_PLAYER_H

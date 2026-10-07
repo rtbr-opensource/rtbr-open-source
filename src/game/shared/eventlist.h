@@ -70,6 +70,9 @@ typedef enum
 
 	AE_CL_CREATE_PARTICLE_EFFECT,
 
+	AE_WPN_RELOAD,
+	AE_WPN_DRAWN,
+
 	AE_RAGDOLL,
 
 	AE_CL_ENABLE_BODYGROUP,
@@ -85,10 +88,27 @@ typedef enum
 
 	AE_WPN_PLAYWPNSOUND,	// Play a weapon sound from the weapon script file
 
+	AE_WPN_THROWMAG, // throw an empty magazine away
+
+#ifdef MAPBASE
+	AE_NPC_RESPONSE,	// Play a response system concept if we're not speaking
+	AE_NPC_RESPONSE_FORCED,		// Always play a response system concept
+	
+	AE_VSCRIPT_RUN,			// Run vscript code (server + client)
+	AE_VSCRIPT_RUN_FILE,	// Run vscript file (server + client)
+#endif
+
 	AE_RD_ROBOT_POP_PANELS_OFF,
 
 	AE_TAUNT_ENABLE_MOVE,
 	AE_TAUNT_DISABLE_MOVE,
+
+	AE_CL_REMOVE_PARTICLE_EFFECT,
+
+	AE_TAUNT_ADD_ATTRIBUTE, // Used to add attribute via taunt animation
+
+	AE_SV_EXCLUDE_PLAYER_SOUND, // Plays a sound for everyone except the player doing the animation
+	AE_CL_EXCLUDE_PLAYER_SOUND,
 
 	LAST_SHARED_ANIMEVENT,
 } Animevent;

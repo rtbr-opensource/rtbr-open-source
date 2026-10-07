@@ -152,6 +152,7 @@ public:
 	int		m_nFlags;
 	int		m_nFlameModelIndex;
 	int		m_nFlameFromAboveModelIndex;
+	bool	m_bIsFlareFire;
 
 //Client-side only
 public:
@@ -291,6 +292,7 @@ public:
 
 	CNewParticleEffect *m_hEffect;
 	EHANDLE				m_hEntAttached;		// The entity that we are burning (attached to).
+	bool				m_bIsGreen;
 	EHANDLE				m_hOldAttached;
 
 protected:

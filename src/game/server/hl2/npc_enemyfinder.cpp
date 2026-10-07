@@ -59,6 +59,10 @@ public:
 	void InputTurnOff( inputdata_t &inputdata );
 
 	virtual	void Wake( bool bFireOutput = true );
+#ifdef MAPBASE
+	// A version of Wake() that takes an activator
+	virtual	void		Wake(CBaseEntity* pActivator);
+#endif
 
 private:
 	int		m_nStartOn;
@@ -68,6 +72,10 @@ private:
 	CSimpleSimTimer m_ChooseEnemyTimer;
 
 	bool	m_bEnemyStatus;
+
+#ifdef MAPBASE
+	Class_T		m_iClassify = CLASS_NONE;
+#endif
 
 	COutputEvent m_OnLostEnemies;
 	COutputEvent m_OnAcquireEnemies;
@@ -102,6 +110,10 @@ BEGIN_DATADESC( CNPC_EnemyFinder )
 	DEFINE_INPUT( m_flMaxSearchDist,	FIELD_FLOAT,	"MaxSearchDist" ),
 
 	DEFINE_FIELD( m_bEnemyStatus, FIELD_BOOLEAN ),
+
+#ifdef MAPBASE
+	DEFINE_INPUT( m_iClassify, FIELD_INTEGER, "SetClassify" ),
+#endif
 
 	DEFINE_INPUTFUNC( FIELD_VOID, "TurnOn", InputTurnOn ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "TurnOff", InputTurnOff ),
@@ -226,6 +238,16 @@ void CNPC_EnemyFinder::Wake( bool bFireOutput )
 	AddEffects( EF_NODRAW );
 }
 
+#ifdef MAPBASE
+void CNPC_EnemyFinder::Wake(CBaseEntity* pActivator)
+{
+	BaseClass::Wake(pActivator);
+
+	//Enemy finder is not allowed to become visible.
+	AddEffects(EF_NODRAW);
+}
+#endif // MAPBASE
+
 //------------------------------------------------------------------------------
 //
 //------------------------------------------------------------------------------
@@ -344,9 +366,17 @@ void CNPC_EnemyFinder::StartNPC ( void )
 											// the ground just because it's not MOVETYPE_FLY
 	BaseClass::StartNPC();
 
+#ifdef MAPBASE_MP // From SecobMod
+	if ( m_PlayerFreePass.GetParams().duration > 0.1 )
+#else
 	if ( AI_IsSinglePlayer() && m_PlayerFreePass.GetParams().duration > 0.1 )
+#endif
 	{
+#ifdef MAPBASE_MP // From SecobMod
+		m_PlayerFreePass.SetPassTarget( UTIL_GetNearestPlayer( GetAbsOrigin() ) );
+#else
 		m_PlayerFreePass.SetPassTarget( UTIL_PlayerByIndex(1) );
+#endif
 
 		AI_FreePassParams_t freePassParams = m_PlayerFreePass.GetParams();
 
@@ -415,9 +445,18 @@ bool CNPC_EnemyFinder::ShouldAlwaysThink()
 {
 	if ( BaseClass::ShouldAlwaysThink() )
 		return true;
-		
+
+#ifdef MAPBASE_MP // From SecobMod
+	CBasePlayer *pPlayer = UTIL_GetNearestPlayer( GetAbsOrigin() );
+#else
 	CBasePlayer *pPlayer = AI_GetSinglePlayer();
+#endif
+
+#ifdef MAPBASE
+	if ( pPlayer && IRelationType( pPlayer ) <= D_FR )
+#else
 	if ( pPlayer && IRelationType( pPlayer ) == D_HT )
+#endif
 	{
 		float playerDistSqr = GetAbsOrigin().DistToSqr( pPlayer->GetAbsOrigin() );
 
@@ -454,6 +493,11 @@ void CNPC_EnemyFinder::GatherConditions()
 //-----------------------------------------------------------------------------
 Class_T	CNPC_EnemyFinder::Classify( void )
 {
+#ifdef MAPBASE
+	if (m_iClassify != CLASS_NONE)
+		return m_iClassify;
+#endif
+
 	if ( GetSquad() )
 	{
 		AISquadIter_t iter;

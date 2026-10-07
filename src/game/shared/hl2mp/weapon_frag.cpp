@@ -15,11 +15,16 @@
 	#include "hl2mp_player.h"
 	#include "te_effect_dispatch.h"
 	#include "grenade_frag.h"
+	#include "soundent.h"
+#ifdef RTBMP
+	#include "rtbmp_player.h"
+#endif
 #endif
 
 #include "weapon_ar2.h"
 #include "effect_dispatch_data.h"
 #include "weapon_hl2mpbasehlmpcombatweapon.h"
+#include "rtbr_shareddefs.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -56,15 +61,23 @@ public:
 	void	SecondaryAttack( void );
 	void	DecrementAmmo( CBaseCombatCharacter *pOwner );
 	void	ItemPostFrame( void );
+	void	SetGrenadeTimerEnabled( bool bEnable );
 
 	bool	Deploy( void );
+	virtual bool CanHolster( void ) const OVERRIDE;
 	bool	Holster( CBaseCombatWeapon *pSwitchingTo = NULL );
+
+#ifndef CLIENT_DLL
+	int		CapabilitiesGet( void ) { return bits_CAP_WEAPON_RANGE_ATTACK1; }
+#endif
 	
 	bool	Reload( void );
 
 #ifndef CLIENT_DLL
-	void Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatCharacter *pOperator );
+	float	GetElapsedCookTime( void );
 #endif
+
+	void Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatCharacter *pOperator );
 
 	void	ThrowGrenade( CBasePlayer *pPlayer );
 	bool	IsPrimed( bool ) { return ( m_AttackPaused != 0 );	}
@@ -81,29 +94,48 @@ private:
 	CNetworkVar( int,	m_AttackPaused );
 	CNetworkVar( bool,	m_fDrawbackFinished );
 
+	float m_flDrawbackTime;
+	float m_flNextBlip;
+
 	CWeaponFrag( const CWeaponFrag & );
 
-#ifndef CLIENT_DLL
 	DECLARE_ACTTABLE();
+#ifndef CLIENT_DLL
+	DECLARE_DATADESC();
 #endif
 };
 
 #ifndef CLIENT_DLL
+
+BEGIN_DATADESC( CWeaponFrag )
+	DEFINE_FIELD( m_bRedraw, FIELD_BOOLEAN ),
+	DEFINE_FIELD( m_AttackPaused, FIELD_INTEGER ),
+	DEFINE_FIELD( m_fDrawbackFinished, FIELD_BOOLEAN ),
+END_DATADESC()
+
+#endif
 
 acttable_t	CWeaponFrag::m_acttable[] = 
 {
-	{ ACT_HL2MP_IDLE,					ACT_HL2MP_IDLE_GRENADE,					false },
-	{ ACT_HL2MP_RUN,					ACT_HL2MP_RUN_GRENADE,					false },
-	{ ACT_HL2MP_IDLE_CROUCH,			ACT_HL2MP_IDLE_CROUCH_GRENADE,			false },
-	{ ACT_HL2MP_WALK_CROUCH,			ACT_HL2MP_WALK_CROUCH_GRENADE,			false },
-	{ ACT_HL2MP_GESTURE_RANGE_ATTACK,	ACT_HL2MP_GESTURE_RANGE_ATTACK_GRENADE,	false },
-	{ ACT_HL2MP_GESTURE_RELOAD,			ACT_HL2MP_GESTURE_RELOAD_GRENADE,		false },
-	{ ACT_HL2MP_JUMP,					ACT_HL2MP_JUMP_GRENADE,					false },
+	{ ACT_RANGE_ATTACK1, ACT_RANGE_ATTACK_SLAM, true },
+
+#ifdef MAPBASE
+	// HL2:DM activities (for third-person animations in SP)
+	{ ACT_HL2MP_IDLE,					ACT_HL2MP_IDLE_GRENADE,                    false },
+	{ ACT_HL2MP_RUN,					ACT_HL2MP_RUN_GRENADE,                    false },
+	{ ACT_HL2MP_IDLE_CROUCH,			ACT_HL2MP_IDLE_CROUCH_GRENADE,            false },
+	{ ACT_HL2MP_WALK_CROUCH,			ACT_HL2MP_WALK_CROUCH_GRENADE,            false },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK,	ACT_HL2MP_GESTURE_RANGE_ATTACK_GRENADE,    false },
+	{ ACT_HL2MP_GESTURE_RELOAD,			ACT_HL2MP_GESTURE_RELOAD_GRENADE,        false },
+	{ ACT_HL2MP_JUMP,					ACT_HL2MP_JUMP_GRENADE,			false },
+#if EXPANDED_HL2DM_ACTIVITIES
+	{ ACT_HL2MP_WALK,					ACT_HL2MP_WALK_GRENADE,					false },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK2,	ACT_HL2MP_GESTURE_RANGE_ATTACK2_GRENADE,    false },
+#endif
+#endif
 };
 
 IMPLEMENT_ACTTABLE(CWeaponFrag);
-
-#endif
 
 IMPLEMENT_NETWORKCLASS_ALIASED( WeaponFrag, DT_WeaponFrag )
 
@@ -123,9 +155,9 @@ END_NETWORK_TABLE()
 
 #ifdef CLIENT_DLL
 BEGIN_PREDICTION_DATA( CWeaponFrag )
-	DEFINE_PRED_FIELD( m_bRedraw, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
-	DEFINE_PRED_FIELD( m_fDrawbackFinished, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
-	DEFINE_PRED_FIELD( m_AttackPaused, FIELD_INTEGER, FTYPEDESC_INSENDTABLE ),
+	DEFINE_PRED_FIELD( m_bRedraw, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE | FTYPEDESC_NOERRORCHECK ),
+	DEFINE_PRED_FIELD( m_fDrawbackFinished, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE | FTYPEDESC_NOERRORCHECK ),
+	DEFINE_PRED_FIELD( m_AttackPaused, FIELD_INTEGER, FTYPEDESC_INSENDTABLE | FTYPEDESC_NOERRORCHECK ),
 END_PREDICTION_DATA()
 #endif
 
@@ -149,11 +181,11 @@ void CWeaponFrag::Precache( void )
 	UTIL_PrecacheOther( "npc_grenade_frag" );
 #endif
 
+	PrecacheScriptSound( "Grenade.Blip" );
 	PrecacheScriptSound( "WeaponFrag.Throw" );
 	PrecacheScriptSound( "WeaponFrag.Roll" );
 }
 
-#ifndef CLIENT_DLL
 //-----------------------------------------------------------------------------
 // Purpose: 
 // Input  : *pEvent - 
@@ -168,24 +200,29 @@ void CWeaponFrag::Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatChar
 	{
 		case EVENT_WEAPON_SEQUENCE_FINISHED:
 			m_fDrawbackFinished = true;
+			SetGrenadeTimerEnabled( true );
+			m_flNextBlip = m_flDrawbackTime = gpGlobals->curtime;
 			break;
 
 		case EVENT_WEAPON_THROW:
 			ThrowGrenade( pOwner );
 			DecrementAmmo( pOwner );
 			fThrewGrenade = true;
+			SetGrenadeTimerEnabled( false );
 			break;
 
 		case EVENT_WEAPON_THROW2:
 			RollGrenade( pOwner );
 			DecrementAmmo( pOwner );
 			fThrewGrenade = true;
+			SetGrenadeTimerEnabled( false );
 			break;
 
 		case EVENT_WEAPON_THROW3:
 			LobGrenade( pOwner );
 			DecrementAmmo( pOwner );
 			fThrewGrenade = true;
+			SetGrenadeTimerEnabled( false );
 			break;
 
 		default:
@@ -199,10 +236,27 @@ void CWeaponFrag::Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatChar
 		m_flNextPrimaryAttack	= gpGlobals->curtime + RETHROW_DELAY;
 		m_flNextSecondaryAttack	= gpGlobals->curtime + RETHROW_DELAY;
 		m_flTimeWeaponIdle = FLT_MAX; //NOTE: This is set once the animation has finished up!
+		
+#ifndef CLIENT_DLL
+		// Make a sound designed to scare snipers back into their holes!
+		CBaseCombatCharacter *pOwner = GetOwner();
+
+		if( pOwner )
+		{
+			Vector vecSrc = pOwner->Weapon_ShootPosition();
+			Vector	vecDir;
+
+			AngleVectors( pOwner->EyeAngles(), &vecDir );
+
+			trace_t tr;
+
+			UTIL_TraceLine( vecSrc, vecSrc + vecDir * 1024, MASK_SOLID_BRUSHONLY, pOwner, COLLISION_GROUP_NONE, &tr );
+
+			CSoundEnt::InsertSound( SOUND_DANGER_SNIPERONLY, tr.endpos, 384, 0.2, pOwner );
+		}
+#endif
 	}
 }
-
-#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -215,6 +269,15 @@ bool CWeaponFrag::Deploy( void )
 	return BaseClass::Deploy();
 }
 
+bool CWeaponFrag::CanHolster( void ) const
+{
+	// the player must commit to throwing the grenade
+	if ( m_fDrawbackFinished )
+		return false;
+
+	return BaseClass::CanHolster();
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 // Output : Returns true on success, false on failure.
@@ -223,6 +286,7 @@ bool CWeaponFrag::Holster( CBaseCombatWeapon *pSwitchingTo )
 {
 	m_bRedraw = false;
 	m_fDrawbackFinished = false;
+	SetGrenadeTimerEnabled( false );
 
 	return BaseClass::Holster( pSwitchingTo );
 }
@@ -258,6 +322,9 @@ bool CWeaponFrag::Reload( void )
 //-----------------------------------------------------------------------------
 void CWeaponFrag::SecondaryAttack( void )
 {
+	if (m_fDrawbackFinished) // no changing your mind!!!
+		return;
+
 	if ( m_bRedraw )
 		return;
 
@@ -287,6 +354,12 @@ void CWeaponFrag::SecondaryAttack( void )
 	{
 		pPlayer->SwitchToNextBestWeapon( this );
 	}
+
+#if !defined(CLIENT_DLL) && defined(RTBMP)
+	CRTBMP_Player *pMPPlayer = ToRTBMPPlayer( pPlayer );
+	if (pMPPlayer)
+		pMPPlayer->DisableSpawnProtection();
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -294,6 +367,9 @@ void CWeaponFrag::SecondaryAttack( void )
 //-----------------------------------------------------------------------------
 void CWeaponFrag::PrimaryAttack( void )
 {
+	if (m_fDrawbackFinished) // no changing your mind!!!
+		return;
+
 	if ( m_bRedraw )
 		return;
 
@@ -323,6 +399,12 @@ void CWeaponFrag::PrimaryAttack( void )
 	{
 		pPlayer->SwitchToNextBestWeapon( this );
 	}
+
+#if !defined(CLIENT_DLL) && defined(RTBMP)
+	CRTBMP_Player *pMPPlayer = ToRTBMPPlayer( pPlayer );
+	if (pMPPlayer)
+		pMPPlayer->DisableSpawnProtection();
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -345,6 +427,24 @@ void CWeaponFrag::ItemPostFrame( void )
 
 		if (pOwner)
 		{
+#ifndef CLIENT_DLL
+			// blip with same blip timer system as a thrown grenade, i.e. start slow, go fast
+			// the sounds are serverside because the grenade will be serverside
+			if (GetElapsedCookTime() <= GRENADE_TIMER)
+			{
+				if (gpGlobals->curtime >= m_flNextBlip)
+				{
+					CPASAttenuationFilter filter( GetAbsOrigin() );
+					EmitSound( filter, entindex(), "Grenade.Blip" );
+					if (GetElapsedCookTime() >= (GRENADE_TIMER - FRAG_GRENADE_WARN_TIME)) {
+						m_flNextBlip += FRAG_GRENADE_BLIP_FAST_FREQUENCY;
+					}
+					else {
+						m_flNextBlip += FRAG_GRENADE_BLIP_FREQUENCY;
+					}
+				}
+			}
+#endif
 			switch( m_AttackPaused )
 			{
 			case GRENADE_PAUSED_PRIMARY:
@@ -352,6 +452,7 @@ void CWeaponFrag::ItemPostFrame( void )
 				{
 					SendWeaponAnim( ACT_VM_THROW );
 					m_fDrawbackFinished = false;
+					m_flNextSecondaryAttack = gpGlobals->curtime + RETHROW_DELAY;
 				}
 				break;
 
@@ -371,6 +472,7 @@ void CWeaponFrag::ItemPostFrame( void )
 					}
 
 					m_fDrawbackFinished = false;
+					m_flNextPrimaryAttack = gpGlobals->curtime + RETHROW_DELAY;
 				}
 				break;
 
@@ -435,7 +537,7 @@ void CWeaponFrag::ThrowGrenade( CBasePlayer *pPlayer )
 	Vector vecThrow;
 	pPlayer->GetVelocity( &vecThrow, NULL );
 	vecThrow += vForward * 1200;
-	CBaseGrenade *pGrenade = Fraggrenade_Create( vecSrc, vec3_angle, vecThrow, AngularImpulse(600,random->RandomInt(-1200,1200),0), pPlayer, GRENADE_TIMER, false );
+	CBaseGrenade *pGrenade = Fraggrenade_Create( vecSrc, vec3_angle, vecThrow, AngularImpulse( 600, random->RandomInt( -1200, 1200 ), 0 ), pPlayer, GRENADE_TIMER - GetElapsedCookTime(), false );
 
 	if ( pGrenade )
 	{
@@ -461,6 +563,10 @@ void CWeaponFrag::ThrowGrenade( CBasePlayer *pPlayer )
 	
 	// player "shoot" animation
 	pPlayer->SetAnimation( PLAYER_ATTACK1 );
+
+#ifdef GAME_DLL
+	pPlayer->OnMyWeaponFired( this );
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -480,10 +586,13 @@ void CWeaponFrag::LobGrenade( CBasePlayer *pPlayer )
 	Vector vecThrow;
 	pPlayer->GetVelocity( &vecThrow, NULL );
 	vecThrow += vForward * 350 + Vector( 0, 0, 50 );
-	CBaseGrenade *pGrenade = Fraggrenade_Create( vecSrc, vec3_angle, vecThrow, AngularImpulse(200,random->RandomInt(-600,600),0), pPlayer, GRENADE_TIMER, false );
+	CBaseGrenade *pGrenade = Fraggrenade_Create( vecSrc, vec3_angle, vecThrow, AngularImpulse( 200, random->RandomInt( -600, 600 ), 0 ), pPlayer, GRENADE_TIMER - GetElapsedCookTime(), false );
 
 	if ( pGrenade )
 	{
+#ifdef MAPBASE_MP
+		if ( GetHL2MPWpnData().m_iPlayerDamage > 0 )
+#endif
 		pGrenade->SetDamage( GetHL2MPWpnData().m_iPlayerDamage );
 		pGrenade->SetDamageRadius( GRENADE_DAMAGE_RADIUS );
 	}
@@ -492,7 +601,11 @@ void CWeaponFrag::LobGrenade( CBasePlayer *pPlayer )
 	WeaponSound( WPN_DOUBLE );
 
 	// player "shoot" animation
+#ifdef MAPBASE
+	pPlayer->SetAnimation( PLAYER_ATTACK2 );
+#else
 	pPlayer->SetAnimation( PLAYER_ATTACK1 );
+#endif
 
 	m_bRedraw = true;
 }
@@ -532,7 +645,7 @@ void CWeaponFrag::RollGrenade( CBasePlayer *pPlayer )
 	QAngle orientation(0,pPlayer->GetLocalAngles().y,-90);
 	// roll it
 	AngularImpulse rotSpeed(0,0,720);
-	CBaseGrenade *pGrenade = Fraggrenade_Create( vecSrc, orientation, vecThrow, rotSpeed, pPlayer, GRENADE_TIMER, false );
+	CBaseGrenade *pGrenade = Fraggrenade_Create( vecSrc, orientation, vecThrow, rotSpeed, pPlayer, GRENADE_TIMER - GetElapsedCookTime(), false );
 
 	if ( pGrenade )
 	{
@@ -545,8 +658,29 @@ void CWeaponFrag::RollGrenade( CBasePlayer *pPlayer )
 	WeaponSound( SPECIAL1 );
 
 	// player "shoot" animation
+#ifdef MAPBASE
+	pPlayer->SetAnimation( PLAYER_ATTACK2 );
+#else
 	pPlayer->SetAnimation( PLAYER_ATTACK1 );
+#endif
 
 	m_bRedraw = true;
 }
 
+#ifndef CLIENT_DLL
+float CWeaponFrag::GetElapsedCookTime( void )
+{
+	return gpGlobals->curtime - m_flDrawbackTime;
+}
+#endif
+
+void CWeaponFrag::SetGrenadeTimerEnabled( bool bEnable )
+{
+	CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
+	if (!pOwner)
+		return;
+	if (!bEnable)
+		pOwner->m_Local.m_flGrenadeStart = -1;
+	else
+		pOwner->m_Local.m_flGrenadeStart = gpGlobals->curtime;
+}

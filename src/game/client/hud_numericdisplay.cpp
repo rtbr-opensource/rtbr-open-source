@@ -22,7 +22,7 @@ using namespace vgui;
 //-----------------------------------------------------------------------------
 // Purpose: Constructor
 //-----------------------------------------------------------------------------
-CHudNumericDisplay::CHudNumericDisplay(vgui::Panel *parent, const char *name) : BaseClass(parent, name)
+CHudNumericDisplay::CHudNumericDisplay( vgui::Panel *parent, const char *name ) : BaseClass( parent, name )
 {
 	vgui::Panel *pParent = g_pClientMode->GetViewport();
 	SetParent( pParent );
@@ -47,7 +47,7 @@ void CHudNumericDisplay::Reset()
 //-----------------------------------------------------------------------------
 // Purpose: data accessor
 //-----------------------------------------------------------------------------
-void CHudNumericDisplay::SetDisplayValue(int value)
+void CHudNumericDisplay::SetDisplayValue( int value )
 {
 	m_iValue = value;
 }
@@ -55,7 +55,7 @@ void CHudNumericDisplay::SetDisplayValue(int value)
 //-----------------------------------------------------------------------------
 // Purpose: data accessor
 //-----------------------------------------------------------------------------
-void CHudNumericDisplay::SetSecondaryValue(int value)
+void CHudNumericDisplay::SetSecondaryValue( int value )
 {
 	m_iSecondaryValue = value;
 }
@@ -63,7 +63,7 @@ void CHudNumericDisplay::SetSecondaryValue(int value)
 //-----------------------------------------------------------------------------
 // Purpose: data accessor
 //-----------------------------------------------------------------------------
-void CHudNumericDisplay::SetShouldDisplayValue(bool state)
+void CHudNumericDisplay::SetShouldDisplayValue( bool state )
 {
 	m_bDisplayValue = state;
 }
@@ -71,7 +71,7 @@ void CHudNumericDisplay::SetShouldDisplayValue(bool state)
 //-----------------------------------------------------------------------------
 // Purpose: data accessor
 //-----------------------------------------------------------------------------
-void CHudNumericDisplay::SetShouldDisplaySecondaryValue(bool state)
+void CHudNumericDisplay::SetShouldDisplaySecondaryValue( bool state )
 {
 	m_bDisplaySecondaryValue = state;
 }
@@ -79,16 +79,16 @@ void CHudNumericDisplay::SetShouldDisplaySecondaryValue(bool state)
 //-----------------------------------------------------------------------------
 // Purpose: data accessor
 //-----------------------------------------------------------------------------
-void CHudNumericDisplay::SetLabelText(const wchar_t *text)
+void CHudNumericDisplay::SetLabelText( const wchar_t *text )
 {
-	wcsncpy(m_LabelText, text, sizeof(m_LabelText) / sizeof(wchar_t));
-	m_LabelText[(sizeof(m_LabelText) / sizeof(wchar_t)) - 1] = 0;
+	wcsncpy( m_LabelText, text, sizeof( m_LabelText ) / sizeof( wchar_t ) );
+	m_LabelText[(sizeof( m_LabelText ) / sizeof( wchar_t )) - 1] = 0;
 }
 
 //-----------------------------------------------------------------------------
 // Purpose: data accessor
 //-----------------------------------------------------------------------------
-void CHudNumericDisplay::SetIndent(bool state)
+void CHudNumericDisplay::SetIndent( bool state )
 {
 	m_bIndent = state;
 }
@@ -96,7 +96,7 @@ void CHudNumericDisplay::SetIndent(bool state)
 //-----------------------------------------------------------------------------
 // Purpose: data accessor
 //-----------------------------------------------------------------------------
-void CHudNumericDisplay::SetIsTime(bool state)
+void CHudNumericDisplay::SetIsTime( bool state )
 {
 	m_bIsTime = state;
 }
@@ -104,13 +104,13 @@ void CHudNumericDisplay::SetIsTime(bool state)
 //-----------------------------------------------------------------------------
 // Purpose: paints a number at the specified position
 //-----------------------------------------------------------------------------
-void CHudNumericDisplay::PaintNumbers(HFont font, int xpos, int ypos, int value)
+void CHudNumericDisplay::PaintNumbers( HFont font, int xpos, int ypos, int value )
 {
-	surface()->DrawSetTextFont(font);
+	surface()->DrawSetTextFont( font );
 	wchar_t unicode[6];
-	if ( !m_bIsTime )
+	if (!m_bIsTime)
 	{
-		V_snwprintf(unicode, ARRAYSIZE(unicode), L"%d", value);
+		V_snwprintf( unicode, ARRAYSIZE( unicode ), L"%d", value );
 	}
 	else
 	{
@@ -118,20 +118,20 @@ void CHudNumericDisplay::PaintNumbers(HFont font, int xpos, int ypos, int value)
 		int iSeconds = value - iMinutes * 60;
 #ifdef PORTAL
 		// portal uses a normal font for numbers so we need the seperate to be a renderable ':' char
-		if ( iSeconds < 10 )
-			V_snwprintf( unicode, ARRAYSIZE(unicode), L"%d:0%d", iMinutes, iSeconds );
+		if (iSeconds < 10)
+			V_snwprintf( unicode, ARRAYSIZE( unicode ), L"%d:0%d", iMinutes, iSeconds );
 		else
-			V_snwprintf( unicode, ARRAYSIZE(unicode), L"%d:%d", iMinutes, iSeconds );		
+			V_snwprintf( unicode, ARRAYSIZE( unicode ), L"%d:%d", iMinutes, iSeconds );
 #else
-		if ( iSeconds < 10 )
-			V_snwprintf( unicode, ARRAYSIZE(unicode), L"%d`0%d", iMinutes, iSeconds );
+		if (iSeconds < 10)
+			V_snwprintf( unicode, ARRAYSIZE( unicode ), L"%d`0%d", iMinutes, iSeconds );
 		else
-			V_snwprintf( unicode, ARRAYSIZE(unicode), L"%d`%d", iMinutes, iSeconds );
+			V_snwprintf( unicode, ARRAYSIZE( unicode ), L"%d`%d", iMinutes, iSeconds );
 #endif
 	}
 
 	// adjust the position to take into account 3 characters
-	int charWidth = surface()->GetCharacterWidth(font, '0');
+	int charWidth = surface()->GetCharacterWidth( font, '0' );
 	if (value < 100 && m_bIndent)
 	{
 		xpos += charWidth;
@@ -141,7 +141,7 @@ void CHudNumericDisplay::PaintNumbers(HFont font, int xpos, int ypos, int value)
 		xpos += charWidth;
 	}
 
-	surface()->DrawSetTextPos(xpos, ypos);
+	surface()->DrawSetTextPos( xpos, ypos );
 	surface()->DrawUnicodeString( unicode );
 }
 
@@ -150,9 +150,9 @@ void CHudNumericDisplay::PaintNumbers(HFont font, int xpos, int ypos, int value)
 //-----------------------------------------------------------------------------
 void CHudNumericDisplay::PaintLabel( void )
 {
-	surface()->DrawSetTextFont(m_hTextFont);
-	surface()->DrawSetTextColor(GetFgColor());
-	surface()->DrawSetTextPos(text_xpos, text_ypos);
+	surface()->DrawSetTextFont( m_hTextFont );
+	surface()->DrawSetTextColor( GetFgColor() );
+	surface()->DrawSetTextPos( text_xpos, text_ypos );
 	surface()->DrawUnicodeString( m_LabelText );
 }
 
@@ -164,23 +164,23 @@ void CHudNumericDisplay::Paint()
 	if (m_bDisplayValue)
 	{
 		// draw our numbers
-		surface()->DrawSetTextColor(GetFgColor());
-		PaintNumbers(m_hNumberFont, digit_xpos, digit_ypos, m_iValue);
+		surface()->DrawSetTextColor( GetFgColor() );
+		PaintNumbers( m_hNumberFont, digit_xpos, digit_ypos, m_iValue );
 
 		// draw the overbright blur
 		for (float fl = m_flBlur; fl > 0.0f; fl -= 1.0f)
 		{
 			if (fl >= 1.0f)
 			{
-				PaintNumbers(m_hNumberGlowFont, digit_xpos, digit_ypos, m_iValue);
+				PaintNumbers( m_hNumberGlowFont, digit_xpos, digit_ypos, m_iValue );
 			}
 			else
 			{
 				// draw a percentage of the last one
 				Color col = GetFgColor();
 				col[3] *= fl;
-				surface()->DrawSetTextColor(col);
-				PaintNumbers(m_hNumberGlowFont, digit_xpos, digit_ypos, m_iValue);
+				surface()->DrawSetTextColor( col );
+				PaintNumbers( m_hNumberGlowFont, digit_xpos, digit_ypos, m_iValue );
 			}
 		}
 	}
@@ -188,12 +188,11 @@ void CHudNumericDisplay::Paint()
 	// total ammo
 	if (m_bDisplaySecondaryValue)
 	{
-		surface()->DrawSetTextColor(GetFgColor());
-		PaintNumbers(m_hSmallNumberFont, digit2_xpos, digit2_ypos, m_iSecondaryValue);
+		surface()->DrawSetTextColor( GetFgColor() );
+		PaintNumbers( m_hSmallNumberFont, digit2_xpos, digit2_ypos, m_iSecondaryValue );
 	}
 
 	PaintLabel();
 }
-
 
 

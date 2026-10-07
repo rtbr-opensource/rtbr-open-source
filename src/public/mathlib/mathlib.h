@@ -8,6 +8,7 @@
 #define MATH_LIB_H
 
 #include <math.h>
+#include "minmax.h"
 #include "tier0/basetypes.h"
 #include "tier0/commonmacros.h"
 #include "mathlib/vector.h"
@@ -16,10 +17,8 @@
 
 #include "mathlib/math_pfns.h"
 
-#if defined(__i386__) || defined(_M_IX86)
 // For MMX intrinsics
 #include <xmmintrin.h>
-#endif
 
 // XXX remove me
 #undef clamp
@@ -109,7 +108,7 @@ FORCEINLINE float clamp( float val, float minVal, float maxVal )
 #else // DEBUG
 FORCEINLINE float clamp( float val, float minVal, float maxVal )
 {
-#if defined(__i386__) || defined(_M_IX86)
+#if defined( PLATFORM_INTEL )
 	_mm_store_ss( &val,
 		_mm_min_ss(
 			_mm_max_ss(
@@ -236,7 +235,8 @@ bool R_CullBoxSkipNear( const Vector& mins, const Vector& maxs, const Frustum_t 
 
 struct matrix3x4_t
 {
-	matrix3x4_t() {}
+	matrix3x4_t() = default;
+
 	matrix3x4_t( 
 		float m00, float m01, float m02, float m03,
 		float m10, float m11, float m12, float m13,
@@ -436,63 +436,14 @@ inline vec_t RoundInt (vec_t in)
 
 int Q_log2(int val);
 
-// Math routines done in optimized assembly math package routines
-void inline SinCos( float radians, float *sine, float *cosine )
-{
-#if defined( _X360 )
-	XMScalarSinCos( sine, cosine, radians );
-#elif defined( PLATFORM_WINDOWS_PC32 )
-	_asm
-	{
-		fld		DWORD PTR [radians]
-		fsincos
-
-		mov edx, DWORD PTR [cosine]
-		mov eax, DWORD PTR [sine]
-
-		fstp DWORD PTR [edx]
-		fstp DWORD PTR [eax]
-	}
-#elif defined( PLATFORM_WINDOWS_PC64 )
-	*sine = sin( radians );
-	*cosine = cos( radians );
-#elif defined( POSIX )
-	double __cosr, __sinr;
-	__asm ("fsincos" : "=t" (__cosr), "=u" (__sinr) : "0" (radians));
-
-  	*sine = __sinr;
-  	*cosine = __cosr;
-#endif
-}
-
-#define SIN_TABLE_SIZE	256
-#define FTOIBIAS		12582912.f
-extern float SinCosTable[SIN_TABLE_SIZE];
-
 inline float TableCos( float theta )
 {
-	union
-	{
-		int i;
-		float f;
-	} ftmp;
-
-	// ideally, the following should compile down to: theta * constant + constant, changing any of these constants from defines sometimes fubars this.
-	ftmp.f = theta * ( float )( SIN_TABLE_SIZE / ( 2.0f * M_PI ) ) + ( FTOIBIAS + ( SIN_TABLE_SIZE / 4 ) );
-	return SinCosTable[ ftmp.i & ( SIN_TABLE_SIZE - 1 ) ];
+	return FastCos( theta );
 }
 
 inline float TableSin( float theta )
 {
-	union
-	{
-		int i;
-		float f;
-	} ftmp;
-
-	// ideally, the following should compile down to: theta * constant + constant
-	ftmp.f = theta * ( float )( SIN_TABLE_SIZE / ( 2.0f * M_PI ) ) + FTOIBIAS;
-	return SinCosTable[ ftmp.i & ( SIN_TABLE_SIZE - 1 ) ];
+	return sinf( theta );
 }
 
 template<class T>
@@ -1203,7 +1154,7 @@ inline float SimpleSplineRemapValClamped( float val, float A, float B, float C, 
 
 FORCEINLINE int RoundFloatToInt(float f)
 {
-#if defined(__i386__) || defined(_M_IX86) || defined( PLATFORM_WINDOWS_PC64 ) || defined(__x86_64__)
+#if defined( PLATFORM_INTEL )
 	return _mm_cvtss_si32(_mm_load_ss(&f));
 #elif defined( _X360 )
 #ifdef Assert
@@ -1310,12 +1261,18 @@ FORCEINLINE int Float2Int( float a )
 inline int Floor2Int( float a )
 {
 	int RetVal;
-#if defined( __i386__ )
+#if defined( PLATFORM_INTEL )
+
+#if MAPBASE
+	RetVal = _mm_cvt_ss2si(_mm_set_ss(a + a - 0.5f)) >> 1;
+#else
 	// Convert to int and back, compare, subtract one if too big
 	__m128 a128 = _mm_set_ss(a);
 	RetVal = _mm_cvtss_si32(a128);
     __m128 rounded128 = _mm_cvt_si2ss(_mm_setzero_ps(), RetVal);
 	RetVal -= _mm_comigt_ss( rounded128, a128 );
+#endif // MAPBASE
+
 #else
 	RetVal = static_cast<int>( floor(a) );
 #endif
@@ -1327,7 +1284,7 @@ inline int Floor2Int( float a )
 //-----------------------------------------------------------------------------
 FORCEINLINE unsigned int FastFToC( float c )
 {
-#if defined( __i386__ )
+#if VALVE_LITTLE_ENDIAN
 	// IEEE float bit manipulation works for values between [0, 1<<23)
 	union { float f; int i; } convert = { c*255.0f + (float)(1<<23) };
 	return convert.i & 255;
@@ -1342,7 +1299,7 @@ FORCEINLINE unsigned int FastFToC( float c )
 //-----------------------------------------------------------------------------
 FORCEINLINE int FastFloatToSmallInt( float c )
 {
-#if defined( __i386__ )
+#if VALVE_LITTLE_ENDIAN
 	// IEEE float bit manipulation works for values between [-1<<22, 1<<22)
 	union { float f; int i; } convert = { c + (float)(3<<22) };
 	return (convert.i & ((1<<23)-1)) - (1<<22);
@@ -1367,12 +1324,18 @@ inline float ClampToMsec( float in )
 inline int Ceil2Int( float a )
 {
    int RetVal;
-#if defined( __i386__ )
-   // Convert to int and back, compare, add one if too small
+#if defined( PLATFORM_INTEL )
+
+#if MAPBASE
+	RetVal = -(_mm_cvt_ss2si(_mm_set_ss(-0.5f - (a + a))) >> 1);
+#else
+     // Convert to int and back, compare, add one if too small
    __m128 a128 = _mm_load_ss(&a);
    RetVal = _mm_cvtss_si32(a128);
    __m128 rounded128 = _mm_cvt_si2ss(_mm_setzero_ps(), RetVal);
    RetVal += _mm_comilt_ss( rounded128, a128 );
+#endif // MAPBASE
+
 #else
    RetVal = static_cast<int>( ceil(a) );
 #endif
@@ -2168,7 +2131,7 @@ inline bool CloseEnough( const Vector &a, const Vector &b, float epsilon = EQUAL
 // Fast compare
 // maxUlps is the maximum error in terms of Units in the Last Place. This 
 // specifies how big an error we are willing to accept in terms of the value
-// of the least significant digit of the floating point number’s 
+// of the least significant digit of the floating point numberï¿½s 
 // representation. maxUlps can also be interpreted in terms of how many 
 // representable floats we are willing to accept between A and B. 
 // This function will allow maxUlps-1 floats between A and B.

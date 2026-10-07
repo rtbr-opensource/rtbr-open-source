@@ -19,19 +19,24 @@
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
-class CPointSpotlight : public CPointEntity
+class CPointSpotlight : public CServerOnlyPointEntity
 {
-	DECLARE_CLASS( CPointSpotlight, CPointEntity );
+	DECLARE_CLASS( CPointSpotlight, CServerOnlyPointEntity );
 public:
 	DECLARE_DATADESC();
 
 	CPointSpotlight();
+#ifdef MAPBASE
+	~CPointSpotlight();
+#endif
 
 	void	Precache(void);
 	void	Spawn(void);
 	virtual void Activate();
 
 	virtual void OnEntityEvent( EntityEvent_t event, void *pEventData );
+
+	virtual void SetParent( CBaseEntity *pNewParent, int iAttachment = -1 );
 
 private:
 	int 	UpdateTransmitState();
@@ -46,12 +51,17 @@ private:
 	// ------------------------------
 	void InputLightOn( inputdata_t &inputdata );
 	void InputLightOff( inputdata_t &inputdata );
+#ifdef MAPBASE
+	void InputLightToggle( inputdata_t &inputdata ) { m_bSpotlightOn ? InputLightOff(inputdata) : InputLightOn(inputdata); }
+#endif
 
 	// Creates the efficient spotlight 
 	void CreateEfficientSpotlight();
 
 	// Computes render info for a spotlight
 	void ComputeRenderInfo();
+
+	void PassParentToChildren( CBaseEntity *pParent );
 
 private:
 	bool	m_bSpotlightOn;
@@ -69,6 +79,12 @@ private:
 	float	m_flSpotlightGoalWidth;
 	float	m_flHDRColorScale;
 	int		m_nMinDXLevel;
+
+#ifdef MAPBASE
+	float	m_flHaloScale;
+	string_t	m_iszHaloMaterial;
+	string_t	m_iszSpotlightMaterial;
+#endif
 
 public:
 	COutputEvent m_OnOn, m_OnOff;     ///< output fires when turned on, off
@@ -94,10 +110,18 @@ BEGIN_DATADESC( CPointSpotlight )
 	DEFINE_KEYFIELD( m_flSpotlightGoalWidth,FIELD_FLOAT, "SpotlightWidth"),
 	DEFINE_KEYFIELD( m_flHDRColorScale, FIELD_FLOAT, "HDRColorScale" ),
 	DEFINE_KEYFIELD( m_nMinDXLevel, FIELD_INTEGER, "mindxlevel" ),
+#ifdef MAPBASE
+	DEFINE_KEYFIELD( m_flHaloScale, FIELD_FLOAT, "HaloScale" ),
+	DEFINE_KEYFIELD( m_iszHaloMaterial, FIELD_STRING, "HaloMaterial" ),
+	DEFINE_KEYFIELD( m_iszSpotlightMaterial, FIELD_STRING, "SpotlightMaterial" ),
+#endif
 
 	// Inputs
 	DEFINE_INPUTFUNC( FIELD_VOID,		"LightOn",		InputLightOn ),
 	DEFINE_INPUTFUNC( FIELD_VOID,		"LightOff",		InputLightOff ),
+#ifdef MAPBASE
+	DEFINE_INPUTFUNC( FIELD_VOID,		"LightToggle",		InputLightToggle ),
+#endif
 	DEFINE_OUTPUT( m_OnOn, "OnLightOn" ),
 	DEFINE_OUTPUT( m_OnOff, "OnLightOff" ),
 
@@ -121,7 +145,23 @@ CPointSpotlight::CPointSpotlight()
 	m_flHDRColorScale = 1.0f;
 	m_nMinDXLevel = 0;
 	m_bIgnoreSolid = false;
+
+	AddEFlags( EFL_FORCE_ALLOW_MOVEPARENT );
+#ifdef MAPBASE
+	m_flHaloScale = 60.0f;
+#endif
 }
+
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+CPointSpotlight::~CPointSpotlight()
+{
+	if ( GetEntityName() != NULL_STRING )
+		SpotlightDestroy();
+}
+#endif
 
 
 //-----------------------------------------------------------------------------
@@ -132,8 +172,23 @@ void CPointSpotlight::Precache(void)
 	BaseClass::Precache();
 
 	// Sprites.
+#ifdef MAPBASE
+	if (m_iszHaloMaterial == NULL_STRING)
+	{
+		m_iszHaloMaterial = AllocPooledString( "sprites/light_glow03.vmt" );
+	}
+
+	if (m_iszSpotlightMaterial == NULL_STRING)
+	{
+		m_iszSpotlightMaterial = AllocPooledString( "sprites/glow_test02.vmt" );
+	}
+
+	m_nHaloSprite = PrecacheModel( STRING( m_iszHaloMaterial ) );
+	PrecacheModel( STRING( m_iszSpotlightMaterial ) );
+#else
 	m_nHaloSprite = PrecacheModel("sprites/light_glow03.vmt");
 	PrecacheModel( "sprites/glow_test02.vmt" );
+#endif
 }
 
 
@@ -266,6 +321,16 @@ void CPointSpotlight::Activate(void)
 
 		// Don't think
 		SetThink( NULL );
+
+		// No targetname and no parent implies this is a static beam
+		// Hence, we can kill off ourselves and the end point. The beam visual will remain fixed in place
+		if ( GetEntityName() == NULL_STRING )
+		{
+			UTIL_Remove( m_hSpotlightTarget );
+			m_hSpotlightTarget = NULL;
+
+			UTIL_Remove( this );
+		}
 	}
 }
 
@@ -290,6 +355,17 @@ void CPointSpotlight::OnEntityEvent( EntityEvent_t event, void *pEventData )
 	}
 
 	BaseClass::OnEntityEvent( event, pEventData );
+}
+
+
+void CPointSpotlight::SetParent( CBaseEntity *pNewParent, int iAttachment )
+{
+	CBaseEntity *pOldParent = GetMoveParent();
+	
+	BaseClass::SetParent( pNewParent, iAttachment );
+	
+	if ( pOldParent != pNewParent )
+		PassParentToChildren( pNewParent );
 }
 
 	
@@ -360,18 +436,27 @@ void CPointSpotlight::SpotlightCreate(void)
 	}
 
 	//m_hSpotlight = CBeam::BeamCreate( "sprites/spotlight.vmt", m_flSpotlightGoalWidth );
+#ifdef MAPBASE
+	m_hSpotlight = CBeam::BeamCreate( STRING(m_iszSpotlightMaterial), m_flSpotlightGoalWidth );
+#else
 	m_hSpotlight = CBeam::BeamCreate( "sprites/glow_test02.vmt", m_flSpotlightGoalWidth );
+#endif
 	// Set the temporary spawnflag on the beam so it doesn't save (we'll recreate it on restore)
 	m_hSpotlight->SetHDRColorScale( m_flHDRColorScale );
 	m_hSpotlight->AddSpawnFlags( SF_BEAM_TEMPORARY );
 	m_hSpotlight->SetColor( m_clrRender->r, m_clrRender->g, m_clrRender->b ); 
 	m_hSpotlight->SetHaloTexture(m_nHaloSprite);
+#ifdef MAPBASE
+	m_hSpotlight->SetHaloScale(m_flHaloScale);
+#else
 	m_hSpotlight->SetHaloScale(60);
+#endif
 	m_hSpotlight->SetEndWidth(m_flSpotlightGoalWidth);
 	m_hSpotlight->SetBeamFlags( (FBEAM_SHADEOUT|FBEAM_NOTILE) );
 	m_hSpotlight->SetBrightness( 64 );
 	m_hSpotlight->SetNoise( 0 );
 	m_hSpotlight->SetMinDXLevel( m_nMinDXLevel );
+	m_hSpotlight->SetAbsOrigin( GetAbsOrigin() );
 
 	if ( m_bEfficientSpotlight )
 	{
@@ -379,8 +464,12 @@ void CPointSpotlight::SpotlightCreate(void)
 	}
 	else
 	{
-		m_hSpotlight->EntsInit( this, m_hSpotlightTarget );
+		m_hSpotlight->EntsInit( m_hSpotlight, m_hSpotlightTarget );
 	}
+
+	CBaseEntity* pParent = GetMoveParent();
+	if ( pParent )
+		PassParentToChildren( pParent );
 }
 
 //------------------------------------------------------------------------------
@@ -526,6 +615,31 @@ void CPointSpotlight::InputLightOff( inputdata_t &inputdata )
 		if ( m_bEfficientSpotlight )
 		{
 			SpotlightDestroy();
+		}
+	}
+}
+
+
+void CPointSpotlight::PassParentToChildren( CBaseEntity *pParent )
+{
+	// Since the spotlight itself is server-only, parenting wouldn't look correct on the client
+	// Instead, pass the parent entity down to our beams
+	
+	if ( m_hSpotlight )
+	{
+		// Ensure we are at the most up-to-date position
+		m_hSpotlight->SetAbsOrigin( GetAbsOrigin() );
+
+		m_hSpotlight->SetParent( pParent );
+		// SetParent can change our solidity state
+		m_hSpotlight->SetSolid( SOLID_NONE );
+		m_hSpotlight->SetMoveType( MOVETYPE_NONE );
+
+		if ( m_hSpotlightTarget )
+		{
+			m_hSpotlightTarget->SetParent( pParent );
+			m_hSpotlightTarget->SetSolid( SOLID_NONE );
+			m_hSpotlightTarget->SetMoveType( MOVETYPE_NONE );
 		}
 	}
 }

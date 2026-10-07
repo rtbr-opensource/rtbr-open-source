@@ -15,6 +15,15 @@
 #include "simtimer.h"
 #include "soundenvelope.h"
 
+// In HL2MP we need to inherit from  BaseMultiplayerPlayer!
+#if defined ( HL2MP )
+#include "basemultiplayerplayer.h"
+#endif
+
+#ifdef MAPBASE
+#include "mapbase/mapbase_playeranimstate.h"
+#endif
+
 class CAI_Squad;
 class CPropCombineBall;
 
@@ -70,15 +79,26 @@ public:
 		else
 			return m_flDrainRate; 
 	}
+#ifdef MAPBASE
+	void	SetDeviceDrainRate( float flDrainRate ) { m_flDrainRate = flDrainRate; }
+#endif
 };
 
 //=============================================================================
 // >> HL2_PLAYER
 //=============================================================================
+#if defined ( HL2MP )
+class CHL2_Player : public CBaseMultiplayerPlayer
+#else
 class CHL2_Player : public CBasePlayer
+#endif
 {
 public:
+#if defined ( HL2MP )
+	DECLARE_CLASS( CHL2_Player, CBaseMultiplayerPlayer );
+#else
 	DECLARE_CLASS( CHL2_Player, CBasePlayer );
+#endif
 
 	CHL2_Player();
 	~CHL2_Player( void );
@@ -91,6 +111,7 @@ public:
 
 	DECLARE_SERVERCLASS();
 	DECLARE_DATADESC();
+	DECLARE_ENT_SCRIPTDESC();
 
 	virtual void		CreateCorpse( void ) { CopyToBodyQue( this ); };
 
@@ -106,6 +127,25 @@ public:
 	virtual void		StopLoopingSounds( void );
 	virtual void		Splash( void );
 	virtual void 		ModifyOrAppendPlayerCriteria( AI_CriteriaSet& set );
+
+#ifdef MAPBASE
+	// For the logic_playerproxy output
+	void				SpawnedAtPoint( CBaseEntity *pSpawnPoint );
+
+#ifndef MAPBASE_MP
+	Activity			Weapon_TranslateActivity( Activity baseAct, bool *pRequired = NULL );
+#endif
+
+#ifdef SP_ANIM_STATE
+	void				SetAnimation( PLAYER_ANIM playerAnim );
+
+	void				AddAnimStateLayer( int iSequence, float flBlendIn = 0.0f, float flBlendOut = 0.0f, float flPlaybackRate = 1.0f, bool bHoldAtEnd = false, bool bOnlyWhenStill = false );
+#endif
+
+	virtual CStudioHdr*	OnNewModel();
+
+	virtual const char *GetOverrideStepSound( const char *pszBaseStepSoundName );
+#endif
 
 	void				DrawDebugGeometryOverlays(void);
 
@@ -139,6 +179,11 @@ public:
 	
 	void SetFlashlightEnabled( bool bState );
 
+#ifdef MAPBASE
+	// Needed for logic_playerproxy
+	float GetFlashlightBattery();
+#endif
+
 	// Apply a battery
 	bool ApplyBattery( float powerMultiplier = 1.0 );
 
@@ -159,6 +204,21 @@ public:
 	int GetNumSquadCommandables();
 	int GetNumSquadCommandableMedics();
 
+#ifdef MAPBASE_MP
+	CAI_Squad *GetPlayerSquad() const { return m_pPlayerAISquad; }
+#endif
+
+#ifdef MAPBASE
+	void InputSquadForceSummon( inputdata_t &inputdata );
+	void InputSquadForceGoTo( inputdata_t &inputdata );
+
+	void InputEnableGeigerCounter( inputdata_t &inputdata );
+	void InputDisableGeigerCounter( inputdata_t &inputdata );
+
+	void InputShowSquadHUD( inputdata_t &inputdata );
+	void InputHideSquadHUD( inputdata_t &inputdata );
+#endif
+
 	// Locator
 	void UpdateLocatorPosition( const Vector &vecPosition );
 
@@ -177,6 +237,8 @@ public:
 	void StopZooming( void );
 	bool IsZooming( void );
 	void CheckSuitZoom( void );
+	int GetSuitZoomFOV( void );
+	CNetworkVar( int, m_iSuitZoomFOV );
 
 	// Walking
 	void StartWalking( void );
@@ -195,6 +257,19 @@ public:
 	void				InputEnableFlashlight( inputdata_t &inputdata );
 	void				InputDisableFlashlight( inputdata_t &inputdata );
 
+#ifdef MAPBASE
+	void				InputAddArmor( inputdata_t &inputdata );
+	void				InputRemoveArmor( inputdata_t &inputdata );
+	void				InputSetArmor( inputdata_t &inputdata );
+
+	void				InputAddAuxPower( inputdata_t &inputdata );
+	void				InputRemoveAuxPower( inputdata_t &inputdata );
+	void				InputSetAuxPower( inputdata_t &inputdata );
+
+	void				InputTurnFlashlightOn( inputdata_t &inputdata );
+	void				InputTurnFlashlightOff( inputdata_t &inputdata );
+#endif
+
 	const impactdamagetable_t &GetPhysicsImpactDamageTable();
 	virtual int			OnTakeDamage( const CTakeDamageInfo &info );
 	virtual int			OnTakeDamage_Alive( const CTakeDamageInfo &info );
@@ -209,6 +284,10 @@ public:
 	bool				ShouldKeepLockedAutoaimTarget( EHANDLE hLockedTarget );
 
 	void				SetLocatorTargetEntity( CBaseEntity *pEntity ) { m_hLocatorTargetEntity.Set( pEntity ); }
+
+#ifdef MAPBASE
+	virtual bool		CanAutoSwitchToNextBestWeapon( CBaseCombatWeapon *pWeapon );
+#endif
 
 	virtual int			GiveAmmo( int nCount, int nAmmoIndex, bool bSuppressSound);
 	virtual bool		BumpWeapon( CBaseCombatWeapon *pWeapon );
@@ -241,6 +320,7 @@ public:
 	virtual	bool		IsHoldingEntity( CBaseEntity *pEnt );
 	virtual void		ForceDropOfCarriedPhysObjects( CBaseEntity *pOnlyIfHoldindThis );
 	virtual float		GetHeldObjectMass( IPhysicsObject *pHeldObject );
+	virtual CBaseEntity	*GetHeldObject( void );
 
 	virtual bool		IsFollowingPhysics( void ) { return (m_afPhysicsFlags & PFLAG_ONBARNACLE) > 0; }
 	void				InputForceDropPhysObjects( inputdata_t &data );
@@ -260,8 +340,13 @@ public:
 	void  HandleAdmireGlovesAnimation( void );
 	void  StartAdmireGlovesAnimation( void );
 	
-	void  HandleSpeedChanges( void );
-
+#ifdef RTBMP
+	virtual void HandleSpeedChanges( CMoveData *mv );
+	virtual void ReduceTimers( CMoveData* mv );
+#else
+	void ReduceTimers( CMoveData* mv );
+	void HandleSpeedChanges( CMoveData *mv );
+#endif
 	void SetControlClass( Class_T controlClass ) { m_nControlClass = controlClass; }
 	
 	void StartWaterDeathSounds( void );
@@ -281,6 +366,22 @@ public:
 	// HUD HINTS
 	void DisplayLadderHudHint();
 
+#ifdef MAPBASE
+	void InitCustomSuitDevice( int iDeviceID, float flDrainRate );
+	void AddCustomSuitDevice( int iDeviceID );
+	void RemoveCustomSuitDevice( int iDeviceID );
+	bool IsCustomSuitDeviceActive( int iDeviceID );
+
+	// Protagonist system
+	const char *GetProtagonistName() const;
+	int GetProtagonistIndex() const;
+	void InputSetProtagonist( inputdata_t &inputdata );
+	void SetProtagonist( const char *pszProtagonist );
+	void ResetProtagonist();
+	void RefreshProtagonistData();
+	void RefreshProtagonistWeaponData( CBaseCombatWeapon *pWeapon );
+#endif
+
 	CSoundPatch *m_sndLeeches;
 	CSoundPatch *m_sndWaterSplashes;
 
@@ -293,6 +394,11 @@ protected:
 
 	virtual void		ItemPostFrame();
 	virtual void		PlayUseDenySound();
+#ifdef RTBMP
+	CNetworkVarEmbedded( CHL2PlayerLocalData, m_HL2Local );
+	CNetworkVar( bool, m_fIsSprinting );
+	CNetworkVarForDerived( bool, m_fIsWalking );
+#endif
 
 private:
 	bool				CommanderExecuteOne( CAI_BaseNPC *pNpc, const commandgoal_t &goal, CAI_BaseNPC **Allies, int numAllies );
@@ -302,16 +408,17 @@ private:
 	Class_T				m_nControlClass;			// Class when player is controlling another entity
 	// This player's HL2 specific data that should only be replicated to 
 	//  the player and not to other players.
+#ifndef RTBMP
 	CNetworkVarEmbedded( CHL2PlayerLocalData, m_HL2Local );
-
-	float				m_flTimeAllSuitDevicesOff;
-
+#endif
 	bool				m_bSprintEnabled;		// Used to disable sprint temporarily
 	bool				m_bIsAutoSprinting;		// A proxy for holding down the sprint key.
 	float				m_fAutoSprintMinTime;	// Minimum time to maintain autosprint regardless of player speed. 
 
+#ifndef RTBMP
 	CNetworkVar( bool, m_fIsSprinting );
 	CNetworkVarForDerived( bool, m_fIsWalking );
+#endif
 
 protected:	// Jeep: Portal_Player needs access to this variable to overload PlayerUse for picking up objects through portals
 	bool				m_bPlayUseDenySound;		// Signaled by PlayerUse, but can be unset by HL2 ladder code...
@@ -330,7 +437,6 @@ private:
 	bool				m_bIgnoreFallDamageResetAfterImpact;
 
 	// Suit power fields
-	float				m_flSuitPowerLoad;	// net suit power drain (total of all device's drainrates)
 	float				m_flAdmireGlovesAnimTime;
 
 	float				m_flNextFlashlightCheckTime;
@@ -362,6 +468,23 @@ private:
 	float				m_flTimeNextLadderHint;	// Next time we're eligible to display a HUD hint about a ladder.
 	
 	friend class CHL2GameMovement;
+
+#ifdef MAPBASE
+	// Protagonist used by protagonist_system.h
+	string_t			m_iszProtagonistName;
+	CNetworkVar( int, m_nProtagonistIndex );
+#endif
+
+#ifdef SP_ANIM_STATE
+	CMapbasePlayerAnimState* m_pPlayerAnimState;
+
+#ifndef MAPBASE_MP
+	// At the moment, we network the render angles since almost none of the player anim stuff is done on the client in SP.
+	// If any of this is ever adapted for MP, this method should be replaced with replicating/moving the anim state to the client.
+	CNetworkVar( float, m_flAnimRenderYaw );
+	CNetworkVar( float, m_flAnimRenderZ );
+#endif
+#endif
 };
 
 

@@ -8,11 +8,14 @@
 //  STATIC: "SEAMLESS"                  "0..1"
 //  STATIC: "BUMPMASK"                  "0..1"
 //	STATIC: "FLASHLIGHT"				"0..1"	[XBOX]
+//  STATIC: "BASETEXTURETRANSFORM2"		"0..1"
 
 //  DYNAMIC: "FASTPATH"					"0..1"
 //	DYNAMIC: "DOWATERFOG"				"0..1"
 //  DYNAMIC: "LIGHTING_PREVIEW"			"0..1"	[PC]
 //  DYNAMIC: "LIGHTING_PREVIEW"			"0..0"	[XBOX]
+
+//  SKIP: $SEAMLESS && $BASETEXTURETRANSFORM2
 
 // This should not be a combo since I'm a moron with the tangent space and the flashlight.
 //  SKIP: !$BUMPMAP && $DIFFUSEBUMPMAP
@@ -36,6 +39,9 @@ const float4 SeamlessScale : register( SHADER_SPECIFIC_CONST_0 );
 #define SEAMLESS_SCALE (SeamlessScale.x)
 #else
 const float4 cBaseTexCoordTransform[2]			:  register( SHADER_SPECIFIC_CONST_0 );
+#if BASETEXTURETRANSFORM2
+const float4 cBaseTexCoordTransform2[2]			:  register( SHADER_SPECIFIC_CONST_8 ); // Blixibon - Support for $basetexturetransform2
+#endif
 const float4 cDetailOrBumpTexCoordTransform[2]	:  register( SHADER_SPECIFIC_CONST_2 );
 #endif
 // This should be identity if we are bump mapping, otherwise we'll screw up the lightmapTexCoordOffset.
@@ -58,7 +64,7 @@ struct VS_INPUT
 struct VS_OUTPUT
 {
     float4 projPos					: POSITION;	
-#if !defined( _X360 )    
+#if !defined( _X360 )    && !defined(SHADER_MODEL_VS_3_0)
 	float  fog						: FOG;
 #endif
 
@@ -66,7 +72,7 @@ struct VS_OUTPUT
 	float3 SeamlessTexCoord         : TEXCOORD0;            // x y z 
 	float4 detailOrBumpAndEnvmapMaskTexCoord : TEXCOORD1;   // envmap mask
 #else
-	float2 baseTexCoord				: TEXCOORD0;
+	float4 baseTexCoord				: TEXCOORD0;	// Blixibon - Was float2, now using two extra floats for $basetexturetransform2
 	// detail textures and bumpmaps are mutually exclusive so that we have enough texcoords.
 #if RELIEF_MAPPING
 	float3 TangentSpaceViewRay		: TEXCOORD1;
@@ -86,11 +92,9 @@ struct VS_OUTPUT
 	float4 vertexBlendX_fogFactorW	: COLOR1;
 
 	// Extra iterators on 360, used in flashlight combo
-#if defined( _X360 )
-#if FLASHLIGHT
+#if defined( _X360 ) && FLASHLIGHT
 	float4 flashlightSpacePos		: TEXCOORD8;
 	float4 vProjPos					: TEXCOORD9;
-#endif
 #endif
 
 };
@@ -143,11 +147,19 @@ VS_OUTPUT main( const VS_INPUT v )
 		if (FASTPATH)
 		{
 			o.baseTexCoord.xy = v.vBaseTexCoord;
+			o.baseTexCoord.wz = v.vBaseTexCoord;
 		}
 		else
 		{
 			o.baseTexCoord.x = dot( v.vBaseTexCoord, cBaseTexCoordTransform[0] ) + cBaseTexCoordTransform[0].w;
 			o.baseTexCoord.y = dot( v.vBaseTexCoord, cBaseTexCoordTransform[1] ) + cBaseTexCoordTransform[1].w;
+#if BASETEXTURETRANSFORM2
+			o.baseTexCoord.w = dot( v.vBaseTexCoord, cBaseTexCoordTransform2[0] ) + cBaseTexCoordTransform2[0].w;
+			o.baseTexCoord.z = dot( v.vBaseTexCoord, cBaseTexCoordTransform2[1] ) + cBaseTexCoordTransform2[1].w;
+#else
+			o.baseTexCoord.w = o.baseTexCoord.x;
+			o.baseTexCoord.z = o.baseTexCoord.y;
+#endif
 		}
 #if ( RELIEF_MAPPING == 0 )
 		{
@@ -206,7 +218,7 @@ VS_OUTPUT main( const VS_INPUT v )
 #endif
 
 	o.vertexBlendX_fogFactorW = CalcFog( worldPos, vProjPos, g_FogType );
-#if !defined( _X360 )
+#if !defined( _X360 ) && !defined(SHADER_MODEL_VS_3_0)
 	o.fog = o.vertexBlendX_fogFactorW;
 #endif
 
@@ -238,11 +250,9 @@ VS_OUTPUT main( const VS_INPUT v )
 #endif
 
 // On 360, we have extra iterators and can fold the flashlight into this shader
-#if defined( _X360 )
-	#if FLASHLIGHT
-		o.flashlightSpacePos = mul( float4( worldPos, 1.0f ), g_FlashlightWorldToTexture );
-		o.vProjPos = vProjPos;
-	#endif
+#if defined( _X360 ) && FLASHLIGHT
+	o.flashlightSpacePos = mul( float4( worldPos, 1.0f ), g_FlashlightWorldToTexture );
+	o.vProjPos = vProjPos;
 #endif
 
 	if ( g_bVertexAlphaTexBlendFactor )

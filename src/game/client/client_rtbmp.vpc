@@ -1,0 +1,93 @@
+//-----------------------------------------------------------------------------
+//	CLIENT_RTBMP.VPC
+//
+//	Project Script
+//-----------------------------------------------------------------------------
+
+$Macro SRCDIR		"..\.."
+$Macro GAMENAME 	"rtbmp"
+
+$Include "$SRCDIR\game\client\client_hl2mp.vpc"
+
+$Configuration
+{
+	$Compiler
+	{
+		$AdditionalIncludeDirectories	"$BASE;.\rtbr;$SRCDIR\game\shared\rtbr;.\rtbmp;$SRCDIR\game\shared\rtbmp;"
+		$PreprocessorDefinitions		"$BASE;RTBMP;RTBR_DLL"
+	}
+}
+
+$Project "Client (RTBMP)"
+{
+	$Folder	"Source Files"
+	{
+		$Folder	"RTBMP"
+		{
+			$Folder	"Weapons"
+			{
+				$File	"$SRCDIR\game\shared\rtbmp\weapon_gauss.cpp"
+				$File	"$SRCDIR\game\shared\rtbmp\weapon_gauss.h"
+				$File	"$SRCDIR\game\shared\rtbmp\weapon_akm.cpp"
+				$File	"$SRCDIR\game\shared\rtbmp\weapon_oicw.cpp"
+				$File	"$SRCDIR\game\shared\rtbmp\weapon_hmg.cpp"
+				$File	"$SRCDIR\game\shared\rtbmp\weapon_immolator.cpp"
+				// todo: move these over to rtbmp directory. these are not hl2mp weapons anymore
+				$File	"$SRCDIR\game\shared\hl2mp\weapon_alyxgun.cpp"
+				$File	"$SRCDIR\game\shared\hl2mp\weapon_alyxgun.h"
+				$File	"$SRCDIR\game\shared\hl2mp\weapon_annabelle.cpp"
+				$File	"$SRCDIR\game\shared\hl2mp\weapon_flaregun.cpp"
+				$File	"$SRCDIR\game\shared\hl2mp\weapon_flaregun.h"
+			}
+			$File	"rtbmp\c_rtbmp_player.h"
+			$File	"rtbmp\c_rtbmp_player.cpp"
+			$File	"rtbmp\vgui\createserverpanel.h"
+			$File	"rtbmp\vgui\createserverpanel.cpp"
+			$File	"rtbmp\vgui\icreateserverpanel.h"
+			$File	"rtbmp\vgui\ifirsttimeoptionspanel.h"
+			$File	"rtbmp\vgui\firsttimeoptionspanel.h"
+			$File	"rtbmp\vgui\firsttimeoptionspanel.cpp"
+			$File	"rtbmp\vgui\modelselectpanel.h"
+			$File	"rtbmp\vgui\modelselectpanel.cpp"
+			$File	"rtbmp\vgui\imodelselectpanel.h"
+			$File	"rtbmp\vgui\rtba_teammenu.h"
+			$File	"rtbmp\vgui\rtba_teammenu.cpp"
+			$File	"rtbmp\hud_grenadetimer.cpp"
+			$File	"rtbmp\hud_account.cpp"
+			$File	"rtbmp\hud_matchstatus.cpp"
+			$File 	"$SRCDIR\game\shared\rtbmp\rtbmp_gamerules.h"
+			$File 	"$SRCDIR\game\shared\rtbmp\rtbmp_gamerules.cpp"
+			$File 	"$SRCDIR\game\shared\rtbmp\rtba_usermessages.cpp"
+			$File 	"rtbmp\rtbmp_misc.cpp"
+		}
+		
+		$Folder "Misc"	
+		{		
+			//$File	"$SRCDIR\game\shared\rtbr\achievements_rtbr.cpp"	
+		}
+		$Folder "RTBR Shared"
+		{
+			$Folder "Game"
+			{
+				$File 	"$SRCDIR\game\shared\rtbr\rtbr_shareddefs.h"
+				$File 	"$SRCDIR\game\shared\rtbmp\rtbmp_player_shared.h"
+			}
+		}
+		$Folder "RTBR"
+		{
+			$Folder "NPCs"
+			{
+				$Folder "Flora"
+				{
+					$File	"rtbr/flora/c_npc_xenlight.cpp"
+				}
+
+				$File	"rtbr\c_npc_antlionking.cpp"
+				$File	"rtbr\c_npc_cremator.cpp"
+				$File	"rtbr\c_npc_protozoan.cpp"
+				$File	"rtbr\c_npc_wasteland_scanner.cpp"
+				$File	"$SRCDIR\game\shared\rtbr\npc_cremator_shared.h"
+			}
+		}
+	}
+}

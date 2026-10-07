@@ -25,10 +25,15 @@
 //	SKIP: !$BUMPMAP && ($NORMALMASK_DECODE_MODE == 2)
 //  NOSKIP: $FANCY_BLENDING && (!$FASTPATH)
 
-// 360 compiler craps out on some combo in this family.  Content doesn't use blendmode 10 anyway
+// 360 compiler fails on some combo in this family.  Content doesn't use blendmode 10 anyway
 //  SKIP: $FASTPATH && $PIXELFOGTYPE && $BASETEXTURE2 && $DETAILTEXTURE && $CUBEMAP && ($DETAIL_BLEND_MODE == 10 ) [XBOX]
 
-// debug crap:
+// Too many instructions to do this all at once:
+//  SKIP: $FANCY_BLENDING && $BUMPMAP && $DETAILTEXTURE
+
+//  SKIP: (!$FANCY_BLENDING) && $MASKEDBLENDING
+
+// debug :
 // NOSKIP: $DETAILTEXTURE
 // NOSKIP: $CUBEMAP
 // NOSKIP: $ENVMAPMASK
@@ -158,7 +163,7 @@ struct PS_INPUT
 	float3 SeamlessTexCoord         : TEXCOORD0;            // zy xz
 	float4 detailOrBumpAndEnvmapMaskTexCoord : TEXCOORD1;   // envmap mask
 #else
-	HALF2 baseTexCoord				: TEXCOORD0;
+	HALF4 baseTexCoord				: TEXCOORD0;	// Blixibon - Was HALF2, using two extra floats for $basetexturetransform2
 	// detail textures and bumpmaps are mutually exclusive so that we have enough texcoords.
 #if ( RELIEF_MAPPING == 0 )
 	HALF4 detailOrBumpAndEnvmapMaskTexCoord	: TEXCOORD1;
@@ -207,12 +212,26 @@ HALF4 main( PS_INPUT i ) : COLOR
 
 #if SEAMLESS
 	baseTexCoords = i.SeamlessTexCoord.xyz;
-#else
-	baseTexCoords.xy = i.baseTexCoord.xy;
-#endif
 
+	// Now only used with seamless due to $basetexturetransform2 fix (see below)
 	GetBaseTextureAndNormal( BaseTextureSampler, BaseTextureSampler2, BumpmapSampler, bBaseTexture2, bBumpmap || bNormalMapAlphaEnvmapMask, 
 		baseTexCoords, i.vertexColor.rgb, baseColor, baseColor2, vNormal );
+#else
+	baseTexCoords.xy = i.baseTexCoord.xy;
+
+	// Blixibon - Simpler version of GetBaseTextureAndNormal() that supports $basetexturetransform2
+	// (make this its own function in common_lightmappedgeneric_fxc.h if this becomes more widespread)
+	// 
+	// Original behavior in DX9 was for $basetexturetransform to influence $basetexture2, so
+	// the vertex shader copies the coords from $basetexturetransform unless $basetexturetransform2
+	// is explicitly defined.
+	baseColor = tex2D( BaseTextureSampler, baseTexCoords.xy );
+	baseColor2 = tex2D( BaseTextureSampler2, i.baseTexCoord.wz );
+	if ( bBumpmap || bNormalMapAlphaEnvmapMask )
+	{
+		vNormal  = tex2D( BumpmapSampler, baseTexCoords.xy );
+	}
+#endif
 
 #if BUMPMAP == 1	// not ssbump
 	vNormal.xyz = vNormal.xyz * 2.0f - 1.0f;					// make signed if we're not ssbump
@@ -476,7 +495,7 @@ HALF4 main( PS_INPUT i ) : COLOR
 #endif
 
 #if CUBEMAP || LIGHTING_PREVIEW || ( defined( _X360 ) && FLASHLIGHT )
-	float3 worldSpaceNormal = mul( vNormal, i.tangentSpaceTranspose );
+	float3 worldSpaceNormal = mul( vNormal.xyz, i.tangentSpaceTranspose );
 #endif
 
 	float3 diffuseComponent = albedo.xyz * diffuseLighting;
@@ -570,7 +589,7 @@ HALF4 main( PS_INPUT i ) : COLOR
 	bWriteDepthToAlpha = ( WRITE_DEPTH_TO_DESTALPHA != 0 ) && ( WRITEWATERFOGTODESTALPHA == 0 );
 #endif
 
-	float fogFactor = CalcPixelFogFactor( PIXELFOGTYPE, g_FogParams, g_EyePos.z, i.worldPos_projPosZ.z, i.worldPos_projPosZ.w );
+	float fogFactor = CalcPixelFogFactor( PIXELFOGTYPE, g_FogParams, g_EyePos.xyz, i.worldPos_projPosZ.xyz, i.worldPos_projPosZ.w );
 
 #if WRITEWATERFOGTODESTALPHA && (PIXELFOGTYPE == PIXEL_FOG_TYPE_HEIGHT)
 	alpha = fogFactor;

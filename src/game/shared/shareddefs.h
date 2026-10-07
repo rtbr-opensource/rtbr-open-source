@@ -121,8 +121,13 @@ public:
 
 #define WEAPON_NOCLIP			-1	// clip sizes set to this tell the weapon it doesn't use a clip
 
+#ifndef RTBR_DLL
 #define	MAX_AMMO_TYPES	32		// ???
 #define MAX_AMMO_SLOTS  32		// not really slots
+#else
+#define	MAX_AMMO_TYPES	64		// ???
+#define MAX_AMMO_SLOTS  64		// not really slots
+#endif
 
 #define HUD_PRINTNOTIFY		1
 #define HUD_PRINTCONSOLE	2
@@ -153,18 +158,26 @@ typedef enum
 	VOTE_FAILED_CANNOT_KICK_DURING_ROUND,
 	VOTE_FAILED_VOTE_IN_PROGRESS,
 	VOTE_FAILED_KICK_LIMIT_REACHED,
+	VOTE_FAILED_KICK_DENIED_BY_GC,
+	// Special reason - the vote issue itself will handle this request specially -- the vote system shouldn't proceed
+	// with the vote.  Shows no error to user.
+	//
+	// Used by match-based votekicks to send a votekick request to the match system when the user tries to call one --
+	// which then owns starting a proper vote later or telling the user why the match system isn't allowing the
+	// votekick.
+	VOTE_FAILED_REQUEST_HANDLED_BY_ISSUE,
 
 	// TF-specific?
 	VOTE_FAILED_MODIFICATION_ALREADY_ACTIVE,
+
+	VOTE_FAILED_PLAYER_TRANSITIONING,
+
+	VOTE_FAILED_INVALID_ARGUMENT,
 } vote_create_failed_t;
 
 enum
 {
-#ifdef STAGING_ONLY
-	SERVER_MODIFICATION_ITEM_DURATION_IN_MINUTES = 2
-#else
 	SERVER_MODIFICATION_ITEM_DURATION_IN_MINUTES = 120
-#endif
 };
 
 #define MAX_VOTE_DETAILS_LENGTH 64
@@ -174,12 +187,16 @@ enum
 
 enum CastVote
 {
-	VOTE_OPTION1,  // Use this for Yes
-	VOTE_OPTION2,  // Use this for No
-	VOTE_OPTION3,
-	VOTE_OPTION4,
-	VOTE_OPTION5,
-	VOTE_UNCAST
+	VOTE_OPTION1 = 0,  // Use this for Yes
+	VOTE_OPTION2 = 1,  // Use this for No
+	VOTE_OPTION3 = 2,
+	VOTE_OPTION4 = 3,
+	VOTE_OPTION5 = 4,
+	VOTE_UNCAST  = 5,
+
+	// Alias yes/no to OPTION1/OPTION2
+	VOTE_YES = 0,
+	VOTE_NO  = 1,
 };
 
 //===================================================================================================================
@@ -203,8 +220,20 @@ enum CastVote
 #define	HIDEHUD_VEHICLE_CROSSHAIR	( 1<<9 )	// Hide vehicle crosshair
 #define HIDEHUD_INVEHICLE			( 1<<10 )
 #define HIDEHUD_BONUS_PROGRESS		( 1<<11 )	// Hide bonus progress display (for bonus map challenges)
+#define HIDEHUD_MATCHSTATUS			( 1<<12 )	// Hide match status
 
-#define HIDEHUD_BITCOUNT			12
+#if defined( TF_DLL ) || defined ( TF_CLIENT_DLL )
+#define HIDEHUD_BUILDING_STATUS		        ( 1<<12 )	// Hide Engineer building status
+#define HIDEHUD_CLOAK_AND_FEIGN             ( 1<<13 )	// Hide item effect meter (cloak, etc)
+#define HIDEHUD_PIPES_AND_CHARGE            ( 1<<14 )	// Hide demo hud
+#define HIDEHUD_METAL                       ( 1<<15 )	// Metal/account hud
+#define HIDEHUD_TARGET_ID                   ( 1<<16 )	// Target ID
+#define HIDEHUD_MATCH_STATUS				( 1<<17 )	// Hide match status
+#define HIDEHUD_BITCOUNT			18
+#else
+#define HIDEHUD_BITCOUNT			13
+#endif
+
 
 //===================================================================================================================
 // suit usage bits
@@ -212,7 +241,14 @@ enum CastVote
 #define bits_SUIT_DEVICE_FLASHLIGHT	0x00000002
 #define bits_SUIT_DEVICE_BREATHER	0x00000004
 
-#define MAX_SUIT_DEVICES			3
+#ifdef MAPBASE
+// Custom suit power devices
+#define bits_SUIT_DEVICE_CUSTOM0	0x00000008
+#define bits_SUIT_DEVICE_CUSTOM1	0x00000010
+#define bits_SUIT_DEVICE_CUSTOM2	0x00000020
+#endif
+
+#define MAX_SUIT_DEVICES			6		// Mapbase boosts this to 6 for the custom devices
 
 
 //===================================================================================================================
@@ -228,13 +264,27 @@ enum CastVote
 //Since this is decided by the gamerules (and it can be whatever number as long as its less than MAX_PLAYERS).
 #if defined( CSTRIKE_DLL )
 	#define MAX_PLAYERS				65  // Absolute max players supported
+#elif defined( TF_DLL ) || defined ( TF_CLIENT_DLL ) || defined( HL2MP )
+	#define MAX_PLAYERS				101
 #else
 	#define MAX_PLAYERS				33  // Absolute max players supported
 #endif
 
+// Josh: Accounts for code that may index this array by an entindex
+// of player rather than the player index... :s
+#define MAX_PLAYERS_ARRAY_SAFE		( MAX_PLAYERS + 1 )
+
+inline bool IsIndexIntoPlayerArrayValid( int iIndex )
+{
+	if ( iIndex < 0 || iIndex >= MAX_PLAYERS_ARRAY_SAFE )
+		return false;
+		
+	return true;
+}
+
 #define MAX_PLACE_NAME_LENGTH		18
 
-#define MAX_FOV						90
+#define MAX_FOV						120
 
 //===================================================================================================================
 // Team Defines
@@ -250,6 +300,8 @@ enum CastVote
 
 #define MAX_TEAMS				32	// Max number of teams in a game
 #define MAX_TEAM_NAME_LENGTH	32	// Max length of a team's name
+
+#define MAX_TEAMS_ARRAY_SAFE 	MAX_TEAMS
 
 // Weapon m_iState
 #define WEAPON_IS_ONTARGET				0x40
@@ -355,12 +407,23 @@ enum PLAYER_ANIM
 	PLAYER_SUPERJUMP,
 	PLAYER_DIE,
 	PLAYER_ATTACK1,
+#ifdef RTBMP
+	PLAYER_FLINCH,
+#endif
 	PLAYER_IN_VEHICLE,
 
 	// TF Player animations
 	PLAYER_RELOAD,
 	PLAYER_START_AIMING,
 	PLAYER_LEAVE_AIMING,
+
+#ifdef MAPBASE
+	// New player animations from Mapbase
+	PLAYER_ATTACK2,
+	PLAYER_ATTACK3,
+	PLAYER_UNHOLSTER,
+	PLAYER_HOLSTER,
+#endif
 };
 
 #ifdef HL2_DLL
@@ -519,7 +582,8 @@ typedef enum
 	USE_OFF = 0, 
 	USE_ON = 1, 
 	USE_SET = 2, 
-	USE_TOGGLE = 3
+	USE_TOGGLE = 3,
+	USE_AMMO = 4 // gauss ammograb
 } USE_TYPE;
 
 // basic team colors
@@ -583,6 +647,7 @@ enum
 	EFL_SETTING_UP_BONES =		(1<<3),	// Set while a model is setting up its bones.
 	EFL_KEEP_ON_RECREATE_ENTITIES = (1<<4), // This is a special entity that should not be deleted when we restart entities only
 
+	//Tony; BUG?? I noticed this today while performing stealz on flag 16! look at the definition of the flag above...
 	EFL_HAS_PLAYER_CHILD=		(1<<4),	// One of the child entities is a player.
 
 	EFL_DIRTY_SHADOWUPDATE =	(1<<5),	// Client only- need shadow manager to update the shadow...
@@ -604,7 +669,8 @@ enum
 	EFL_DIRTY_ABSANGVELOCITY =	(1<<13),
 	EFL_DIRTY_SURROUNDING_COLLISION_BOUNDS	= (1<<14),
 	EFL_DIRTY_SPATIAL_PARTITION = (1<<15),
-//	UNUSED						= (1<<16),
+	EFL_FORCE_ALLOW_MOVEPARENT	= (1<<16),
+	//EFL_PLUGIN_BASED_BOT		= (1<<16),		//this is set on plugin bots, so that if any games include their own bot code, they won't affect plugin bots.
 
 	EFL_IN_SKYBOX =				(1<<17),	// This is set if the entity detects that it's in the skybox.
 											// This forces it to pass the "in PVS" for transmission.
@@ -660,6 +726,10 @@ class CBaseEntity;
 // Bullet firing information
 //-----------------------------------------------------------------------------
 class CBaseEntity;
+#ifdef MAPBASE_VSCRIPT
+// For the VScript functions in FireBUlletsInfo_t
+FORWARD_DECLARE_HANDLE( HSCRIPT );
+#endif
 
 enum FireBulletsFlags_t
 {
@@ -667,6 +737,9 @@ enum FireBulletsFlags_t
 	FIRE_BULLETS_DONT_HIT_UNDERWATER = 0x2,		// If the shot hits its target underwater, don't damage it
 	FIRE_BULLETS_ALLOW_WATER_SURFACE_IMPACTS = 0x4,	// If the shot hits water surface, still call DoImpactEffect
 	FIRE_BULLETS_TEMPORARY_DANGER_SOUND = 0x8,		// Danger sounds added from this impact can be stomped immediately if another is queued
+#ifdef MAPBASE
+	FIRE_BULLETS_NO_AUTO_GIB_TYPE = 0x10,		// Don't automatically add DMG_ALWAYSGIB or DMG_NEVERGIB if m_flDamage is set
+#endif
 };
 
 
@@ -677,7 +750,7 @@ struct FireBulletsInfo_t
 		m_iShots = 1;
 		m_vecSpread.Init( 0, 0, 0 );
 		m_flDistance = 8192;
-		m_iTracerFreq = 4;
+		m_iTracerFreq = 1;
 		m_flDamage = 0;
 		m_iPlayerDamage = 0;
 		m_pAttacker = NULL;
@@ -692,6 +765,9 @@ struct FireBulletsInfo_t
 #endif
 		m_bPrimaryAttack = true;
 		m_bUseServerRandomSeed = false;
+#ifdef MAPBASE
+		m_pIgnoreEntList = NULL;
+#endif
 	}
 
 	FireBulletsInfo_t( int nShots, const Vector &vecSrc, const Vector &vecDir, const Vector &vecSpread, float flDistance, int nAmmoType, bool bPrimaryAttack = true )
@@ -702,7 +778,7 @@ struct FireBulletsInfo_t
 		m_vecSpread = vecSpread;
 		m_flDistance = flDistance;
 		m_iAmmoType = nAmmoType;
-		m_iTracerFreq = 4;
+		m_iTracerFreq = 1;
 		m_flDamage = 0;
 		m_iPlayerDamage = 0;
 		m_pAttacker = NULL;
@@ -711,7 +787,14 @@ struct FireBulletsInfo_t
 		m_flDamageForceScale = 1.0f;
 		m_bPrimaryAttack = bPrimaryAttack;
 		m_bUseServerRandomSeed = false;
+#ifdef MAPBASE
+		m_pIgnoreEntList = NULL;
+#endif
 	}
+
+#ifdef MAPBASE
+	~FireBulletsInfo_t() {}
+#endif
 
 	int m_iShots;
 	Vector m_vecSrc;
@@ -728,6 +811,54 @@ struct FireBulletsInfo_t
 	CBaseEntity *m_pAdditionalIgnoreEnt;
 	bool m_bPrimaryAttack;
 	bool m_bUseServerRandomSeed;
+#ifdef MAPBASE
+	// This variable is like m_pAdditionalIgnoreEnt, but it's a list of entities instead of just one.
+	// Since func_tanks already use m_pAdditionalIgnoreEnt for parents, they needed another way to stop hitting their controllers.
+	// After much trial and error, I decided to just add more excluded entities to the bullet firing info.
+	// It could've just been a single entity called "m_pAdditionalIgnoreEnt2", but since these are just pointers,
+	// I planned ahead and made it a CUtlVector instead.
+	CUtlVector<CBaseEntity*> *m_pIgnoreEntList;
+#endif
+
+#ifdef MAPBASE_VSCRIPT // These functions are used by VScript to expose FireBulletsInfo_t to users.
+	int GetShots() { return m_iShots; }
+	void SetShots( int value ) { m_iShots = value; }
+
+	Vector GetSource() { return m_vecSrc; }
+	void SetSource( Vector value ) { m_vecSrc = value; }
+	Vector GetDirShooting() { return m_vecDirShooting; }
+	void SetDirShooting( Vector value ) { m_vecDirShooting = value; }
+	Vector GetSpread() { return m_vecSpread; }
+	void SetSpread( Vector value ) { m_vecSpread = value; }
+
+	float GetDistance() { return m_flDistance; }
+	void SetDistance( float value ) { m_flDistance = value; }
+
+	int GetAmmoType() { return m_iAmmoType; }
+	void SetAmmoType( int value ) { m_iAmmoType = value; }
+
+	int GetTracerFreq() { return m_iTracerFreq; }
+	void SetTracerFreq( int value ) { m_iTracerFreq = value; }
+
+	float GetDamage() { return m_flDamage; }
+	void SetDamage( float value ) { m_flDamage = value; }
+	int GetPlayerDamage() { return m_iPlayerDamage; }
+	void SetPlayerDamage( float value ) { m_iPlayerDamage = value; }
+
+	int GetFlags() { return m_nFlags; }
+	void SetFlags( float value ) { m_nFlags = value; }
+
+	float GetDamageForceScale() { return m_flDamageForceScale; }
+	void SetDamageForceScale( float value ) { m_flDamageForceScale = value; }
+
+	HSCRIPT ScriptGetAttacker();
+	void ScriptSetAttacker( HSCRIPT value );
+	HSCRIPT ScriptGetAdditionalIgnoreEnt();
+	void ScriptSetAdditionalIgnoreEnt( HSCRIPT value );
+
+	bool GetPrimaryAttack() { return m_bPrimaryAttack; }
+	void SetPrimaryAttack( bool value ) { m_bPrimaryAttack = value; }
+#endif
 };
 
 //-----------------------------------------------------------------------------
@@ -905,6 +1036,39 @@ enum
 #define COMMENTARY_BUTTONS		(IN_USE)
 #endif
 
+enum tprbGameInfo_e
+{
+	// Teamplay Roundbased Game rules shared
+	TPRBGAMEINFO_GAMESTATE = 1,					//gets the state of the current game (waiting for players, setup, active, overtime, stalemate, roundreset)
+	TPRBGAMEINFO_RESERVED1,
+	TPRBGAMEINFO_RESERVED2,
+	TPRBGAMEINFO_RESERVED3,
+	TPRBGAMEINFO_RESERVED4,
+	TPRBGAMEINFO_RESERVED5,
+	TPRBGAMEINFO_RESERVED6,
+	TPRBGAMEINFO_RESERVED7,
+	TPRBGAMEINFO_RESERVED8,
+
+	TPRBGAMEINFO_LASTGAMEINFO,
+};
+// Mark it off so valvegame_plugin_def.h ignores it, if both headers are included in a plugin.
+#define TPRBGAMEINFO_x 1
+
+//Tony; (t)eam(p)lay(r)ound(b)ased gamerules -- Game Info values
+#define TPRB_STATE_WAITING				(1<<0)
+#define TPRB_STATE_SETUP				(1<<1)
+#define TPRB_STATE_ACTIVE				(1<<2)
+#define TPRB_STATE_ROUNDWON				(1<<3)
+#define TPRB_STATE_OVERTIME				(1<<4)
+#define TPRB_STATE_STALEMATE			(1<<5)
+#define TPRB_STATE_ROUNDRESET			(1<<6)
+#define TPRB_STATE_WAITINGREADYSTART	(1<<7)
+
+//Tony; including sdk_shareddefs.h because I use it in a _lot_ of places that needs to be seen before many other things.
+#ifdef SDK_DLL
+#include "sdk_shareddefs.h"
+#endif
+
 #define TEAM_TRAIN_MAX_TEAMS			4
 #define TEAM_TRAIN_MAX_HILLS			5
 #define TEAM_TRAIN_FLOATS_PER_HILL		2
@@ -951,4 +1115,23 @@ enum
 };
 #endif // TF_DLL || TF_CLIENT_DLL
 
+#ifdef MAPBASE
+// Developer commentary types
+enum
+{
+	COMMENTARY_TYPE_AUDIO,		// Play commentary audio (default)
+
+	COMMENTARY_TYPE_TEXT,		// Display text data
+	COMMENTARY_TYPE_IMAGE,		// Display an image
+	COMMENTARY_TYPE_SCENE,		// Play a VCD file
+};
+#endif
+
+class CPhysCollide;
+struct collidelist_t
+{
+	const CPhysCollide	*pCollide;
+	Vector			origin;
+	QAngle			angles;
+};
 #endif // SHAREDDEFS_H

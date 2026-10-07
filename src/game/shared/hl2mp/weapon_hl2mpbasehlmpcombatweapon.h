@@ -17,6 +17,12 @@
 #define CBaseHL2MPCombatWeapon C_BaseHL2MPCombatWeapon
 #endif
 
+#ifdef MAPBASE
+	// Alias for migrated HL2 weapons
+	#undef CBaseHLCombatWeapon
+	#define CBaseHLCombatWeapon CBaseHL2MPCombatWeapon
+#endif
+
 class CBaseHL2MPCombatWeapon : public CWeaponHL2MPBase
 {
 #if !defined( CLIENT_DLL )
@@ -30,9 +36,15 @@ public:
 
 	CBaseHL2MPCombatWeapon();
 
+	virtual bool	DefaultDeploy( char *szViewModel, char *szWeaponModel, int iActivity, char *szAnimExt ) OVERRIDE;
+	virtual bool	DefaultReload( int iClipSize1, int iClipSize2, int iActivity ) OVERRIDE;
+	virtual void	FinishReload() OVERRIDE;
+	virtual void	ItemBusyFrame( void ) OVERRIDE;
+
 	virtual bool	WeaponShouldBeLowered( void );
 
 	virtual bool	Ready( void );
+	virtual bool	CanLower( void );
 	virtual bool	Lower( void );
 	virtual bool	Deploy( void );
 	virtual bool	Holster( CBaseCombatWeapon *pSwitchingTo );
@@ -48,6 +60,20 @@ public:
 	static const	WeaponProficiencyInfo_t *GetDefaultProficiencyValues();
 
 	virtual void	ItemHolsterFrame( void );
+#ifdef RTBMP
+	// Override this to set a custom backpack reload delay for your weapon
+	virtual float			GetWeaponAutoReloadTime( void ) { return -1.f; }
+#endif
+	
+	CNetworkVar( float, m_flReloadEndTime );
+	CNetworkVar( bool, m_bReloadFinished );
+
+	virtual void	SetDrawFramesTime();
+	virtual float	GetAnimEventTime( int iAnimEvent );
+
+	// used by bots to determine how long to charge an attack
+	virtual const float	MaxChargeTime() const	{ return 0.0f; }
+	virtual const float	MaxChargeDamage() const { return 0.0f; }
 
 protected:
 

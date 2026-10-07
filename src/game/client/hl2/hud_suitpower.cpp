@@ -43,6 +43,8 @@ void CHudSuitPower::Init( void )
 	m_flSuitPower = SUITPOWER_INIT;
 	m_nSuitPowerLow = -1;
 	m_iActiveSuitDevices = 0;
+
+	SetPaintBackgroundEnabled( false );
 }
 
 //-----------------------------------------------------------------------------
@@ -100,7 +102,11 @@ void CHudSuitPower::OnThink( void )
 	}
 
 	bool flashlightActive = pPlayer->IsFlashlightActive();
+#ifdef MAPBASE
+	bool sprintActive = pPlayer->IsSprintActive();
+#else
 	bool sprintActive = pPlayer->IsSprinting();
+#endif
 	bool breatherActive = pPlayer->IsBreatherActive();
 	int activeDevices = (int)flashlightActive + (int)sprintActive + (int)breatherActive;
 
@@ -165,20 +171,7 @@ void CHudSuitPower::Paint()
 	}
 
 	// draw the suit power bar
-	surface()->DrawSetColor( m_AuxPowerColor );
-	int xpos = m_flBarInsetX, ypos = m_flBarInsetY;
-	for (int i = 0; i < enabledChunks; i++)
-	{
-		surface()->DrawFilledRect( xpos, ypos, xpos + m_flBarChunkWidth, ypos + m_flBarHeight );
-		xpos += (m_flBarChunkWidth + m_flBarChunkGap);
-	}
-	// draw the exhausted portion of the bar.
-	surface()->DrawSetColor( Color( m_AuxPowerColor[0], m_AuxPowerColor[1], m_AuxPowerColor[2], m_iAuxPowerDisabledAlpha ) );
-	for (int i = enabledChunks; i < chunkCount; i++)
-	{
-		surface()->DrawFilledRect( xpos, ypos, xpos + m_flBarChunkWidth, ypos + m_flBarHeight );
-		xpos += (m_flBarChunkWidth + m_flBarChunkGap);
-	}
+	gHUD.DrawProgressBar( m_flBarInsetX, m_flBarInsetY, m_flBarWidth, m_flBarHeight, m_flSuitPower / 100.f, m_AuxPowerColor, gHUD.HUDPB_HORIZONTAL_INV );
 
 	// draw our name
 	surface()->DrawSetTextFont(m_hTextFont);
@@ -235,7 +228,11 @@ void CHudSuitPower::Paint()
 			ypos += text2_gap;
 		}
 
+#ifdef MAPBASE
+		if (pPlayer->IsSprintActive())
+#else
 		if (pPlayer->IsSprinting())
+#endif
 		{
 			tempString = g_pVGuiLocalize->Find("#Valve_Hud_SPRINT");
 

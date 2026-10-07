@@ -32,6 +32,9 @@
 #define SF_PHYSPROP_ALWAYS_PICK_UP				0x100000		// Physcannon can always pick this up, no matter what mass or constraints may apply.
 #define SF_PHYSPROP_NO_COLLISIONS				0x200000		// Don't enable collisions on spawn
 #define SF_PHYSPROP_IS_GIB						0x400000		// Limit # of active gibs
+#ifdef MAPBASE
+#define SF_PHYSPROP_NO_ZOMBIE_SWAT				0x800000		// Zombies are not allowed to swat this
+#endif
 
 // Any barrel farther away than this is ignited rather than exploded.
 #define PROP_EXPLOSION_IGNITE_RADIUS			32.0f
@@ -56,6 +59,8 @@ enum propdata_interactions_t
 	PROPINTER_PHYSGUN_LAUNCH_SPIN_Z,	// "onlaunch"		"spin_zaxis"
 	PROPINTER_PHYSGUN_BREAK_EXPLODE,	// "onbreak"		"explode_fire"
 	PROPINTER_PHYSGUN_DAMAGE_NONE,		// "damage"			"none"
+	PROPINTER_PHYSGUN_BREAK_ANTLION,	// "onbreak"		"explode_antlion"
+	PROPINTER_PHYSGUN_BREAK_KINGSPIT,	// "onbreak"		"explode_kingspit"
 
 	PROPINTER_FIRE_FLAMMABLE,			// "flammable"			"yes"
 	PROPINTER_FIRE_EXPLOSIVE_RESIST,	// "explosive_resist"	"yes"

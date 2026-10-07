@@ -21,6 +21,7 @@
 #include "bitmap/imageformat.h"
 #include "ispatialpartition.h"
 #include "materialsystem/MaterialSystemUtil.h"
+#include "inputsystem/InputEnums.h"
 
 class Vector;
 class QAngle;
@@ -37,7 +38,7 @@ typedef CGameTrace trace_t;
 
 namespace vgui
 {
-	typedef unsigned long HFont;
+	typedef uint32 HFont;
 };
 
 
@@ -66,7 +67,7 @@ byte	*UTIL_LoadFileForMe( const char *filename, int *pLength );
 void	UTIL_FreeFile( byte *buffer );
 void	UTIL_MakeSafeName( const char *oldName, OUT_Z_CAP(newNameBufSize) char *newName, int newNameBufSize );	///< Cleans up player names for putting in vgui controls (cleaned names can be up to original*2+1 in length)
 const char *UTIL_SafeName( const char *oldName );	///< Wraps UTIL_MakeSafeName, and returns a static buffer
-void	UTIL_ReplaceKeyBindings( const wchar_t *inbuf, int inbufsizebytes, OUT_Z_BYTECAP(outbufsizebytes) wchar_t *outbuf, int outbufsizebytes );
+void	UTIL_ReplaceKeyBindings( const wchar_t *inbuf, int inbufsizebytes, OUT_Z_BYTECAP(outbufsizebytes) wchar_t *outbuf, int outbufsizebytes, GameActionSet_t action_set = GAME_ACTION_SET_NONE );
 
 // Fade out an entity based on distance fades
 unsigned char UTIL_ComputeEntityFade( C_BaseEntity *pEntity, float flMinDist, float flMaxDist, float flFadeScale );
@@ -80,6 +81,7 @@ char	*VarArgs( PRINTF_FORMAT_STRING const char *format, ... );
 int		GetSpectatorTarget();
 int		GetSpectatorMode( void );
 bool	IsPlayerIndex( int index );
+void	UpdateLocalPlayerVisionFlags();
 int		GetLocalPlayerIndex( void );
 int		GetLocalPlayerVisionFilterFlags( bool bWeaponsCheck = false );
 bool	IsLocalPlayerUsingVisionFilterFlags( int nFlags, bool bWeaponsCheck = false );
@@ -88,8 +90,6 @@ bool	IsLocalPlayerSpectator( void );
 void	NormalizeAngles( QAngle& angles );
 void	InterpolateAngles( const QAngle& start, const QAngle& end, QAngle& output, float frac );
 void	InterpolateVector( float frac, const Vector& src, const Vector& dest, Vector& output );
-
-const char *nexttoken(char *token, const char *str, char sep);
 
 //-----------------------------------------------------------------------------
 // Base light indices to avoid index collision
@@ -119,6 +119,9 @@ void ClientPrint( C_BasePlayer *player, int msg_dest, const char *msg_name, cons
 int			UTIL_EntitiesInBox( C_BaseEntity **pList, int listMax, const Vector &mins, const Vector &maxs, int flagMask, int partitionMask = PARTITION_CLIENT_NON_STATIC_EDICTS );
 int			UTIL_EntitiesInSphere( C_BaseEntity **pList, int listMax, const Vector &center, float radius, int flagMask, int partitionMask = PARTITION_CLIENT_NON_STATIC_EDICTS );
 int			UTIL_EntitiesAlongRay( C_BaseEntity **pList, int listMax, const Ray_t &ray, int flagMask, int partitionMask = PARTITION_CLIENT_NON_STATIC_EDICTS );
+#ifdef MAPBASE
+int			UTIL_EntitiesAtPoint( C_BaseEntity **pList, int listMax, const Vector &point, int flagMask, int partitionMask = PARTITION_CLIENT_NON_STATIC_EDICTS );
+#endif
 
 // make this a fixed size so it just sits on the stack
 #define MAX_SPHERE_QUERY	256
@@ -161,7 +164,12 @@ T *_CreateEntity( T *newClass, const char *className )
 // Misc useful
 inline bool FStrEq(const char *sz1, const char *sz2)
 {
-	return (sz1 == sz2 || V_stricmp(sz1, sz2) == 0);
+#ifdef MAPBASE
+	// V_stricmp() already checks if the pointers are equal, so having a comparison here is pointless.
+	return ( V_stricmp(sz1, sz2) == 0 );
+#else
+	return ( sz1 == sz2 || V_stricmp(sz1, sz2) == 0 );
+#endif
 }
 
 // Given a vector, clamps the scalar axes to MAX_COORD_FLOAT ranges from worldsize.h
@@ -177,5 +185,10 @@ int UTIL_GetMapKeyCount( const char *pszCustomKey );
 
 // Returns true if the user has loaded any maps, false otherwise.
 bool UTIL_HasLoadedAnyMap();
+
+// Performs a near-miss check of pEntity against the local player.
+// Plays pszNearMissSound in their ears and returns true when a near-
+// miss is detected.
+bool UTIL_BPerformNearMiss( const CBaseEntity* pEntity, const char* pszNearMissSound, float flNearMissDistanceThreshold );
 
 #endif // !UTIL_H

@@ -39,6 +39,10 @@
 #include "saverestoretypes.h"
 #include "nav_mesh.h"
 
+#ifdef TF_DLL
+#include "nav_mesh/tf_nav_area.h"
+#endif
+
 #ifdef NEXT_BOT
 #include "NextBot/NextBotManager.h"
 #endif
@@ -46,6 +50,10 @@
 #ifdef HL2_DLL
 #include "weapon_physcannon.h"
 #include "hl2_gamerules.h"
+#endif
+
+#ifdef RTBR_DLL
+#include "rtbr_shareddefs.h"
 #endif
 
 #ifdef PORTAL
@@ -68,12 +76,30 @@ ConVar ai_force_serverside_ragdoll( "ai_force_serverside_ragdoll", "0" );
 
 ConVar nb_last_area_update_tolerance( "nb_last_area_update_tolerance", "4.0", FCVAR_CHEAT, "Distance a character needs to travel in order to invalidate cached area" ); // 4.0 tested as sweet spot (for wanderers, at least). More resulted in little benefit, less quickly diminished benefit [7/31/2008 tom]
 
+#ifdef MAPBASE
+// ShouldUseVisibilityCache() is used as an actual function now
+ConVar ai_use_visibility_cache( "ai_use_visibility_cache", "1" );
+#else
 #ifndef _RETAIL
 ConVar ai_use_visibility_cache( "ai_use_visibility_cache", "1" );
 #define ShouldUseVisibilityCache() ai_use_visibility_cache.GetBool()
 #else
 #define ShouldUseVisibilityCache() true
 #endif
+#endif
+
+#ifdef MAPBASE
+ConVar	ai_team_relationships( "ai_team_relationships", "1", FCVAR_NONE, "If assigned to a team, NPCs will reinterpret default relationships according to which team each player/NPC is on." );
+#endif
+
+//extern ConVar sk_plr_max_dmg_stunstick;
+extern ConVar sk_plr_dmg_crossbow;
+//extern ConVar sk_crossbow_elec_radius_dmg_scale;
+extern ConVar sk_plr_dmg_gauss;
+extern ConVar sk_plr_max_dmg_gauss;
+
+#define STUNSTICK_MAX_CHARGE_DAMAGE 200.0f
+#define BOLT_ELEC_RADIUS_DAMAGE_SCALE 0.08f
 
 BEGIN_DATADESC( CBaseCombatCharacter )
 
@@ -97,18 +123,123 @@ BEGIN_DATADESC( CBaseCombatCharacter )
 	DEFINE_FIELD( m_flDamageAccumulator, FIELD_FLOAT ),
 	DEFINE_INPUT( m_impactEnergyScale, FIELD_FLOAT, "physdamagescale" ),
 	DEFINE_FIELD( m_CurrentWeaponProficiency, FIELD_INTEGER),
+#ifdef MAPBASE
+	DEFINE_INPUT( m_ProficiencyOverride, FIELD_INTEGER, "SetProficiencyOverride"),
+#endif
 
 	DEFINE_UTLVECTOR( m_Relationship,	FIELD_EMBEDDED),
 
 	DEFINE_AUTO_ARRAY( m_iAmmo, FIELD_INTEGER ),
 	DEFINE_AUTO_ARRAY( m_hMyWeapons, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_hActiveWeapon, FIELD_EHANDLE ),
+#ifdef MAPBASE
+	DEFINE_INPUT( m_bForceServerRagdoll, FIELD_BOOLEAN, "SetForceServerRagdoll" ),
+#else
 	DEFINE_FIELD( m_bForceServerRagdoll, FIELD_BOOLEAN ),
+#endif
 	DEFINE_FIELD( m_bPreventWeaponPickup, FIELD_BOOLEAN ),
 
+#ifndef MAPBASE // See CBaseEntity::InputKilledNPC()
 	DEFINE_INPUTFUNC( FIELD_VOID, "KilledNPC", InputKilledNPC ),
+#endif
+
+#ifdef MAPBASE
+	DEFINE_INPUTFUNC( FIELD_INTEGER, "SetBloodColor", InputSetBloodColor ),
+
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetRelationship", InputSetRelationship ),
+
+	DEFINE_INPUTFUNC( FIELD_VOID, "HolsterWeapon", InputHolsterWeapon ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "HolsterAndDestroyWeapon", InputHolsterAndDestroyWeapon ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "UnholsterWeapon", InputUnholsterWeapon ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "SwitchToWeapon", InputSwitchToWeapon ),
+
+	DEFINE_INPUTFUNC( FIELD_STRING, "GiveWeapon", InputGiveWeapon ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "DropWeapon", InputDropWeapon ),
+	DEFINE_INPUTFUNC( FIELD_EHANDLE, "PickupWeaponInstant", InputPickupWeaponInstant ),
+	DEFINE_OUTPUT( m_OnWeaponEquip, "OnWeaponEquip" ),
+	DEFINE_OUTPUT( m_OnWeaponDrop, "OnWeaponDrop" ),
+
+	DEFINE_OUTPUT( m_OnKilledEnemy, "OnKilledEnemy" ),
+	DEFINE_OUTPUT( m_OnKilledPlayer, "OnKilledPlayer" ),
+	DEFINE_OUTPUT( m_OnHealthChanged, "OnHealthChanged" ),
+#endif
 
 END_DATADESC()
+
+#ifdef MAPBASE_VSCRIPT
+ScriptHook_t	CBaseCombatCharacter::g_Hook_RelationshipType;
+ScriptHook_t	CBaseCombatCharacter::g_Hook_RelationshipPriority;
+
+BEGIN_ENT_SCRIPTDESC( CBaseCombatCharacter, CBaseFlex, "The base class shared by players and NPCs." )
+
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetActiveWeapon, "GetActiveWeapon", "Get the character's active weapon entity." )
+	DEFINE_SCRIPTFUNC( WeaponCount, "Get the number of weapons a character possesses." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetWeapon, "GetWeapon", "Get a specific weapon in the character's inventory." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetWeaponByType, "FindWeapon", "Find a specific weapon in the character's inventory by its classname." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetAllWeapons, "GetAllWeapons", "Get the character's weapon inventory." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetCurrentWeaponProficiency, "GetCurrentWeaponProficiency", "Get the character's current proficiency (accuracy) with their current weapon." )
+
+	DEFINE_SCRIPTFUNC_NAMED( Weapon_ShootPosition, "ShootPosition", "Get the character's shoot position." )
+	DEFINE_SCRIPTFUNC_NAMED( Weapon_DropAll, "DropAllWeapons", "Make the character drop all of its weapons." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptEquipWeapon, "EquipWeapon", "Make the character equip the specified weapon entity. If they don't already own the weapon, they will acquire it instantly." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptDropWeapon, "DropWeapon", "Make the character drop the specified weapon entity if they own it." )
+
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGiveAmmo, "GiveAmmo", "Gives the specified amount of the specified ammo type. The third parameter is whether or not to suppress the ammo pickup sound. Returns the amount of ammo actually given, which is 0 if the player's ammo for this type is already full." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptRemoveAmmo, "RemoveAmmo", "Removes the specified amount of the specified ammo type." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetAmmoCount, "GetAmmoCount", "Get the ammo count of the specified ammo type." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetAmmoCount, "SetAmmoCount", "Set the ammo count of the specified ammo type." )
+
+	DEFINE_SCRIPTFUNC( DoMuzzleFlash, "Does a muzzle flash." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetAttackSpread, "GetAttackSpread", "Get the attack spread." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetSpreadBias, "GetSpreadBias", "Get the spread bias." )
+
+	DEFINE_SCRIPTFUNC_NAMED( ScriptRelationType, "GetRelationship", "Get a character's relationship to a specific entity." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptRelationPriority, "GetRelationPriority", "Get a character's relationship priority for a specific entity." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetRelationship, "SetRelationship", "Set a character's relationship with a specific entity." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetClassRelationship, "SetClassRelationship", "Set a character's relationship with a specific Classify() class." )
+
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetVehicleEntity, "GetVehicleEntity", "Get the entity for a character's current vehicle if they're in one." )
+
+	DEFINE_SCRIPTFUNC_NAMED( ScriptInViewCone, "InViewCone", "Check if the specified position is in the character's viewcone." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptEntInViewCone, "EntInViewCone", "Check if the specified entity is in the character's viewcone." )
+
+	DEFINE_SCRIPTFUNC_NAMED( ScriptInAimCone, "InAimCone", "Check if the specified position is in the character's aim cone." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptEntInViewCone, "EntInAimCone", "Check if the specified entity is in the character's aim cone." )
+
+	DEFINE_SCRIPTFUNC_NAMED( ScriptBodyAngles, "BodyAngles", "Get the body's angles." )
+	DEFINE_SCRIPTFUNC( BodyDirection2D, "Get the body's 2D direction." )
+	DEFINE_SCRIPTFUNC( BodyDirection3D, "Get the body's 3D direction." )
+	DEFINE_SCRIPTFUNC( HeadDirection2D, "Get the head's 2D direction." )
+	DEFINE_SCRIPTFUNC( HeadDirection3D, "Get the head's 3D direction." )
+	DEFINE_SCRIPTFUNC( EyeDirection2D, "Get the eyes' 2D direction." )
+	DEFINE_SCRIPTFUNC( EyeDirection3D, "Get the eyes' 3D direction." )
+
+	DEFINE_SCRIPTFUNC( LastHitGroup, "Get the last hitgroup." )
+
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetLastKnownArea, "GetLastKnownArea", "Return the last nav area occupied - NULL if unknown" )
+
+#ifdef GLOWS_ENABLE
+	DEFINE_SCRIPTFUNC( AddGlowEffect, "" )
+	DEFINE_SCRIPTFUNC( RemoveGlowEffect, "" )
+	DEFINE_SCRIPTFUNC( IsGlowEffectActive, "" )
+	DEFINE_SCRIPTFUNC( SetGlowColor, "" )
+#endif
+
+	// 
+	// Hooks
+	// 
+	BEGIN_SCRIPTHOOK( CBaseCombatCharacter::g_Hook_RelationshipType, "RelationshipType", FIELD_INTEGER, "Called when a character's relationship to another entity is requested. Returning a disposition will make the game use that disposition instead of the default relationship. (note: 'default' in this case includes overrides from ai_relationship/SetRelationship)" )
+		DEFINE_SCRIPTHOOK_PARAM( "entity", FIELD_HSCRIPT )
+		DEFINE_SCRIPTHOOK_PARAM( "def", FIELD_INTEGER )
+	END_SCRIPTHOOK()
+
+	BEGIN_SCRIPTHOOK( CBaseCombatCharacter::g_Hook_RelationshipPriority, "RelationshipPriority", FIELD_INTEGER, "Called when a character's relationship priority for another entity is requested. Returning a number will make the game use that priority instead of the default priority. (note: 'default' in this case includes overrides from ai_relationship/SetRelationship)" )
+		DEFINE_SCRIPTHOOK_PARAM( "entity", FIELD_HSCRIPT )
+		DEFINE_SCRIPTHOOK_PARAM( "def", FIELD_INTEGER )
+	END_SCRIPTHOOK()
+
+END_SCRIPTDESC();
+#endif
 
 
 BEGIN_SIMPLE_DATADESC( Relationship_t )
@@ -186,12 +317,35 @@ BEGIN_SEND_TABLE_NOBASE( CBaseCombatCharacter, DT_BCCLocalPlayerExclusive )
 	SendPropTime( SENDINFO( m_flNextAttack ) ),
 END_SEND_TABLE();
 
+#ifdef GLOWS_ENABLE
+void *SendProxy_SendBaseCombatCharacterGlowDataTable( const SendProp *pProp, const void *pStruct, const void *pVarData, CSendProxyRecipients *pRecipients, int objectID )
+{
+	// Only send if our glow is active
+	CBaseCombatCharacter *pBCC = ( CBaseCombatCharacter * )pStruct;
+	if ( pBCC != NULL)
+	{
+		if ( pBCC->IsGlowEffectActive() )
+		{
+			return (void *)pVarData;
+		}
+	}
+	return NULL;
+}
+REGISTER_SEND_PROXY_NON_MODIFIED_POINTER( SendProxy_SendBaseCombatCharacterGlowDataTable );
+
+BEGIN_SEND_TABLE_NOBASE( CBaseCombatCharacter, DT_BCCGlowData )
+	SendPropVector( SENDINFO( m_GlowColor ), 8, 0, 0, 1 ),
+	SendPropFloat( SENDINFO( m_GlowAlpha ) ),
+END_SEND_TABLE();
+#endif
+
 //-----------------------------------------------------------------------------
 // This table encodes the CBaseCombatCharacter
 //-----------------------------------------------------------------------------
 IMPLEMENT_SERVERCLASS_ST(CBaseCombatCharacter, DT_BaseCombatCharacter)
 #ifdef GLOWS_ENABLE
 	SendPropBool( SENDINFO( m_bGlowEnabled ) ),
+	SendPropDataTable( "bcc_glowdata", 0, &REFERENCE_SEND_TABLE( DT_BCCGlowData ), SendProxy_SendBaseCombatCharacterGlowDataTable ),
 #endif // GLOWS_ENABLE
 	// Data that only gets sent to the local player.
 	SendPropDataTable( "bcc_localdata", 0, &REFERENCE_SEND_TABLE(DT_BCCLocalPlayerExclusive), SendProxy_SendBaseCombatCharacterLocalDataTable ),
@@ -224,6 +378,21 @@ int	CBaseCombatCharacter::GetInteractionID(void)
 	m_lastInteraction++;
 	return (m_lastInteraction);
 }
+
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Purpose: New method of adding interactions which allows their name to be available (currently used for VScript)
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::AddInteractionWithString( int &interaction, const char *szName )
+{
+	interaction = GetInteractionID();
+
+	if (g_pScriptVM)
+	{
+		ScriptRegisterConstantNamed( g_pScriptVM, interaction, szName, "An interaction which could be used with HandleInteraction or DispatchInteraction. NOTE: These are usually only initialized by certain types of NPCs when an instance of one spawns in the level for the first time!!! (the fact you're seeing this one means there was an NPC in the level which initialized it)" );
+	}
+}
+#endif
 
 // ============================================================================
 bool CBaseCombatCharacter::HasHumanGibs( void )
@@ -331,11 +500,16 @@ bool CBaseCombatCharacter::FVisible( CBaseEntity *pEntity, int traceMask, CBaseE
 {
 	VPROF( "CBaseCombatCharacter::FVisible" );
 
+#ifdef MAPBASE
+	if ( traceMask != MASK_BLOCKLOS || !ShouldUseVisibilityCache( pEntity ) || pEntity == this || !ai_use_visibility_cache.GetBool()
+		 )
+#else
 	if ( traceMask != MASK_BLOCKLOS || !ShouldUseVisibilityCache() || pEntity == this
 #if defined(HL2_DLL)
 		 || Classify() == CLASS_BULLSEYE || pEntity->Classify() == CLASS_BULLSEYE 
 #endif
 		 )
+#endif
 	{
 		return BaseClass::FVisible( pEntity, traceMask, ppBlocker );
 	}
@@ -440,6 +614,17 @@ void CBaseCombatCharacter::ResetVisibilityCache( CBaseCombatCharacter *pBCC )
 		g_VisibilityCache.RemoveAt( removals[i] );
 	}
 }
+
+#ifdef MAPBASE
+bool CBaseCombatCharacter::ShouldUseVisibilityCache( CBaseEntity *pEntity )
+{
+#ifdef HL2_DLL
+	return Classify() != CLASS_BULLSEYE && pEntity->Classify() != CLASS_BULLSEYE;
+#else
+	return true;
+#endif
+}
+#endif
 
 #ifdef PORTAL
 bool CBaseCombatCharacter::FVisibleThroughPortal( const CProp_Portal *pPortal, CBaseEntity *pEntity, int traceMask, CBaseEntity **ppBlocker )
@@ -746,6 +931,8 @@ CBaseCombatCharacter::CBaseCombatCharacter( void )
 
 #ifdef GLOWS_ENABLE
 	m_bGlowEnabled.Set( false );
+	m_GlowColor.GetForModify().Init( 0.0f, 0.0f, 0.0f );
+	m_GlowAlpha.Set(1.0f);
 #endif // GLOWS_ENABLE
 }
 
@@ -1135,6 +1322,11 @@ bool CTraceFilterMelee::ShouldHitEntity( IHandleEntity *pHandleEntity, int conte
 		if ( pEntity->m_takedamage == DAMAGE_NO )
 			return false;
 
+#ifdef MAPBASE // Moved from CheckTraceHullAttack()
+		if( m_pPassEnt && !pEntity->CanBeHitByMeleeAttack( const_cast<CBaseEntity*>(EntityFromEntityHandle( m_pPassEnt ) ) ) )
+			return false;
+#endif
+
 		// FIXME: Do not translate this to the driver because the driver only accepts damage from the vehicle
 		// Translate the vehicle into its driver for damage
 		/*
@@ -1162,7 +1354,11 @@ bool CTraceFilterMelee::ShouldHitEntity( IHandleEntity *pHandleEntity, int conte
 		if ( pBCC && pVictimBCC )
 		{
 			// Can only damage other NPCs that we hate
+#ifdef MAPBASE
+			if ( m_bDamageAnyNPC || pBCC->IRelationType( pEntity ) <= D_FR )
+#else
 			if ( m_bDamageAnyNPC || pBCC->IRelationType( pEntity ) == D_HT )
+#endif
 			{
 				if ( info.GetDamage() )
 				{
@@ -1178,6 +1374,10 @@ bool CTraceFilterMelee::ShouldHitEntity( IHandleEntity *pHandleEntity, int conte
 		}
 		else
 		{
+#ifdef MAPBASE
+			// Do not override an existing hit entity
+			if (!m_pHit)
+#endif
 			m_pHit = pEntity;
 
 			// Make sure if the player is holding this, he drops it
@@ -1253,11 +1453,13 @@ CBaseEntity *CBaseCombatCharacter::CheckTraceHullAttack( const Vector &vStart, c
 		pEntity = traceFilter.m_pHit;
 	}
 
+#ifndef MAPBASE // Moved to CTraceFilterMelee
 	if( pEntity && !pEntity->CanBeHitByMeleeAttack(this) )
 	{
 		// If we touched something, but it shouldn't be hit, return nothing.
 		pEntity = NULL;
 	}
+#endif
 
 	return pEntity;
 
@@ -1463,6 +1665,15 @@ void CBaseCombatCharacter::FixupBurningServerRagdoll( CBaseEntity *pRagdoll )
 	}
 }
 
+inline bool CBaseCombatCharacter::ShouldFadeServerRagdolls() const
+{
+#ifdef MAPBASE
+	return IsNPC() ? HasSpawnFlags( SF_NPC_FADE_CORPSE ) : true;
+#else
+	return true;
+#endif
+}
+
 bool CBaseCombatCharacter::BecomeRagdollBoogie( CBaseEntity *pKiller, const Vector &forceVector, float duration, int flags )
 {
 	Assert( CanBecomeRagdoll() );
@@ -1471,7 +1682,7 @@ bool CBaseCombatCharacter::BecomeRagdollBoogie( CBaseEntity *pKiller, const Vect
 
 	info.SetDamageForce( forceVector );
 
-	CBaseEntity *pRagdoll = CreateServerRagdoll( this, 0, info, COLLISION_GROUP_INTERACTIVE_DEBRIS, true );
+	CBaseEntity *pRagdoll = CreateServerRagdoll( this, 0, info, COLLISION_GROUP_INTERACTIVE_DEBRIS, ShouldFadeServerRagdolls() );
 
 	pRagdoll->SetCollisionBounds( CollisionProp()->OBBMins(), CollisionProp()->OBBMaxs() );
 
@@ -1484,6 +1695,30 @@ bool CBaseCombatCharacter::BecomeRagdollBoogie( CBaseEntity *pKiller, const Vect
 
 	return true;
 }
+
+#ifdef MAPBASE
+CBaseEntity *CBaseCombatCharacter::BecomeRagdollBoogie( CBaseEntity *pKiller, const Vector &forceVector, float duration, int flags, const Vector *vecColor )
+{
+	Assert( CanBecomeRagdoll() );
+
+	CTakeDamageInfo info( pKiller, pKiller, 1.0f, DMG_GENERIC );
+
+	info.SetDamageForce( forceVector );
+
+	CBaseEntity *pRagdoll = CreateServerRagdoll( this, 0, info, COLLISION_GROUP_INTERACTIVE_DEBRIS, ShouldFadeServerRagdolls() );
+
+	pRagdoll->SetCollisionBounds( CollisionProp()->OBBMins(), CollisionProp()->OBBMaxs() );
+
+	CBaseEntity *pBoogie = CRagdollBoogie::Create( pRagdoll, 200, gpGlobals->curtime, duration, flags, vecColor );
+
+	CTakeDamageInfo ragdollInfo( pKiller, pKiller, 10000.0, DMG_GENERIC | DMG_REMOVENORAGDOLL );
+	ragdollInfo.SetDamagePosition( WorldSpaceCenter() );
+	ragdollInfo.SetDamageForce( Vector( 0, 0, 1 ) );
+	TakeDamage( ragdollInfo );
+
+	return pBoogie;
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -1519,7 +1754,7 @@ bool CBaseCombatCharacter::BecomeRagdoll( const CTakeDamageInfo &info, const Vec
 #endif
 		// in single player create ragdolls on the server when the player hits someone
 		// with their vehicle - for more dramatic death/collisions
-		CBaseEntity *pRagdoll = CreateServerRagdoll( this, m_nForceBone, info2, COLLISION_GROUP_INTERACTIVE_DEBRIS, true );
+		CBaseEntity *pRagdoll = CreateServerRagdoll( this, m_nForceBone, info2, COLLISION_GROUP_INTERACTIVE_DEBRIS, ShouldFadeServerRagdolls() );
 		FixupBurningServerRagdoll( pRagdoll );
 		RemoveDeferred();
 		return true;
@@ -1533,7 +1768,7 @@ bool CBaseCombatCharacter::BecomeRagdoll( const CTakeDamageInfo &info, const Vec
 	// Burning corpses are server-side in episodic, if we're in darkness mode
 	if ( IsOnFire() && HL2GameRules()->IsAlyxInDarknessMode() )
 	{
-		CBaseEntity *pRagdoll = CreateServerRagdoll( this, m_nForceBone, newinfo, COLLISION_GROUP_DEBRIS );
+		CBaseEntity *pRagdoll = CreateServerRagdoll( this, m_nForceBone, newinfo, COLLISION_GROUP_DEBRIS, ShouldFadeServerRagdolls() );
 		FixupBurningServerRagdoll( pRagdoll );
 		RemoveDeferred();
 		return true;
@@ -1554,7 +1789,7 @@ bool CBaseCombatCharacter::BecomeRagdoll( const CTakeDamageInfo &info, const Vec
 			return false;
 
 		//FIXME: This is fairly leafy to be here, but time is short!
-		CBaseEntity *pRagdoll = CreateServerRagdoll( this, m_nForceBone, newinfo, COLLISION_GROUP_INTERACTIVE_DEBRIS, true );
+		CBaseEntity *pRagdoll = CreateServerRagdoll( this, m_nForceBone, newinfo, COLLISION_GROUP_INTERACTIVE_DEBRIS, ShouldFadeServerRagdolls() );
 		FixupBurningServerRagdoll( pRagdoll );
 		PhysSetEntityGameFlags( pRagdoll, FVPHYSICS_NO_SELF_COLLISIONS );
 		RemoveDeferred();
@@ -1564,7 +1799,7 @@ bool CBaseCombatCharacter::BecomeRagdoll( const CTakeDamageInfo &info, const Vec
 
 	if( hl2_episodic.GetBool() && Classify() == CLASS_PLAYER_ALLY_VITAL )
 	{
-		CreateServerRagdoll( this, m_nForceBone, newinfo, COLLISION_GROUP_INTERACTIVE_DEBRIS, true );
+		CreateServerRagdoll( this, m_nForceBone, newinfo, COLLISION_GROUP_INTERACTIVE_DEBRIS, ShouldFadeServerRagdolls() );
 		RemoveDeferred();
 		return true;
 	}
@@ -1593,7 +1828,23 @@ void CBaseCombatCharacter::Event_Killed( const CTakeDamageInfo &info )
 	CRagdollMagnet *pMagnet = CRagdollMagnet::FindBestMagnet( this );
 	if( pMagnet )
 	{
+#ifdef MAPBASE
+		if (pMagnet->BoneTarget() && pMagnet->BoneTarget()[0] != '\0')
+		{
+			int iBone = -1;
+			forceVector += pMagnet->GetForceVector( this, &iBone );
+			if (iBone != -1)
+				m_nForceBone = GetPhysicsBone(iBone);
+		}
+		else
+		{
+			forceVector += pMagnet->GetForceVector( this );
+		}
+
+		pMagnet->m_OnUsed.Set(forceVector, this, pMagnet);
+#else
 		forceVector += pMagnet->GetForceVector( this );
+#endif
 	}
 
 	CBaseCombatWeapon *pDroppedWeapon = m_hActiveWeapon.Get();
@@ -1612,7 +1863,14 @@ void CBaseCombatCharacter::Event_Killed( const CTakeDamageInfo &info )
 	// if flagged to drop a health kit
 	if (HasSpawnFlags(SF_NPC_DROP_HEALTHKIT))
 	{
-		CBaseEntity::Create( "item_healthvial", GetAbsOrigin(), GetAbsAngles() );
+		CBaseEntity *pItem = CBaseEntity::Create( "item_healthvial", GetAbsOrigin(), GetAbsAngles() );
+		if (pItem)
+		{
+#ifdef MAPBASE
+			if (MyNPCPointer())
+				MyNPCPointer()->m_OnItemDrop.Set( pItem, pItem, this );
+#endif
+		}
 	}
 	// clear the deceased's sound channels.(may have been firing or reloading when killed)
 	EmitSound( "BaseCombatCharacter.StopWeaponSounds" );
@@ -1646,7 +1904,11 @@ void CBaseCombatCharacter::Event_Killed( const CTakeDamageInfo &info )
 			}
 		}
 #ifdef HL2_DLL
+#ifdef MAPBASE
+		else if ( PlayerHasMegaPhysCannon() && GlobalEntity_GetCounter("super_phys_gun") != 1 )
+#else
 		else if ( PlayerHasMegaPhysCannon() )
+#endif
 		{
 			if ( pDroppedWeapon )
 			{
@@ -1655,7 +1917,59 @@ void CBaseCombatCharacter::Event_Killed( const CTakeDamageInfo &info )
 		}
 #endif
 
-		if ( !bRagdollCreated && ( info.GetDamageType() & DMG_REMOVENORAGDOLL ) == 0 )
+#ifdef RTBR_DLL
+		CBasePlayer *pPlayer = ToBasePlayer( info.GetAttacker() );
+		bool bHasBoogied = false;
+
+		// Boogie if we got hit with a charged attack
+		if (pPlayer != NULL && CanBecomeServerRagdoll() && CanBoogie()) {
+			// Bludgeon weaponry doesn't properly set its inflictor when it hits, so we need to check the damage type for stunstick charge attacks.
+			if ((info.GetDamageType() & DMG_STUNSTICK) == DMG_STUNSTICK)
+			{
+				Vector colour = Vector( 1, 0.655, 0.35 ); // stunstick orange, thanks randomcatdude
+				float maxDamage = g_pGameRules->AdjustPlayerDamageInflicted( STUNSTICK_MAX_CHARGE_DAMAGE );
+				float boogieTime = 1.0f + (info.GetDamage() / maxDamage) * 4.0f; // 1-5 sec. of boogie
+				BecomeRagdollBoogie( pPlayer, forceVector, boogieTime, SF_RAGDOLL_BOOGIE_ELECTRICAL_LOW, &colour );
+				RemoveDeferred();
+				bHasBoogied = true;
+			}
+			else if (FClassnameIs( info.GetInflictor(), "crossbow_bolt" ) && info.GetDamageType() & DMG_SHOCK)
+			{
+				Vector colour = Vector( 0.19, 0.46, 0.93 ); // crossbow blue
+
+				float maxDamage = g_pGameRules->AdjustPlayerDamageInflicted( sk_plr_dmg_crossbow.GetFloat() * BOLT_ELEC_RADIUS_DAMAGE_SCALE * 3 );
+				float minDamage = maxDamage / 3;
+				float boogieTime = 3.0f + ((info.GetDamage() - minDamage) / (maxDamage - minDamage)) * 4.0f; // 3-7 sec. of boogie
+
+				int iFlags = SF_RAGDOLL_BOOGIE_ELECTRICAL_LOW;
+				if (boogieTime >= 5.0f)
+					iFlags = SF_RAGDOLL_BOOGIE_ELECTRICAL; // level 2 charge or greater
+
+				BecomeRagdollBoogie( pPlayer, forceVector, boogieTime, iFlags, &colour );
+				RemoveDeferred();
+				bHasBoogied = true;
+			}
+			else if ((info.GetDamageType() & DMG_CHARGEDGAUSS) == DMG_CHARGEDGAUSS)
+			{
+				Vector colour = Vector( 1, 0.72, 0.19 ); // gauss yellow
+				float maxDamage = g_pGameRules->AdjustPlayerDamageInflicted( sk_plr_dmg_gauss.GetFloat() + sk_plr_max_dmg_gauss.GetFloat() );
+				float minDamage = g_pGameRules->AdjustPlayerDamageInflicted( sk_plr_dmg_gauss.GetFloat() );
+				float boogieTime = 2.0f + ((info.GetDamage() - minDamage) / (maxDamage - minDamage)) * 8.0f; // 2-10 sec. of boogie
+
+				int iFlags = SF_RAGDOLL_BOOGIE_ELECTRICAL_LOW;
+				if (boogieTime >= 5.0f)
+					iFlags = SF_RAGDOLL_BOOGIE_ELECTRICAL; // 6 points of charge or greater
+
+				BecomeRagdollBoogie( pPlayer, forceVector, boogieTime, SF_RAGDOLL_BOOGIE_ELECTRICAL, &colour );
+				RemoveDeferred();
+				bHasBoogied = true;
+			}
+		}
+
+		if (!bRagdollCreated && (info.GetDamageType() & DMG_REMOVENORAGDOLL) == 0 && !bHasBoogied)
+#else
+		if (!bRagdollCreated && (info.GetDamageType() & DMG_REMOVENORAGDOLL) == 0)
+#endif
 		{
 			BecomeRagdoll( info, forceVector );
 		}
@@ -1906,7 +2220,11 @@ void CBaseCombatCharacter::Weapon_Drop( CBaseCombatWeapon *pWeapon, const Vector
 		return;
 
 	// If I'm an NPC, fill the weapon with ammo before I drop it.
+#ifdef MAPBASE
+	if ( GetFlags() & FL_NPC && !pWeapon->HasSpawnFlags(SF_WEAPON_PRESERVE_AMMO) )
+#else
 	if ( GetFlags() & FL_NPC )
+#endif
 	{
 		if ( pWeapon->UsesClipsForAmmo1() )
 		{
@@ -2042,6 +2360,10 @@ void CBaseCombatCharacter::Weapon_Drop( CBaseCombatWeapon *pWeapon, const Vector
 	pWeapon->Drop( vecThrow );
 	Weapon_Detach( pWeapon );
 
+#ifdef MAPBASE
+	m_OnWeaponDrop.FireOutput(pWeapon, this);
+#endif
+
 	if ( HasSpawnFlags( SF_NPC_NO_WEAPON_DROP ) )
 	{
 		// Don't drop weapons when the super physgun is happening.
@@ -2064,6 +2386,239 @@ void CBaseCombatCharacter::SetLightingOriginRelative( CBaseEntity *pLightingOrig
 }
 
 
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Purpose:	Gives character new weapon and equips it
+// Input  : New weapon
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::Weapon_Equip( CBaseCombatWeapon *pWeapon )
+{
+	Weapon_HandleEquip(pWeapon);
+
+	// Players don't automatically holster their current weapon
+	if ( IsPlayer() == false )
+	{
+		if ( m_hActiveWeapon )
+		{
+			m_hActiveWeapon->Holster();
+			// FIXME: isn't this handeled by the weapon?
+			m_hActiveWeapon->AddEffects( EF_NODRAW );
+		}
+		SetActiveWeapon( pWeapon );
+		m_hActiveWeapon->RemoveEffects( EF_NODRAW );
+
+	}
+
+	WeaponProficiency_t proficiency;
+	proficiency = CalcWeaponProficiency( pWeapon );
+	
+	if( weapon_showproficiency.GetBool() != 0 )
+	{
+		Msg("%s equipped with %s, proficiency is %s\n", GetClassname(), pWeapon->GetClassname(), GetWeaponProficiencyName( proficiency ) );
+	}
+
+	SetCurrentWeaponProficiency( proficiency );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose:	Puts a new weapon in the inventory
+// Input  : New weapon
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::Weapon_EquipHolstered( CBaseCombatWeapon *pWeapon )
+{
+	Weapon_HandleEquip(pWeapon);
+	pWeapon->AddEffects( EF_NODRAW );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose:	Adds new weapon to the character
+// Input  : New weapon
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::Weapon_HandleEquip( CBaseCombatWeapon *pWeapon )
+{
+	// Add the weapon to my weapon inventory
+	if (IsPlayer())
+	{
+		// This code drops existing weapons that are in the same bucket and bucket position.
+		// This doesn't really harm anything since that situation would've broken the HUD anyway.
+		// 
+		// It goes through every single index in case there's a NULL pointer in between weapons.
+		int iFirstNullIndex = -1;
+		for (int i=0;i<MAX_WEAPONS;i++) 
+		{
+			if (!m_hMyWeapons[i])
+			{
+				if (iFirstNullIndex == -1)
+					iFirstNullIndex = i;
+			}
+			else
+			{
+				if (pWeapon->GetSlot() == m_hMyWeapons[i]->GetSlot() &&
+					pWeapon->GetPosition() == m_hMyWeapons[i]->GetPosition())
+				{
+					// Replace our existing weapon in this slot
+					Weapon_Drop(m_hMyWeapons[i]);
+					{
+						// We found a slot, we don't care about the first null index anymore
+						iFirstNullIndex = -1;
+
+						m_hMyWeapons.Set( i, pWeapon );
+						break;
+					}
+				}
+			}
+		}
+
+		if (iFirstNullIndex != -1)
+			m_hMyWeapons.Set( iFirstNullIndex, pWeapon );
+	}
+	else
+	{
+		for (int i=0;i<MAX_WEAPONS;i++) 
+		{
+			if (!m_hMyWeapons[i]) 
+			{
+				m_hMyWeapons.Set( i, pWeapon );
+				break;
+			}
+		}
+	}
+
+	// Weapon is now on my team
+	pWeapon->ChangeTeam( GetTeamNumber() );
+
+	bool bPreserveAmmo = pWeapon->HasSpawnFlags(SF_WEAPON_PRESERVE_AMMO);
+	if (!bPreserveAmmo)
+	{
+		// ----------------------
+		//  Give Primary Ammo
+		// ----------------------
+		// If gun doesn't use clips, just give ammo
+		if (pWeapon->GetMaxClip1() == -1)
+		{
+#ifdef HL2_DLL
+			if( FStrEq(STRING(gpGlobals->mapname), "d3_c17_09") && FClassnameIs(pWeapon, "weapon_rpg") && pWeapon->NameMatches("player_spawn_items") )
+			{
+				// !!!HACK - Don't give any ammo with the spawn equipment RPG in d3_c17_09. This is a chapter
+				// start and the map is way to easy if you start with 3 RPG rounds. It's fine if a player conserves
+				// them and uses them here, but it's not OK to start with enough ammo to bypass the snipers completely.
+				GiveAmmo( 0, pWeapon->m_iPrimaryAmmoType); 
+			}
+			else
+#endif // HL2_DLL
+				GiveAmmo(pWeapon->GetDefaultClip1(), pWeapon->m_iPrimaryAmmoType); 
+		}
+		// If default ammo given is greater than clip
+		// size, fill clips and give extra ammo
+		else if ( pWeapon->GetDefaultClip1() >  pWeapon->GetMaxClip1() )
+		{
+			pWeapon->m_iClip1 = pWeapon->GetMaxClip1();
+			GiveAmmo( (pWeapon->GetDefaultClip1() - pWeapon->GetMaxClip1()), pWeapon->m_iPrimaryAmmoType); 
+		}
+
+		// ----------------------
+		//  Give Secondary Ammo
+		// ----------------------
+		// If gun doesn't use clips, just give ammo
+		if (pWeapon->GetMaxClip2() == -1)
+		{
+			GiveAmmo(pWeapon->GetDefaultClip2(), pWeapon->m_iSecondaryAmmoType); 
+		}
+		// If default ammo given is greater than clip
+		// size, fill clips and give extra ammo
+		else if ( pWeapon->GetDefaultClip2() > pWeapon->GetMaxClip2() )
+		{
+			pWeapon->m_iClip2 = pWeapon->GetMaxClip2();
+			GiveAmmo( (pWeapon->GetDefaultClip2() - pWeapon->GetMaxClip2()), pWeapon->m_iSecondaryAmmoType); 
+		}
+	}
+	else //if (IsPlayer())
+	{
+		if (pWeapon->UsesClipsForAmmo1())
+		{
+			if (pWeapon->m_iClip1 > pWeapon->GetMaxClip1())
+			{
+				// Handle excess ammo
+				GiveAmmo( pWeapon->m_iClip1 - pWeapon->GetMaxClip1(), pWeapon->m_iPrimaryAmmoType );
+				pWeapon->m_iClip1 = pWeapon->GetMaxClip1();
+			}
+		}
+		else if (pWeapon->m_iClip1 > 0)
+		{
+			// Just because the weapon can't use clips doesn't mean
+			// the mapper can't override their clip value for ammo.
+			GiveAmmo(pWeapon->m_iClip1, pWeapon->m_iPrimaryAmmoType);
+			pWeapon->m_iClip1 = WEAPON_NOCLIP;
+		}
+
+		if (pWeapon->UsesClipsForAmmo2())
+		{
+			if (pWeapon->m_iClip2 > pWeapon->GetMaxClip2())
+			{
+				// Handle excess ammo
+				GiveAmmo(pWeapon->m_iClip2 - pWeapon->GetMaxClip2(), pWeapon->m_iSecondaryAmmoType);
+				pWeapon->m_iClip2 = pWeapon->GetMaxClip2();
+			}
+		}
+		else if (pWeapon->m_iClip2 > 0)
+		{
+			// Just because the weapon can't use clips doesn't mean
+			// the mapper can't override their clip value for ammo.
+			GiveAmmo(pWeapon->m_iClip2, pWeapon->m_iSecondaryAmmoType);
+			pWeapon->m_iClip2 = WEAPON_NOCLIP;
+		}
+	}
+
+	pWeapon->Equip( this );
+	
+	// Gotta do this *after* Equip because it may whack maxRange
+	if ( IsPlayer() == false )
+	{
+		// If SF_NPC_LONG_RANGE spawn flags is set let weapon work from any distance
+		if ( HasSpawnFlags(SF_NPC_LONG_RANGE) )
+		{
+			pWeapon->m_fMaxRange1 = 999999999;
+			pWeapon->m_fMaxRange2 = 999999999;
+		}
+	}
+	else if (bPreserveAmmo)
+	{
+		// The clip doesn't update on the client unless we do this.
+		// This is the only way I've figured out how to update without doing something worse.
+		// TODO: Remove this hack, we've finally fixed it
+		/*
+		variant_t clip1;
+		clip1.SetInt(pWeapon->m_iClip1);
+		variant_t clip2;
+		clip2.SetInt(pWeapon->m_iClip2);
+
+		pWeapon->m_iClip1 = pWeapon->m_iClip1 - 1;
+		pWeapon->m_iClip2 = pWeapon->m_iClip2 - 1;
+
+		g_EventQueue.AddEvent(pWeapon, "SetAmmo1", clip1, 0.0001f, this, this, 0);
+		g_EventQueue.AddEvent(pWeapon, "SetAmmo2", clip2, 0.0001f, this, this, 0);
+		*/
+	}
+
+	// Pass the lighting origin over to the weapon if we have one
+	pWeapon->SetLightingOriginRelative( GetLightingOriginRelative() );
+
+	//if (m_aliveTimer.IsLessThen(0.01f))
+		m_OnWeaponEquip.FireOutput(pWeapon, this);
+
+	if ( IsPlayer() )
+	{
+		IGameEvent *event = gameeventmanager->CreateEvent( "weapon_equipped" );
+		if ( event )
+		{
+			event->SetString( "class", pWeapon->GetClassname() );
+			event->SetInt( "entindex", pWeapon->entindex() );
+			event->SetInt( "owner_entindex", entindex() );
+			gameeventmanager->FireEvent( event );
+		}
+	}
+}
+#else
 //-----------------------------------------------------------------------------
 // Purpose:	Add new weapon to the character
 // Input  : New weapon
@@ -2164,7 +2719,21 @@ void CBaseCombatCharacter::Weapon_Equip( CBaseCombatWeapon *pWeapon )
 
 	// Pass the lighting origin over to the weapon if we have one
 	pWeapon->SetLightingOriginRelative( GetLightingOriginRelative() );
+
+	if ( IsPlayer() )
+	{
+		IGameEvent *event = gameeventmanager->CreateEvent( "weapon_equipped" );
+		if ( event )
+		{
+			event->SetString( "class", pWeapon->GetClassname() );
+			event->SetInt( "entindex", pWeapon->entindex() );
+			event->SetInt( "owner_entindex", entindex() );
+			gameeventmanager->FireEvent( event );
+		}
+	}
 }
+#endif
+
 
 //-----------------------------------------------------------------------------
 // Purpose:	Leaves weapon, giving only ammo to the character
@@ -2298,6 +2867,12 @@ bool CBaseCombatCharacter::Weapon_CanUse( CBaseCombatWeapon *pWeapon )
 
 			if ( SelectWeightedSequence(translatedActivity) == ACTIVITY_NOT_AVAILABLE )
 			{
+#ifdef MAPBASE
+				// Do we have a backup?
+				translatedActivity = Weapon_BackupActivity((Activity)(pTable->baseAct), true, pWeapon);
+				if (SelectWeightedSequence(translatedActivity) != ACTIVITY_NOT_AVAILABLE)
+					return true;
+#endif
 				return false;
 			}
 		}
@@ -2352,6 +2927,11 @@ int CBaseCombatCharacter::TakeHealth (float flHealth, int bitsDamageType)
 {
 	if (!m_takedamage)
 		return 0;
+
+#ifdef MAPBASE
+	float flRatio = clamp( (float)m_iHealth / (float)m_iMaxHealth, 0.f, 1.f );
+	m_OnHealthChanged.Set(flRatio, NULL, this);
+#endif
 	
 	return BaseClass::TakeHealth(flHealth, bitsDamageType);
 }
@@ -2418,8 +2998,21 @@ int CBaseCombatCharacter::OnTakeDamage( const CTakeDamageInfo &info )
 	{
 	case LIFE_ALIVE:
 		retVal = OnTakeDamage_Alive( info );
+#ifdef MAPBASE
+		if (retVal)
+		{
+			float flRatio = clamp( (float)m_iHealth / (float)m_iMaxHealth, 0.f, 1.f );
+			m_OnHealthChanged.Set(flRatio, NULL, this);
+		}
+#endif
 		if ( m_iHealth <= 0 )
 		{
+#ifdef MAPBASE_VSCRIPT
+			// False = Cheat death
+			if (ScriptDeathHook( const_cast<CTakeDamageInfo*>(&info) ) == false)
+				return retVal;
+#endif
+
 			IPhysicsObject *pPhysics = VPhysicsGetObject();
 			if ( pPhysics )
 			{
@@ -2445,11 +3038,28 @@ int CBaseCombatCharacter::OnTakeDamage( const CTakeDamageInfo &info )
 		break;
 
 	case LIFE_DYING:
+#ifdef MAPBASE
+		retVal = OnTakeDamage_Dying( info );
+		if (retVal)
+		{
+			float flRatio = clamp( (float)m_iHealth / (float)m_iMaxHealth, 0.f, 1.f );
+			m_OnHealthChanged.Set(flRatio, NULL, this);
+		}
+		return retVal;
+#else
 		return OnTakeDamage_Dying( info );
+#endif
 	
 	default:
 	case LIFE_DEAD:
 		retVal = OnTakeDamage_Dead( info );
+#ifdef MAPBASE
+		if (retVal)
+		{
+			float flRatio = clamp( (float)m_iHealth / (float)m_iMaxHealth, 0.f, 1.f );
+			m_OnHealthChanged.Set(flRatio, NULL, this);
+		}
+#endif
 		if ( m_iHealth <= 0 && g_pGameRules->Damage_ShouldGibCorpse( info.GetDamageType() ) && ShouldGib( info ) )
 		{
 			Event_Gibbed( info );
@@ -2496,6 +3106,58 @@ int CBaseCombatCharacter::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 		m_iHealth -= flIntegerDamage;
 	}
 
+#ifdef RTBMP
+	CBaseEntity *attacker = info.GetAttacker();
+	if ( attacker )
+	{
+		// fire global game event
+
+		IGameEvent *event = NULL;
+		if ( IsPlayer() )
+			event = gameeventmanager->CreateEvent( "player_hurt" );
+		else if ( IsNPC() )
+			event = gameeventmanager->CreateEvent( "npc_hurt" );
+
+		if ( event )
+		{
+			CBasePlayer *pThisPlayer = ToBasePlayer( this );
+			if ( pThisPlayer )
+			{
+				event->SetInt( "userid", pThisPlayer->GetUserID() );
+				event->SetInt( "damageamount_base", pThisPlayer->LastDamageAmount() );
+				event->SetInt( "damageamount_true", info.GetDamage() );
+			}
+			else
+			{
+				event->SetInt( "entindex", entindex() );
+				// All damage is true to NPCs
+				event->SetInt( "damageamount", info.GetDamage() );
+			}
+
+			event->SetInt( "health", MAX( 0, m_iHealth ) );
+
+			// was this attack a headshot? only bullet hitscan weapons can headshot, gauss can't
+			if ( LastHitGroup() == HITGROUP_HEAD && info.GetDamageType() & DMG_BULLET )
+				event->SetBool( "headshot", true );
+			else
+				event->SetBool( "headshot", false );
+
+			event->SetInt( "priority", 5 );	// HLTV event priority, not transmitted
+
+			if ( attacker->IsPlayer() )
+			{
+				CBasePlayer *player = ToBasePlayer( attacker );
+				event->SetInt( "attacker", player->GetUserID() ); // hurt by other player
+			}
+			else
+			{
+				event->SetInt( "attacker", 0 ); // hurt by "world"
+			}
+
+			gameeventmanager->FireEvent( event );
+		}
+	}
+#endif
 	return 1;
 }
 
@@ -2609,6 +3271,29 @@ void CBaseCombatCharacter::AddClassRelationship ( Class_T class_type, Dispositio
 	m_Relationship[index].priority		= ( priority != DEF_RELATIONSHIP_PRIORITY ) ? priority : 0;
 }
 
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Purpose: Removes a class relationship from our list
+// Input  : *class_type - Class with whom the relationship should be ended
+// Output : True is relation was removed, false if it was not found
+//-----------------------------------------------------------------------------
+bool CBaseCombatCharacter::RemoveClassRelationship( Class_T class_type )
+{
+	// Find the relationship in our list, if it exists
+	for ( int i = m_Relationship.Count()-1; i >= 0; i-- ) 
+	{
+		if ( m_Relationship[i].classType == class_type )
+		{
+			// Done, remove it
+			m_Relationship.Remove( i );
+			return true;
+		}
+	}
+
+	return false;
+}
+#endif
+
 //-----------------------------------------------------------------------------
 // Purpose: Add or Change a entity relationship for this entity
 // Input  :
@@ -2690,6 +3375,54 @@ void CBaseCombatCharacter::SetDefaultRelationship(Class_T nClass, Class_T nClass
 	}
 }
 
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Purpose: Determine whether or not default relationships are loaded
+// Input  :
+// Output :
+//-----------------------------------------------------------------------------
+bool CBaseCombatCharacter::DefaultRelationshipsLoaded()
+{
+	return m_DefaultRelationship != NULL;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Fetch the default (ignore ai_relationship changes) relationship
+// Input  :
+// Output :
+//-----------------------------------------------------------------------------
+Disposition_t CBaseCombatCharacter::GetDefaultRelationshipDisposition( Class_T nClassSource, Class_T nClassTarget )
+{
+	Assert( m_DefaultRelationship != NULL );
+
+	return m_DefaultRelationship[nClassSource][nClassTarget].disposition;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Fetch the default (ignore ai_relationship changes) priority
+// Input  :
+// Output :
+//-----------------------------------------------------------------------------
+int CBaseCombatCharacter::GetDefaultRelationshipPriority( Class_T nClassSource, Class_T nClassTarget )
+{
+	Assert( m_DefaultRelationship != NULL );
+
+	return m_DefaultRelationship[nClassSource][nClassTarget].priority;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Fetch the default (ignore ai_relationship changes) priority
+// Input  :
+// Output :
+//-----------------------------------------------------------------------------
+int CBaseCombatCharacter::GetDefaultRelationshipPriority( Class_T nClassTarget )
+{
+	Assert( m_DefaultRelationship != NULL );
+
+	return m_DefaultRelationship[Classify()][nClassTarget].priority;
+}
+#endif
+
 //-----------------------------------------------------------------------------
 // Purpose: Fetch the default (ignore ai_relationship changes) relationship
 // Input  :
@@ -2745,7 +3478,53 @@ Relationship_t *CBaseCombatCharacter::FindEntityRelationship( CBaseEntity *pTarg
 Disposition_t CBaseCombatCharacter::IRelationType ( CBaseEntity *pTarget )
 {
 	if ( pTarget )
+	{
+#ifdef MAPBASE_VSCRIPT
+		if (m_ScriptScope.IsInitialized() && g_Hook_RelationshipType.CanRunInScope( m_ScriptScope ))
+		{
+			// entity, default
+			ScriptVariant_t functionReturn;
+			ScriptVariant_t args[] = { ScriptVariant_t( pTarget->GetScriptInstance() ), FindEntityRelationship( pTarget )->disposition };
+			if (g_Hook_RelationshipType.Call( m_ScriptScope, &functionReturn, args ) && (functionReturn.m_type == FIELD_INTEGER && functionReturn.m_int != D_ER))
+			{
+				// Use the disposition returned by the script
+				return (Disposition_t)functionReturn.m_int;
+			}
+		}
+#endif
+
+#ifdef MAPBASE
+		if (ai_team_relationships.GetBool())
+		{
+			// If both me and my target on a team, override default relationships
+			if (GetTeamNumber() != TEAM_UNASSIGNED && pTarget->GetTeamNumber() != TEAM_UNASSIGNED)
+			{
+				// Only override if our relationship with this entity is identical to the default (prevents overriding ai_relationship)
+				Disposition_t nDisposition = FindEntityRelationship( pTarget )->disposition;
+				if (nDisposition == GetDefaultRelationshipDisposition( Classify(), pTarget->Classify() ))
+				{
+					if (GetTeamNumber() == pTarget->GetTeamNumber())
+					{
+						// Same team = like (neutral if that was the default)
+						if (nDisposition == D_NU)
+							return D_NU;
+						return D_LI;
+					}
+					else
+					{
+						// Not the same team = hate (fear if that was the default)
+						if (nDisposition == D_FR)
+							return D_FR;
+						return D_HT;
+					}
+				}
+			}
+		}
+#endif
+
 		return FindEntityRelationship( pTarget )->disposition;
+	}
+
 	return D_NU;
 }
 
@@ -2757,9 +3536,150 @@ Disposition_t CBaseCombatCharacter::IRelationType ( CBaseEntity *pTarget )
 int CBaseCombatCharacter::IRelationPriority( CBaseEntity *pTarget )
 {
 	if ( pTarget )
+	{
+#ifdef MAPBASE_VSCRIPT
+		if (m_ScriptScope.IsInitialized() && g_Hook_RelationshipPriority.CanRunInScope( m_ScriptScope ))
+		{
+			// entity, default
+			ScriptVariant_t functionReturn;
+			ScriptVariant_t args[] = { ScriptVariant_t( pTarget->GetScriptInstance() ), FindEntityRelationship( pTarget )->priority };
+			if (g_Hook_RelationshipPriority.Call( m_ScriptScope, &functionReturn, args ) && functionReturn.m_type == FIELD_INTEGER)
+			{
+				// Use the priority returned by the script
+				return functionReturn.m_int;
+			}
+		}
+#endif
+
 		return FindEntityRelationship( pTarget )->priority;
+	}
+
 	return 0;
 }
+
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Purpose: Ported from CAI_BaseNPC so players can use it
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::AddRelationship( const char *pszRelationship, CBaseEntity *pActivator )
+{
+	// Parse the keyvalue data
+	char parseString[1000];
+	Q_strncpy(parseString, pszRelationship, sizeof(parseString));
+
+	// Look for an entity string
+	char *entityString = strtok(parseString," ");
+	while (entityString)
+	{
+		// Get the disposition
+		char *dispositionString = strtok(NULL," ");
+		Disposition_t disposition = D_NU;
+		if ( dispositionString )
+		{
+			if (!stricmp(dispositionString,"D_HT"))
+			{
+				disposition = D_HT;
+			}
+			else if (!stricmp(dispositionString,"D_FR"))
+			{
+				disposition = D_FR;
+			}
+			else if (!stricmp(dispositionString,"D_LI"))
+			{
+				disposition = D_LI;
+			}
+			else if (!stricmp(dispositionString,"D_NU"))
+			{
+				disposition = D_NU;
+			}
+			else
+			{
+				disposition = D_NU;
+				Warning( "***ERROR***\nBad relationship type (%s) to unknown entity (%s)!\n", dispositionString,entityString );
+				Assert( 0 );
+				return;
+			}
+		}
+		else
+		{
+			Warning("Can't parse relationship info (%s) - Expecting 'name [D_HT, D_FR, D_LI, D_NU] [1-99]'\n", pszRelationship );
+			Assert(0);
+			return;
+		}
+
+		// Get the priority
+		char *priorityString	= strtok(NULL," ");
+		int	priority = ( priorityString ) ? atoi(priorityString) : DEF_RELATIONSHIP_PRIORITY;
+
+		bool bFoundEntity = false;
+
+		// Try to get pointer to an entity of this name
+		CBaseEntity *entity = gEntList.FindEntityByName( NULL, entityString, this, pActivator );
+		while( entity )
+		{
+			// make sure you catch all entities of this name.
+			bFoundEntity = true;
+			AddEntityRelationship(entity, disposition, priority );
+			entity = gEntList.FindEntityByName( entity, entityString, this, pActivator );
+		}
+
+		if( !bFoundEntity )
+		{
+			// Need special condition for player as we can only have one
+			if (!stricmp("player", entityString) || !stricmp("!player", entityString))
+			{
+				AddClassRelationship( CLASS_PLAYER, disposition, priority );
+			}
+			// Otherwise try to create one too see if a valid classname and get class type
+			else
+			{
+				// HACKHACK:
+				CBaseEntity *pEntity = CanCreateEntityClass( entityString ) ? CreateEntityByName( entityString ) : NULL;
+				if (pEntity)
+				{
+					AddClassRelationship( pEntity->Classify(), disposition, priority );
+					UTIL_RemoveImmediate(pEntity);
+				}
+				else
+				{
+					// NEW: Classify class relationships
+					if (!Q_strnicmp(entityString, "CLASS_", 5))
+					{
+						// Go through all of the classes and find which one this is
+						Class_T resultClass = CLASS_NONE;
+						for (int i = 0; i < NUM_AI_CLASSES; i++)
+						{
+							if (FStrEq(g_pGameRules->AIClassText(i), entityString))
+							{
+								resultClass = (Class_T)i;
+							}
+						}
+						
+						if (resultClass != CLASS_NONE)
+						{
+							AddClassRelationship( resultClass, disposition, priority );
+							bFoundEntity = true;
+						}
+					}
+					
+					if (!bFoundEntity)
+						DevWarning( "Couldn't set relationship to unknown entity or class (%s)!\n", entityString );
+				}
+			}
+		}
+		// Check for another entity in the list
+		entityString		= strtok(NULL," ");
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose:
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::InputSetRelationship( inputdata_t &inputdata )
+{
+	AddRelationship( inputdata.value.String(), inputdata.pActivator );
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: Get shoot position of BCC at current position/orientation
@@ -2793,6 +3713,11 @@ CBaseEntity *CBaseCombatCharacter::FindHealthItem( const Vector &vecPosition, co
 
 		if( pItem )
 		{
+#ifdef MAPBASE
+			if (pItem->HasSpawnFlags(SF_ITEM_NO_NPC_PICKUP))
+				continue;
+#endif
+
 			// Healthkits and healthvials
 			if( pItem->ClassMatches( "item_health*" ) && FVisible( pItem ) )
 			{
@@ -2837,6 +3762,18 @@ CBaseEntity *CBaseCombatCharacter::Weapon_FindUsable( const Vector &range )
 {
 	bool bConservative = false;
 
+#ifdef MAPBASE
+	if (HasContext("weapon_conservative:1"))
+		bConservative = true;
+#ifdef HL2_DLL
+	else if (hl2_episodic.GetBool() && !GetActiveWeapon())
+	{
+		// Unarmed citizens are conservative in their weapon finding...in Episode One
+		if (Classify() != CLASS_PLAYER_ALLY_VITAL && Q_strncmp(STRING(gpGlobals->mapname), "ep1_", 4) == 0)
+			bConservative = true;
+	}
+#endif
+#else
 #ifdef HL2_DLL
 	if( hl2_episodic.GetBool() && !GetActiveWeapon() )
 	{
@@ -2846,6 +3783,7 @@ CBaseEntity *CBaseCombatCharacter::Weapon_FindUsable( const Vector &range )
 			bConservative = true;
 		}
 	}
+#endif
 #endif
 
 	CBaseCombatWeapon *weaponList[64];
@@ -2869,26 +3807,56 @@ CBaseEntity *CBaseCombatCharacter::Weapon_FindUsable( const Vector &range )
 		if ( pWeapon->CanBePickedUpByNPCs() == false )
 			continue;
 
+#ifdef MAPBASE
+		if ( pWeapon->HasSpawnFlags(SF_WEAPON_NO_NPC_PICKUP) )
+			continue;
+#endif
+
 		if ( velocity.LengthSqr() > 1 || !Weapon_CanUse(pWeapon) )
 			continue;
 
 		if ( pWeapon->IsLocked(this) )
 			continue;
 
+#ifdef MAPBASE
+		// Skip weapons we already own
+		if ( Weapon_OwnsThisType(pWeapon->GetClassname()) )
+			continue;
+#endif
+
 		if ( GetActiveWeapon() )
 		{
 			// Already armed. Would picking up this weapon improve my situation?
+#ifndef MAPBASE
 			if( GetActiveWeapon()->m_iClassname == pWeapon->m_iClassname )
 			{
 				// No, I'm already using this type of weapon.
 				continue;
 			}
+#endif
 
+#ifdef MAPBASE
+			if ( pWeapon->IsMeleeWeapon() && !GetActiveWeapon()->IsMeleeWeapon() )
+			{
+				// This weapon is a melee weapon and the weapon I have now is not.
+				// Picking up this weapon might not improve my situation.
+				continue;
+			}
+
+			if ( pWeapon->GetWeight() != 0 && GetActiveWeapon()->GetWeight() > pWeapon->GetWeight() )
+			{
+				// Discard if our target weapon supports weight but our current weapon has more of it.
+				// 
+				// (RIP going from AR2 to shotgun)
+				continue;
+			}
+#else
 			if( FClassnameIs( pWeapon, "weapon_pistol" ) )
 			{
 				// No, it's a pistol.
 				continue;
 			}
+#endif
 		}
 
 		float fCurDist = (pWeapon->GetLocalOrigin() - GetLocalOrigin()).Length();
@@ -2901,6 +3869,23 @@ CBaseEntity *CBaseCombatCharacter::Weapon_FindUsable( const Vector &range )
 
 		if ( pBestWeapon )
 		{
+#ifdef MAPBASE
+			// NPCs now use weight to determine which weapon is best.
+			// All HL2 weapons are weighted and are usually good enough.
+			// 
+			// This probably won't cause problems...
+			if (pWeapon->GetWeight() > 1)
+			{
+#if 0
+				float flRatio = MIN( (2.5f / (pWeapon->GetWeight() - (GetActiveWeapon() ? GetActiveWeapon()->GetWeight() : 0))), 1.0 );
+				if (flRatio < 0)
+					flRatio *= -1; flRatio += 1.0f;
+				fCurDist *= flRatio;
+#else
+				fCurDist *= MIN( (2.5f / pWeapon->GetWeight()), 1.0 );
+#endif
+			}
+#else
 			// UNDONE: Better heuristic needed here
 			//			Need to pick by power of weapons
 			//			Don't want to pick a weapon right next to a NPC!
@@ -2910,6 +3895,7 @@ CBaseEntity *CBaseCombatCharacter::Weapon_FindUsable( const Vector &range )
 			{
 				fCurDist *= 0.5;
 			}
+#endif
 
 			// choose the last range attack weapon you find or the first available other weapon
 			if ( ! (pWeapon->CapabilitiesGet() & bits_CAP_RANGE_ATTACK_GROUP) )
@@ -2991,6 +3977,18 @@ int CBaseCombatCharacter::GiveAmmo( int iCount, int iAmmoIndex, bool bSuppressSo
 	}
 
 	m_iAmmo.Set( iAmmoIndex, m_iAmmo[iAmmoIndex] + iAdd );
+
+	if ( IsPlayer() )
+	{
+		IGameEvent *event = gameeventmanager->CreateEvent( "ammo_pickup" );
+		if ( event )
+		{
+			event->SetInt( "ammo_index", iAmmoIndex );
+			event->SetInt( "amount", iAdd );
+			event->SetInt( "total", m_iAmmo[ iAmmoIndex ] );
+			gameeventmanager->FireEvent( event );
+		}
+	}
 
 	return iAdd;
 }
@@ -3177,13 +4175,13 @@ void CBaseCombatCharacter::VPhysicsShadowCollision( int index, gamevcollisioneve
 // Input  :
 // Output :
 //-----------------------------------------------------------------------------	
-void RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore )
+void RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrc, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore, int iFlags /* = 0 */ )
 {
 	// NOTE: I did this this way so I wouldn't have to change a whole bunch of
 	// code unnecessarily. We need TF2 specific rules for RadiusDamage, so I moved
 	// the implementation of radius damage into gamerules. All existing code calls
 	// this method, which calls the game rules method
-	g_pGameRules->RadiusDamage( info, vecSrc, flRadius, iClassIgnore, pEntityIgnore );
+	g_pGameRules->RadiusDamage( info, vecSrc, flRadius, iClassIgnore, pEntityIgnore, iFlags );
 
 	// Let the world know if this was an explosion.
 	if( info.GetDamageType() & DMG_BLAST )
@@ -3255,6 +4253,12 @@ bool CBaseCombatCharacter::IsGlowEffectActive( void )
 {
 	return m_bGlowEnabled;
 }
+
+void CBaseCombatCharacter::SetGlowColor( float red, float green, float blue, float alpha )
+{
+	m_GlowColor.GetForModify().Init( red, green, blue );
+	m_GlowAlpha.Set( alpha );
+}
 #endif // GLOWS_ENABLE
 
 //-----------------------------------------------------------------------------
@@ -3324,6 +4328,312 @@ void CBaseCombatCharacter::InputKilledNPC( inputdata_t &inputdata )
 	OnKilledNPC( inputdata.pActivator ? inputdata.pActivator->MyCombatCharacterPointer() : NULL );
 }
 
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Purpose: Handle enemy kills. (this technically measures players too)
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::OnKilledNPC( CBaseCombatCharacter *pKilled )
+{
+	m_OnKilledEnemy.Set(pKilled, pKilled, this);
+
+	// Fire an additional output if this was a player
+	if (pKilled && pKilled->IsPlayer())
+		m_OnKilledPlayer.Set(pKilled, pKilled, this);
+}
+
+//------------------------------------------------------------------------------
+// Purpose: Give the NPC in question the weapon specified
+//------------------------------------------------------------------------------
+void CBaseCombatCharacter::InputGiveWeapon( inputdata_t &inputdata )
+{
+	// Give the NPC the specified weapon
+	string_t iszWeaponName = inputdata.value.StringID();
+	if ( iszWeaponName != NULL_STRING )
+	{
+		if (IsNPC())
+		{
+#ifdef HL2_DLL
+			if( Classify() == CLASS_PLAYER_ALLY_VITAL )
+			{
+				MyNPCPointer()->m_iszPendingWeapon = iszWeaponName;
+			}
+			else
+#endif
+			{
+				MyNPCPointer()->GiveWeapon( iszWeaponName );
+			}
+		}
+		else
+		{
+			CBaseCombatWeapon *pWeapon = Weapon_Create(STRING(iszWeaponName));
+			if (pWeapon)
+			{
+				Weapon_Equip(pWeapon);
+			}
+			else
+			{
+				Warning( "Couldn't create weapon %s to give %s.\n", STRING(iszWeaponName), GetDebugName() );
+				return;
+			}
+		}
+	}
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::InputDropWeapon( inputdata_t &inputdata )
+{
+	CBaseCombatWeapon *pWeapon = FStrEq(inputdata.value.String(), "") ? GetActiveWeapon() : Weapon_OwnsThisType(inputdata.value.String());
+	if (pWeapon)
+	{
+		Weapon_Drop(pWeapon);
+	}
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::InputPickupWeaponInstant( inputdata_t &inputdata )
+{
+	if (inputdata.value.Entity() && inputdata.value.Entity()->IsBaseCombatWeapon())
+	{
+		CBaseCombatWeapon *pWeapon = inputdata.value.Entity()->MyCombatWeaponPointer();
+		if (pWeapon->GetOwner())
+		{
+			Msg("Ignoring PickupWeaponInstant on %s because %s already has an owner\n", GetDebugName(), pWeapon->GetDebugName());
+			return;
+		}
+
+		if (CBaseCombatWeapon *pExistingWeapon = Weapon_OwnsThisType(pWeapon->GetClassname()))
+		{
+			// Drop our existing weapon then!
+			Weapon_Drop(pExistingWeapon);
+		}
+
+		if (IsNPC())
+		{
+			Weapon_Equip(pWeapon);
+			MyNPCPointer()->OnGivenWeapon(pWeapon);
+		}
+		else
+		{
+			Weapon_Equip(pWeapon);
+		}
+
+		pWeapon->OnPickedUp( this );
+	}
+	else
+	{
+		Warning("%s received PickupWeaponInstant with invalid entity %s\n", GetDebugName(), inputdata.value.Entity() ? inputdata.value.Entity()->GetDebugName() : "<<null>>");
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::InputHolsterWeapon( inputdata_t &inputdata )
+{
+	CBaseCombatWeapon *pWeapon = GetActiveWeapon();
+	if (pWeapon)
+	{
+		pWeapon->Holster();
+		//SetActiveWeapon( NULL );
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::InputHolsterAndDestroyWeapon( inputdata_t &inputdata )
+{
+	CBaseCombatWeapon *pWeapon = GetActiveWeapon();
+	if (pWeapon)
+	{
+		pWeapon->Holster();
+		SetActiveWeapon( NULL );
+
+		if (pWeapon->GetActivity() == ACT_VM_HOLSTER)
+		{
+			// Remove when holster is finished
+			pWeapon->ThinkSet( &CBaseEntity::SUB_Remove, gpGlobals->curtime + pWeapon->GetViewModelSequenceDuration() );
+		}
+		else
+		{
+			// Remove now
+			UTIL_Remove( pWeapon );
+		}
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::InputUnholsterWeapon( inputdata_t &inputdata )
+{
+	// NPCs can handle strings, but players fall back to SwitchToWeapon
+	if (inputdata.value.StringID() != NULL_STRING)
+		InputSwitchToWeapon( inputdata );
+
+	CBaseCombatWeapon *pWeapon = GetActiveWeapon();
+	if (pWeapon && pWeapon->IsEffectActive(EF_NODRAW))
+	{
+		pWeapon->Deploy();
+	}
+}
+
+//------------------------------------------------------------------------------
+// Purpose: Makes the NPC instantly switch to the specified weapon, creates it if it doesn't exist
+//------------------------------------------------------------------------------
+void CBaseCombatCharacter::InputSwitchToWeapon( inputdata_t &inputdata )
+{
+	for (int i = 0; i<MAX_WEAPONS; i++)
+	{
+		// These are both pooled, so if they're the same classname they should point to the same address
+		if (m_hMyWeapons[i].Get() && m_hMyWeapons[i]->m_iClassname == inputdata.value.StringID())
+		{
+			Weapon_Switch( m_hMyWeapons[i] );
+			return;
+		}
+	}
+
+	// We must not have it
+	if (IsNPC())
+		MyNPCPointer()->GiveWeapon( inputdata.value.StringID(), false );
+	else
+	{
+		CBaseCombatWeapon *pWeapon = Weapon_Create( inputdata.value.String() );
+		if (pWeapon)
+		{
+			Weapon_Equip( pWeapon );
+		}
+		else
+		{
+			Warning( "Couldn't create weapon %s to give %s.\n", inputdata.value.String(), GetDebugName() );
+		}
+	}
+}
+
+#define FINDNAMEDENTITY_MAX_ENTITIES	32
+//-----------------------------------------------------------------------------
+// Purpose: FindNamedEntity has been moved from CAI_BaseNPC to CBaseCombatCharacter so players can use it.
+//			Coincidentally, everything that it did on NPCs could be done on BaseCombatCharacters with no consequences.
+// Input  :
+// Output :
+//-----------------------------------------------------------------------------
+CBaseEntity *CBaseCombatCharacter::FindNamedEntity( const char *szName, IEntityFindFilter *pFilter )
+{
+	const char *name = szName;
+	if (name[0] == '!')
+		name++;
+
+	if ( !stricmp( name, "player" ))
+	{
+#ifdef MAPBASE_MP // From SecobMod
+		return UTIL_GetNearestPlayer( GetAbsOrigin() );
+#else
+		return AI_GetSinglePlayer();
+#endif
+	}
+	else if ( !stricmp( name, "enemy" ) )
+	{
+		return GetEnemy();
+	}
+	else if ( !stricmp( name, "self" ) || !stricmp( name, "target1" ) )
+	{
+		return this;
+	}
+	else if ( !stricmp( name, "nearestfriend" ) || !strnicmp( name, "friend", 6 ) )
+	{
+		// Just look for the nearest friendly NPC within 500 units
+		// (most of this was stolen from CAI_PlayerAlly::FindSpeechTarget())
+		const Vector &	vAbsOrigin = GetAbsOrigin();
+		float 			closestDistSq = Square(500.0);
+		CBaseEntity *	pNearest = NULL;
+		float			distSq;
+		int				i;
+		for ( i = 0; i < g_AI_Manager.NumAIs(); i++ )
+		{
+			CAI_BaseNPC *pNPC = (g_AI_Manager.AccessAIs())[i];
+
+			if ( pNPC == this )
+				continue;
+
+			distSq = ( vAbsOrigin - pNPC->GetAbsOrigin() ).LengthSqr();
+				
+			if ( distSq > closestDistSq )
+				continue;
+
+			if ( IRelationType( pNPC ) == D_LI )
+			{
+				closestDistSq = distSq;
+				pNearest = pNPC;
+			}
+		}
+
+		if (stricmp(name, "friend_npc") != 0)
+		{
+			// Okay, find the nearest friendly client.
+			for ( i = 1; i <= gpGlobals->maxClients; i++ )
+			{
+				CBaseEntity *pPlayer = UTIL_PlayerByIndex( i );
+				if ( pPlayer )
+				{
+					// Don't get players with notarget
+					if (pPlayer->GetFlags() & FL_NOTARGET)
+						continue;
+
+					distSq = ( vAbsOrigin - pPlayer->GetAbsOrigin() ).LengthSqr();
+					
+					if ( distSq > closestDistSq )
+						continue;
+
+					if ( IRelationType( pPlayer ) == D_LI )
+					{
+						closestDistSq = distSq;
+						pNearest = pPlayer;
+					}
+				}
+			}
+		}
+
+		return pNearest;
+	}
+	else if (!stricmp( name, "weapon" ))
+	{
+		return GetActiveWeapon();
+	}
+
+	// HACKHACK: FindEntityProcedural can go through this now, so running this code could cause an infinite loop.
+	// As a result, FindEntityProcedural currently identifies itself with this entity filter.
+	else if (!pFilter || !dynamic_cast<CNullEntityFilter*>(pFilter))
+	{
+		// search for up to 32 entities with the same name and choose one randomly
+		CBaseEntity *entityList[ FINDNAMEDENTITY_MAX_ENTITIES ];
+		CBaseEntity *entity;
+		int	iCount;
+
+		entity = NULL;
+		for( iCount = 0; iCount < FINDNAMEDENTITY_MAX_ENTITIES; iCount++ )
+		{
+			entity = gEntList.FindEntityByName( entity, szName, this, NULL, NULL, pFilter );
+			if ( !entity )
+			{
+				break;
+			}
+			entityList[ iCount ] = entity;
+		}
+
+		if ( iCount > 0 )
+		{
+			int index = RandomInt( 0, iCount - 1 );
+			entity = entityList[ index ];
+			return entity;
+		}
+	}
+
+	return NULL;
+}
+#endif
+
 //-----------------------------------------------------------------------------
 // Purpose: Overload our muzzle flash and send it to any actively held weapon
 //-----------------------------------------------------------------------------
@@ -3341,6 +4651,211 @@ void CBaseCombatCharacter::DoMuzzleFlash()
 		BaseClass::DoMuzzleFlash();
 	}
 }
+
+#ifdef MAPBASE_VSCRIPT
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+HSCRIPT CBaseCombatCharacter::ScriptGetActiveWeapon()
+{
+	return ToHScript( GetActiveWeapon() );
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+HSCRIPT CBaseCombatCharacter::ScriptGetWeapon( int i )
+{
+	Assert( i >= 0 && i < MAX_WEAPONS );
+
+	if ( i < 0 || i >= MAX_WEAPONS )
+		return NULL;
+
+	return ToHScript( GetWeapon( i ) );
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+HSCRIPT CBaseCombatCharacter::ScriptGetWeaponByType( const char *pszWeapon, int iSubType )
+{
+	return ToHScript( Weapon_OwnsThisType( pszWeapon, iSubType ) );
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::ScriptGetAllWeapons( HSCRIPT hTable )
+{
+	for (int i=0;i<MAX_WEAPONS;i++)
+	{
+		if (m_hMyWeapons[i]) 
+		{
+			g_pScriptVM->SetValue( hTable, m_hMyWeapons[i]->GetClassname(), ToHScript( m_hMyWeapons[i] ) );
+		}
+	}
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::ScriptDropWeapon( HSCRIPT hWeapon )
+{
+	CBaseCombatWeapon *pWeapon = HScriptToClass<CBaseCombatWeapon>( hWeapon );
+	if (!pWeapon)
+		return;
+
+	if (pWeapon->GetOwner() == this)
+	{
+		// Drop the weapon
+		Weapon_Drop( pWeapon );
+	}
+	else
+	{
+		CGMsg( 1, CON_GROUP_VSCRIPT, "ScriptDropWeapon: %s is not owned by %s", pWeapon->GetDebugName(), GetDebugName() );
+	}
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::ScriptEquipWeapon( HSCRIPT hWeapon )
+{
+	CBaseCombatWeapon *pWeapon = HScriptToClass<CBaseCombatWeapon>( hWeapon );
+	if (!pWeapon)
+		return;
+
+	if (pWeapon->GetOwner() == this)
+	{
+		// Switch to this weapon
+		Weapon_Switch( pWeapon );
+	}
+	else
+	{
+		if (CBaseCombatWeapon *pExistingWeapon = Weapon_OwnsThisType( pWeapon->GetClassname() ))
+		{
+			// Drop our existing weapon then!
+			Weapon_Drop( pExistingWeapon );
+		}
+
+		if (IsNPC())
+		{
+			Weapon_Equip( pWeapon );
+			MyNPCPointer()->OnGivenWeapon( pWeapon );
+		}
+		else
+		{
+			Weapon_Equip( pWeapon );
+		}
+
+		pWeapon->OnPickedUp( this );
+	}
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+int CBaseCombatCharacter::ScriptGiveAmmo( int iCount, int iAmmoIndex, bool bSuppressSound )
+{
+	return GiveAmmo( iCount, iAmmoIndex, bSuppressSound );
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::ScriptRemoveAmmo( int iCount, int iAmmoIndex )
+{
+	if (iAmmoIndex == -1)
+	{
+		Warning( "%i is not a valid ammo type\n", iAmmoIndex );
+		return;
+	}
+
+	RemoveAmmo( iCount, iAmmoIndex );
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+int CBaseCombatCharacter::ScriptGetAmmoCount( int iType ) const
+{
+	Assert( iType == -1 || iType < MAX_AMMO_SLOTS );
+
+	if ( iType < 0 || iType >= MAX_AMMO_SLOTS )
+		return 0;
+
+	return GetAmmoCount( iType );
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::ScriptSetAmmoCount( int iType, int iCount )
+{
+	Assert( iType == -1 || iType < MAX_AMMO_SLOTS );
+
+	if ( iType < 0 || iType >= MAX_AMMO_SLOTS )
+		return;
+
+	return SetAmmoCount( iCount, iType );
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+const Vector& CBaseCombatCharacter::ScriptGetAttackSpread( HSCRIPT hWeapon, HSCRIPT hTarget )
+{
+	CBaseEntity *pWeapon = ToEnt( hWeapon );
+	if (!pWeapon || !pWeapon->IsBaseCombatWeapon())
+	{
+		Warning( "GetAttackSpread: %s is not a valid weapon\n", pWeapon ? pWeapon->GetDebugName() : "Null entity" );
+		return vec3_origin;
+	}
+
+	// TODO: Make this a simple non-reference Vector?
+	static Vector vec;
+	vec = GetAttackSpread( pWeapon->MyCombatWeaponPointer(), ToEnt( hTarget ) );
+	return vec;
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+float CBaseCombatCharacter::ScriptGetSpreadBias( HSCRIPT hWeapon, HSCRIPT hTarget )
+{
+	CBaseEntity *pWeapon = ToEnt( hWeapon );
+	if (!pWeapon || !pWeapon->IsBaseCombatWeapon())
+	{
+		Warning( "GetSpreadBias: %s is not a valid weapon\n", pWeapon ? pWeapon->GetDebugName() : "Null entity" );
+		return 1.0f;
+	}
+
+	return GetSpreadBias( pWeapon->MyCombatWeaponPointer(), ToEnt( hTarget ) );
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+int CBaseCombatCharacter::ScriptRelationType( HSCRIPT pTarget )
+{
+	return (int)IRelationType( ToEnt( pTarget ) );
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+int CBaseCombatCharacter::ScriptRelationPriority( HSCRIPT pTarget )
+{
+	return IRelationPriority( ToEnt( pTarget ) );
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::ScriptSetRelationship( HSCRIPT pTarget, int disposition, int priority )
+{
+	AddEntityRelationship( ToEnt( pTarget ), (Disposition_t)disposition, priority );
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CBaseCombatCharacter::ScriptSetClassRelationship( int classify, int disposition, int priority )
+{
+	AddClassRelationship( (Class_T)classify, (Disposition_t)disposition, priority);
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+HSCRIPT CBaseCombatCharacter::ScriptGetVehicleEntity()
+{
+	return ToHScript( GetVehicleEntity() );
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: return true if given target cant be seen because of fog
@@ -3590,3 +5105,18 @@ float CBaseCombatCharacter::GetTimeSinceLastInjury( int team /*= TEAM_ANY */ ) c
 	return never;
 }
 
+//-----------------------------------------------------------------------------
+HSCRIPT CBaseCombatCharacter::ScriptGetLastKnownArea( void ) const 
+{ 
+#ifdef TF_DLL
+	return ToHScript( GetLastKnownArea() ); 
+#else
+	return NULL;
+#endif
+}	
+
+#ifndef MAPBASE_VSCRIPT
+BEGIN_ENT_SCRIPTDESC( CBaseCombatCharacter, CBaseFlex, "Base combat characters." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetLastKnownArea, "GetLastKnownArea", "Return the last nav area occupied - NULL if unknown" )
+END_SCRIPTDESC();
+#endif

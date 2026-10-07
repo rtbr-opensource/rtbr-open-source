@@ -126,7 +126,7 @@ public:
 
 	virtual bool			Interpolate( float currentTime );
 
-	bool					ShouldFlipViewModel();
+	virtual bool			ShouldFlipViewModel() OVERRIDE;
 	void					UpdateAnimationParity( void );
 
 	virtual void			ApplyBoneMatrixTransform( matrix3x4_t& transform );
@@ -145,7 +145,11 @@ public:
 	// Should this object receive shadows?
 	virtual bool			ShouldReceiveProjectedTextures( int flags )
 	{
+#ifdef MAPBASE
+		return true;
+#else
 		return false;
+#endif
 	}
 
 	// Add entity to visible view models list?
@@ -168,6 +172,7 @@ public:
 	// Attachments
 	virtual int				LookupAttachment( const char *pAttachmentName );
 	virtual bool			GetAttachment( int number, matrix3x4_t &matrix );
+	virtual bool			GetAttachmentDeferred( int number, matrix3x4_t& matrix );
 	virtual bool			GetAttachment( int number, Vector &origin );
 	virtual	bool			GetAttachment( int number, Vector &origin, QAngle &angles );
 	virtual bool			GetAttachmentVelocity( int number, Vector &originVel, Quaternion &angleVel );

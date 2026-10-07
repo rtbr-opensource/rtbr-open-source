@@ -17,6 +17,10 @@
 #include "VGuiMatSurface/IMatSystemSurface.h"
 #include "client_virtualreality.h"
 #include "sourcevr/isourcevirtualreality.h"
+#ifdef RTBMP
+#include "c_playerresource.h"
+#include "rtbmp_gamerules.h"
+#endif
 
 #ifdef SIXENSE
 #include "sixense/in_sixense.h"
@@ -265,6 +269,28 @@ void CHudCrosshair::Paint( void )
 #else
 	Color clr = m_clrCrosshair;
 #endif
+	
+#ifdef RTBMP
+	switch ( gHUD.m_ViewTargetRelation )
+	{
+		case CROSSHAIRRELATION_FRIEND:
+			clr = gHUD.m_clrViewingFriend;
+			break;
+
+		case CROSSHAIRRELATION_ENEMY:
+			clr = gHUD.m_clrViewingEnemy;
+			break;
+
+		case CROSSHAIRRELATION_COMBINE:
+			clr = GameResources()->GetTeamColor( TEAM_COMBINE );
+			break;
+
+		case CROSSHAIRRELATION_REBELS:
+			clr = GameResources()->GetTeamColor( TEAM_REBELS );
+			break;
+	}
+#endif
+	
 	float flWidth = flWeaponScale * flPlayerScale * (float)iTextureW;
 	float flHeight = flWeaponScale * flPlayerScale * (float)iTextureH;
 	int iWidth = (int)( flWidth + 0.5f );
@@ -302,5 +328,5 @@ void CHudCrosshair::SetCrosshair( CHudTexture *texture, const Color& clr )
 //-----------------------------------------------------------------------------
 void CHudCrosshair::ResetCrosshair()
 {
-	SetCrosshair( m_pDefaultCrosshair, Color(255, 255, 255, 255) );
+	SetCrosshair( m_pDefaultCrosshair, Color( 255, 155, 0, 255 ) ); // rtbr orange
 }

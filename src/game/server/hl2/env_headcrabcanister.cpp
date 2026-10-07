@@ -33,6 +33,9 @@ ConVar sk_env_headcrabcanister_shake_radius( "sk_env_headcrabcanister_shake_radi
 ConVar sk_env_headcrabcanister_shake_radius_vehicle( "sk_env_headcrabcanister_shake_radius_vehicle", "2500" );
 
 #define ENV_HEADCRABCANISTER_TRAIL_TIME	3.0f
+#ifdef MAPBASE
+#define RANDOM_CRAB_TYPE -1
+#endif
 
 //-----------------------------------------------------------------------------
 // Spawn flags
@@ -60,6 +63,7 @@ static const char *s_pHeadcrabClass[] =
 	"npc_headcrab",
 	"npc_headcrab_fast",
 	"npc_headcrab_poison",
+	"npc_babycrab",
 };
 
 
@@ -246,7 +250,22 @@ void CEnvHeadcrabCanister::Precache( void )
 	PrecacheScriptSound( "HeadcrabCanister.SkyboxExplosion" );
 	PrecacheScriptSound( "HeadcrabCanister.Open" );
 
+#ifdef MAPBASE
+	if ( m_nHeadcrabType != RANDOM_CRAB_TYPE )
+	{
+		UTIL_PrecacheOther( s_pHeadcrabClass[m_nHeadcrabType] );
+	}
+	else
+	{
+		// precache all the headcrabs if we're spawning random species
+		for ( int i = 0; i < ARRAYSIZE( s_pHeadcrabClass ); i++ )
+		{
+			UTIL_PrecacheOther( s_pHeadcrabClass[i] );
+		}
+	}
+#else
 	UTIL_PrecacheOther( s_pHeadcrabClass[m_nHeadcrabType] );
+#endif
 }
 
 
@@ -710,7 +729,17 @@ void CEnvHeadcrabCanister::HeadcrabCanisterSpawnHeadcrabThink()
 	int nHeadCrabAttachment = LookupAttachment( "headcrab" );
 	if ( GetAttachment( nHeadCrabAttachment, vecSpawnPosition, vecSpawnAngles ) )
 	{
+#ifdef MAPBASE
+		int iHeadcrabType = m_nHeadcrabType;
+		if ( m_nHeadcrabType == RANDOM_CRAB_TYPE )
+		{
+			iHeadcrabType = RandomInt( 0, ARRAYSIZE( s_pHeadcrabClass ) - 1 );
+		}
+
+		CBaseEntity *pEnt = CreateEntityByName( s_pHeadcrabClass[iHeadcrabType] );
+#else
 		CBaseEntity *pEnt = CreateEntityByName( s_pHeadcrabClass[m_nHeadcrabType] );
+#endif
 		CBaseHeadcrab *pHeadCrab = assert_cast<CBaseHeadcrab*>(pEnt);
 
 		// Necessary to get it to eject properly (don't allow the NPC
@@ -925,7 +954,11 @@ void CEnvHeadcrabCanister::Detonate( )
 	// Shake the screen unless flagged otherwise
 	if ( !HasSpawnFlags( SF_NO_SHAKE ) )
 	{
+#ifdef MAPBASE_MP // From SecobMod
+		CBasePlayer *pPlayer = UTIL_GetNearestPlayer( GetAbsOrigin() );
+#else
 		CBasePlayer *pPlayer = UTIL_PlayerByIndex( 1 );
+#endif
 
 		// If the player is on foot, then do a more limited shake
 		float shakeRadius = ( pPlayer && pPlayer->IsInAVehicle() ) ? sk_env_headcrabcanister_shake_radius_vehicle.GetFloat() : sk_env_headcrabcanister_shake_radius.GetFloat();

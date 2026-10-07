@@ -10,6 +10,10 @@
 #include "takedamageinfo.h"
 #include "ammodef.h"
 #include "hl2mp_gamerules.h"
+#ifdef MAPBASE
+#include "mapbase/protagonist_system.h"
+#include "eventlist.h"
+#endif
 
 
 #ifdef CLIENT_DLL
@@ -262,12 +266,37 @@ void CWeaponHL2MPBase::FallInit( void )
 
 	SetPickupTouch();
 	
-	SetThink( &CBaseCombatWeapon::FallThink );
+	SetThink( &CWeaponHL2MPBase::FallThink );
 
 	SetNextThink( gpGlobals->curtime + 0.1f );
 
 #endif
 }
+
+#ifdef GAME_DLL
+void CWeaponHL2MPBase::FallThink( void )
+{
+	// Prevent the common HL2DM weapon respawn bug from happening
+	// When a weapon is spawned, the following chain of events occurs:
+	// - Spawn() is called (duh), which then calls FallInit()
+	// - FallInit() is called, and prepares the weapon's 'Think' function (CBaseCombatWeapon::FallThink())
+	// - FallThink() is called, and performs several checks before deciding whether the weapon should Materialize()
+	// - Materialize() is called (the HL2DM version above), which sets the weapon's respawn location.
+	// The problem occurs when a weapon isn't placed properly by a level designer.
+	// If the weapon is unable to move from its location (e.g. if its bounding box is halfway inside a wall), Materialize() never gets called.
+	// Since Materialize() never gets called, the weapon's respawn location is never set, so if a person picks it up, it respawns forever at
+	// 0 0 0 on the map (infinite loop of fall, wait, respawn, not nice at all for performance and bandwidth!)
+	if (HasSpawnFlags( SF_NORESPAWN ) == false)
+	{
+		if (GetOriginalSpawnOrigin() == vec3_origin)
+		{
+			m_vOriginalSpawnOrigin = GetAbsOrigin();
+			m_vOriginalSpawnAngles = GetAbsAngles();
+		}
+	}
+	return BaseClass::FallThink();
+}
+#endif // GAME_DLL
 
 const CHL2MPSWeaponInfo &CWeaponHL2MPBase::GetHL2MPWpnData() const
 {
@@ -292,6 +321,68 @@ void CWeaponHL2MPBase::FireBullets( const FireBulletsInfo_t &info )
 	BaseClass::FireBullets( modinfo );
 }
 
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+const char *CWeaponHL2MPBase::GetViewModel( int viewmodelindex ) const
+{
+	if (GetOwner() && GetOwner()->IsPlayer() && viewmodelindex == 0)
+	{
+		const char *pszProtagVM = g_ProtagonistSystem.GetProtagonist_ViewModel( static_cast<CBasePlayer *>(GetOwner()), this );
+		if (pszProtagVM)
+			return pszProtagVM;
+	}
+
+	return BaseClass::GetViewModel( viewmodelindex );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+float CWeaponHL2MPBase::GetViewmodelFOVOverride() const
+{
+	if (GetOwner() && GetOwner()->IsPlayer())
+	{
+		float *flVMFOV = g_ProtagonistSystem.GetProtagonist_ViewModelFOV( static_cast<CBasePlayer *>(GetOwner()), this );
+		if (flVMFOV)
+			return *flVMFOV;
+	}
+
+	return BaseClass::GetViewmodelFOVOverride();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+bool CWeaponHL2MPBase::UsesHands() const
+{
+	if (GetOwner() && GetOwner()->IsPlayer())
+	{
+		bool *bProtagUsesHands = g_ProtagonistSystem.GetProtagonist_UsesHands( static_cast<CBasePlayer *>(GetOwner()), this );
+		if (bProtagUsesHands)
+			return *bProtagUsesHands;
+	}
+
+	return BaseClass::UsesHands();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+int CWeaponHL2MPBase::GetHandRig() const
+{
+	if (GetOwner() && GetOwner()->IsPlayer())
+	{
+		int *nProtagHandRig = g_ProtagonistSystem.GetProtagonist_HandRig( static_cast<CBasePlayer *>(GetOwner()), this );
+		if (nProtagHandRig)
+			return *nProtagHandRig;
+	}
+
+	return BaseClass::GetHandRig();
+}
+#endif
+
 
 #if defined( CLIENT_DLL )
 
@@ -299,9 +390,60 @@ void CWeaponHL2MPBase::FireBullets( const FireBulletsInfo_t &info )
 
 #define NUM_MUZZLE_FLASH_TYPES 4
 
+#ifdef MAPBASE_MP
+//-----------------------------------------------------------------------------
+// Purpose: 
+// Input  : *pEvent - 
+//			*pOperator - 
+//-----------------------------------------------------------------------------
+void CWeaponHL2MPBase::Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatCharacter *pOperator )
+{
+	if ( (pEvent->type & AE_TYPE_NEWEVENTSYSTEM) && (pEvent->type & AE_TYPE_CLIENT) )
+	{
+		/*if ( pEvent->event == AE_NPC_WEAPON_FIRE )
+		{
+			bool bSecondary = (atoi( pEvent->options ) != 0);
+			Operator_ForceNPCFire( pOperator, bSecondary );
+			return;
+		}
+		else*/ if ( pEvent->event == AE_WPN_PLAYWPNSOUND )
+		{
+			int iSnd = GetWeaponSoundFromString(pEvent->options);
+			if ( iSnd != -1 )
+			{
+				WeaponSound( (WeaponSound_t)iSnd );
+			}
+		}
+	}
+
+	//DevWarning( 2, "Unhandled animation event %d from %s --> %s\n", pEvent->event, pOperator->GetClassname(), GetClassname() );
+}
+#endif
+
 bool CWeaponHL2MPBase::OnFireEvent( C_BaseViewModel *pViewModel, const Vector& origin, const QAngle& angles, int event, const char *options )
 {
+#ifndef MAPBASE_MP // Disabled, because client animation events don't fire here (e.g. AE_CL_CREATE_PARTICLE_EFFECT)
+	bool bBase = BaseClass::OnFireEvent( pViewModel, origin, angles, event, options );
+
+	if (!bBase)
+	{
+		//If the player is receiving this message, pass it through
+		C_BasePlayer *pOwner = ToBasePlayer( GetOwner() );
+
+		if ( pOwner != NULL )
+		{
+			animevent_t animEvent;
+			animEvent.event = event;
+			animEvent.options = options;
+			Operator_HandleAnimEvent( &animEvent, pOwner );
+			return true;
+		}
+	}
+
+	return bBase;
+#else
 	return BaseClass::OnFireEvent( pViewModel, origin, angles, event, options );
+#endif
 }
 
 

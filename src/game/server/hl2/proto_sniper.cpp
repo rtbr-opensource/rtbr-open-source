@@ -837,7 +837,11 @@ void CProtoSniper::PaintTarget( const Vector &vecTarget, float flPaintTime )
 //-----------------------------------------------------------------------------
 bool CProtoSniper::IsPlayerAllySniper()
 {
+#ifdef MAPBASE_MP // From SecobMod
+	CBaseEntity *pPlayer = UTIL_GetNearestPlayer( GetAbsOrigin() );
+#else
 	CBaseEntity *pPlayer = AI_GetSinglePlayer();
+#endif
 
 	return IRelationType( pPlayer ) == D_LI;
 }
@@ -1395,7 +1399,11 @@ int CProtoSniper::SelectSchedule ( void )
 		return SCHED_RELOAD;
 	}
 
+#ifdef MAPBASE_MP
+	if( AI_IsSinglePlayer() && !AI_GetSinglePlayer()->IsAlive() && m_bKilledPlayer )
+#else
 	if( !AI_GetSinglePlayer()->IsAlive() && m_bKilledPlayer )
+#endif
 	{
 		if( HasCondition(COND_IN_PVS) )
 		{
@@ -2413,6 +2421,22 @@ Vector CProtoSniper::DesiredBodyTarget( CBaseEntity *pTarget )
 {
 	// By default, aim for the center
 	Vector vecTarget = pTarget->WorldSpaceCenter();
+	const Vector vecBulletOrigin = GetBulletOrigin();
+
+#ifdef MAPBASE_VSCRIPT
+	if ( m_ScriptScope.IsInitialized() && g_Hook_GetActualShootPosition.CanRunInScope( m_ScriptScope ) )
+	{
+		ScriptVariant_t functionReturn;
+		ScriptVariant_t args[] = { vecBulletOrigin, ToHScript( pTarget ) };
+		if ( g_Hook_GetActualShootPosition.Call( m_ScriptScope, &functionReturn, args ) )
+		{
+			if ( functionReturn.m_type == FIELD_VECTOR && functionReturn.m_pVector->LengthSqr() != 0.0f )
+			{
+				return *functionReturn.m_pVector;
+			}
+		}
+	}
+#endif
 
 	float flTimeSinceLastMiss = gpGlobals->curtime - m_flTimeLastShotMissed;
 
@@ -2437,12 +2461,12 @@ Vector CProtoSniper::DesiredBodyTarget( CBaseEntity *pTarget )
 		{
 			if( flTimeSinceLastMiss > 0.0f && flTimeSinceLastMiss < 4.0f && hl2_episodic.GetBool() )
 			{
-				vecTarget = pTarget->BodyTarget( GetBulletOrigin(), false );
+				vecTarget = pTarget->BodyTarget( vecBulletOrigin, false );
 			}
 			else
 			{
 				// Shoot zombies in the headcrab
-				vecTarget = pTarget->HeadTarget( GetBulletOrigin() );
+				vecTarget = pTarget->HeadTarget( vecBulletOrigin );
 			}
 		}
 		else if( pTarget->Classify() == CLASS_ANTLION )

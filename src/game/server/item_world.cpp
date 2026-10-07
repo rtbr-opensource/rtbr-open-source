@@ -18,6 +18,13 @@
 #include "hl2mp_gamerules.h"
 #endif
 
+#ifdef TF_DLL
+#include "tf_player.h"
+#include "entity_healthkit.h"
+#include "particle_parse.h"
+#include "tf_obj_teleporter.h"
+#endif
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -101,6 +108,7 @@ BEGIN_DATADESC( CItem )
 #if defined( HL2MP ) || defined( TF_DLL )
 	DEFINE_FIELD( m_flNextResetCheckTime, FIELD_TIME ),
 	DEFINE_THINKFUNC( FallThink ),
+	DEFINE_KEYFIELD( m_flRespawnTime, FIELD_FLOAT, "respawntime" ),
 #endif
 
 	// Outputs
@@ -363,6 +371,17 @@ bool UTIL_ItemCanBeTouchedByPlayer( CBaseEntity *pItem, CBasePlayer *pPlayer )
 		vecStartPos = pItem->CollisionProp()->WorldSpaceCenter();
 	}
 
+#ifdef TF_DLL
+	//Plague powerup carrier collects health kits in a radius so we want to skip the occlusion trace
+	CTFPlayer *pTFPlayer = dynamic_cast<CTFPlayer*>( pPlayer );
+	if ( pTFPlayer && ( pTFPlayer->m_Shared.GetCarryingRuneType() == RUNE_PLAGUE ) )
+	{
+		CHealthKit *pHealthKit = dynamic_cast<CHealthKit*>( pItem );
+		if ( pHealthKit )
+			return true;
+	}
+#endif
+
 	Vector vecEndPos = pPlayer->EyePosition();
 
 	// FIXME: This is the simple first try solution towards the problem.  We need to take edges and shape more into account
@@ -376,7 +395,15 @@ bool UTIL_ItemCanBeTouchedByPlayer( CBaseEntity *pItem, CBasePlayer *pPlayer )
 	// Occluded
 	// FIXME: For now, we exclude starting in solid because there are cases where this doesn't matter
 	if ( tr.fraction < 1.0f )
+	{
+#ifdef TF_DLL
+		CObjectTeleporter *pTeleporter = dynamic_cast<CObjectTeleporter *>( tr.m_pEnt );
+		if ( !pTeleporter )
+			return false;
+#else
 		return false;
+#endif
+	}
 
 	return true;
 }
@@ -434,6 +461,18 @@ void CItem::ItemTouch( CBaseEntity *pOther )
 	{
 		m_OnPlayerTouch.FireOutput(pOther, this);
 
+#if TF_DLL
+		CHealthKit *pHealthKit = dynamic_cast<CHealthKit*>( this );
+		if ( pHealthKit )
+		{
+			CTFPlayer *pTFPlayer = ToTFPlayer( pPlayer );
+			if ( pTFPlayer && ( pTFPlayer->m_Shared.GetCarryingRuneType() == RUNE_PLAGUE ) )
+			{
+				DispatchParticleEffect( "plague_healthkit_pickup", GetAbsOrigin(), GetAbsAngles() );
+			}
+		}
+#endif
+
 		SetTouch( NULL );
 		SetThink( NULL );
 
@@ -473,7 +512,12 @@ CBaseEntity* CItem::Respawn( void )
 	SetAbsAngles( g_pGameRules->VecItemRespawnAngles( this ) );// set the angles.
 
 #if !defined( TF_DLL )
-	UTIL_DropToFloor( this, MASK_SOLID );
+#ifdef RTBMP
+	if ( !HasSpawnFlags( SF_ITEM_START_CONSTRAINED ) )
+#endif
+	{
+		UTIL_DropToFloor( this, MASK_SOLID );
+	}
 #endif
 
 	RemoveAllDecals(); //remove any decals
@@ -499,6 +543,32 @@ void CItem::Materialize( void )
 		RemoveEffects( EF_NODRAW );
 		DoMuzzleFlash();
 	}
+
+#ifdef RTBMP
+	// Constrained start?
+	if ( HasSpawnFlags( SF_ITEM_START_CONSTRAINED ) )
+	{
+		//Constrain the weapon in place
+		IPhysicsObject *pReferenceObject, *pAttachedObject;
+
+		pReferenceObject = g_PhysWorldObject;
+		pAttachedObject = VPhysicsGetObject();
+
+		if ( pReferenceObject && pAttachedObject )
+		{
+			constraint_fixedparams_t fixed;
+			fixed.Defaults();
+			fixed.InitWithCurrentObjectState( pReferenceObject, pAttachedObject );
+
+			fixed.constraint.forceLimit = lbs2kg( 10000 );
+			fixed.constraint.torqueLimit = lbs2kg( 10000 );
+
+			m_pConstraint = physenv->CreateFixedConstraint( pReferenceObject, pAttachedObject, NULL, fixed );
+
+			m_pConstraint->SetGameData( (void *)this );
+		}
+	}
+#endif
 
 	SetTouch( &CItem::ItemTouch );
 }

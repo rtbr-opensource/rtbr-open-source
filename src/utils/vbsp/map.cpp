@@ -15,6 +15,12 @@
 #include "materialsub.h"
 #include "fgdlib/fgdlib.h"
 #include "manifest.h"
+#ifdef PARALLAX_CORRECTED_CUBEMAPS
+#include "mathlib/vmatrix.h"
+#endif
+#ifdef MAPBASE_VSCRIPT
+#include "vscript_vbsp.h"
+#endif
 
 #ifdef VSVMFIO
 #include "VmfImport.h"
@@ -664,6 +670,7 @@ qboolean CMapFile::MakeBrushWindings (mapbrush_t *ob)
 	return true;
 }
 
+
 //-----------------------------------------------------------------------------
 // Purpose: Takes all of the brushes from the current entity and adds them to the
 //			world's brush list. Used by func_detail and func_areaportal.
@@ -700,12 +707,16 @@ void CMapFile::MoveBrushesToWorld( entity_t *mapent )
 	memcpy (mapbrushes + worldbrushes, temp, sizeof(mapbrush_t) * newbrushes);
 
 	// fix up indexes
-	entities[0].numbrushes += newbrushes;
-	for (i=1 ; i<num_entities ; i++)
-		entities[i].firstbrush += newbrushes;
-	free (temp);
 
-	mapent->numbrushes = 0;
+	entities[ 0 ].numbrushes += newbrushes;
+
+	{
+		for ( i = 1; i < num_entities; i++ )
+			entities[ i ].firstbrush += newbrushes;
+		mapent->numbrushes = 0;
+	}
+
+	free(temp);
 }
 
 //-----------------------------------------------------------------------------
@@ -754,13 +765,17 @@ void CMapFile::MoveBrushesToWorldGeneral( entity_t *mapent )
 
 	// fix up indexes
 	entities[0].numbrushes += newbrushes;
-	for (i=1 ; i<num_entities ; i++)
+
 	{
-		if ( entities[ i ].firstbrush < mapent->firstbrush ) // if we use <=, then we'll remap the passed in ent, which we don't want to
+		for ( i = 1; i < num_entities; i++ )
 		{
-			entities[ i ].firstbrush += newbrushes;
+			if (entities[ i ].firstbrush < mapent->firstbrush ) // if we use <=, then we'll remap the passed in ent, which we don't want to
+			{
+				entities[ i ].firstbrush += newbrushes;
+			}
 		}
 	}
+
 	free (temp);
 
 	mapent->numbrushes = 0;
@@ -1581,11 +1596,12 @@ ChunkFileResult_t CMapFile::LoadEntityCallback(CChunkFile *pFile, int nParam)
 
 		if ( !strcmp( "func_detail", pClassName ) )
 		{
-			MoveBrushesToWorld (mapent);
-			mapent->numbrushes = 0;
-			
-			// clear out this entity
-			mapent->epairs = NULL;
+			MoveBrushesToWorld( mapent );
+
+				mapent->numbrushes = 0;
+				// clear out this entity
+				mapent->epairs = NULL;
+
 			return(ChunkFile_Ok);
 		}
 
@@ -1627,6 +1643,92 @@ ChunkFileResult_t CMapFile::LoadEntityCallback(CChunkFile *pFile, int nParam)
 			mapent->epairs = NULL;
 			return(ChunkFile_Ok);
 		}
+
+#ifdef PARALLAX_CORRECTED_CUBEMAPS
+		//
+		// parallax_obb brushes are removed after the transformation matrix is found and saved into 
+		// the entity's data (ent will be removed after data transferred to patched materials)
+		//
+		if (!strcmp("parallax_obb", pClassName))
+		{
+			//Originally was matrix3x2. Now we use built-in functions to the engine instead of a custom invert matrix
+			VMatrix obbMatrix, invObbMatrix;
+			MatrixSetIdentity(obbMatrix);
+			MatrixSetIdentity(invObbMatrix);
+			
+
+			// Get corner and its 3 edges (scaled, local x, y, and z axes)
+			mapbrush_t *brush = &mapbrushes[mapent->firstbrush];
+			Vector corner, x, y, z;
+
+			// Find first valid winding (with these whiles, if not enough valid windings then identity matrix is passed through to vmts)
+			int i = 0;
+			while (i < brush->numsides)
+			{
+				winding_t* wind = brush->original_sides[i].winding;
+				if (!wind)
+				{
+					i++;
+					continue;
+				}
+
+				corner = wind->p[0];
+				y = wind->p[1] - corner;
+				z = wind->p[3] - corner;
+				x = CrossProduct(y, z).Normalized();
+
+				i++;
+				break;
+			}
+
+			// Skip second valid winding (opposite face from first, unusable for finding Z's length)
+			while (i < brush->numsides)
+			{
+				winding_t* wind = brush->original_sides[i].winding;
+				if (!wind)
+				{
+					i++;
+					continue;
+				}
+				i++;
+				break;
+			}
+
+			// Find third valid winding
+			while (i < brush->numsides)
+			{
+				winding_t* wind = brush->original_sides[i].winding;
+				if (!wind)
+				{
+					i++;
+					continue;
+				}
+
+				// Find length of x
+				// Start with diagonal, then scale x by the projection of diag onto x
+				Vector diag = wind->p[0] - wind->p[2];
+				x *= abs(DotProduct(diag, x));
+
+				// Build transformation matrix (what is needed to turn a [0,0,0] - [1,1,1] cube into this brush)
+				//Originally was MatrixSetColum. Since we use VMatrix now, changed to obbMatrix
+				obbMatrix.SetForward(x);
+				obbMatrix.SetLeft(y);
+				obbMatrix.SetUp(z);
+				obbMatrix.SetTranslation(corner);
+
+				//find inverse (we need the world to local matrix, "transformationmatrix" is kind of a misnomer)
+				//Originally was MatrixInversion. This is now using the built in functions, not relying on MatrixInversion and matrixinvert.h anymore
+				MatrixInverseGeneral(obbMatrix, invObbMatrix);
+				break;
+			}
+			
+			char szMatrix[1024];
+			Q_snprintf(szMatrix, 1024, "[%f %f %f %f];[%f %f %f %f];[%f %f %f %f]", invObbMatrix[0][0], invObbMatrix[0][1], invObbMatrix[0][2], invObbMatrix[0][3], invObbMatrix[1][0], invObbMatrix[1][1], invObbMatrix[1][2], invObbMatrix[1][3], invObbMatrix[2][0], invObbMatrix[2][1], invObbMatrix[2][2], invObbMatrix[2][3]);
+			SetKeyValue(mapent, "transformationmatrix", szMatrix);
+
+			return (ChunkFile_Ok);
+		}
+#endif
 
 		if ( !strcmp( "test_sidelist", pClassName ) )
 		{
@@ -1971,6 +2073,7 @@ bool CMapFile::DeterminePath( const char *pszBaseFileName, const char *pszInstan
 //-----------------------------------------------------------------------------
 void CMapFile::CheckForInstances( const char *pszFileName )
 {
+
 	if ( this != g_MainMap )
 	{	// all sub-instances will be appended to the main map master list as they are read in
 		// so the main loop below will naturally get to the appended ones.
@@ -2019,6 +2122,8 @@ void CMapFile::CheckForInstances( const char *pszFileName )
 		if ( !strcmp( pEntity, "func_instance" ) )
 		{
 			char *pInstanceFile = ValueForKey( &entities[ i ], "file" );
+
+
 			if ( pInstanceFile[ 0 ] )
 			{
 				char	InstancePath[ MAX_PATH ];
@@ -2368,7 +2473,9 @@ void CMapFile::MergeEntities( entity_t *pInstanceEntity, CMapFile *Instance, Vec
 		entities[ num_entities + i ] = Instance->entities[ i ];
 
 		entity_t *entity = &entities[ num_entities + i ];
-		entity->firstbrush += ( nummapbrushes - Instance->nummapbrushes );
+		{
+			entity->firstbrush += ( nummapbrushes - Instance->nummapbrushes );
+		}
 
 		char *pID = ValueForKey( entity, "hammerid" );
 		if ( pID[ 0 ] )
@@ -2403,21 +2510,21 @@ void CMapFile::MergeEntities( entity_t *pInstanceEntity, CMapFile *Instance, Vec
 			GDclass *EntClass = GD.BeginInstanceRemap( pEntity, NameFixup, InstanceOrigin, InstanceAngle );
 			if ( EntClass )
 			{
-				for( int i = 0; i < EntClass->GetVariableCount(); i++ )
+				for( int j = 0; j < EntClass->GetVariableCount(); j++ )
 				{
-					GDinputvariable *EntVar = EntClass->GetVariableAt( i );
+					GDinputvariable *EntVar = EntClass->GetVariableAt( j );
 					char *pValue = ValueForKey( entity, ( char * )EntVar->GetName() );
 					if ( GD.RemapKeyValue( EntVar->GetName(), pValue, temp, FixupStyle ) )
 					{
 #ifdef MERGE_INSTANCE_DEBUG_INFO
-						Msg( "   %d. Remapped %s: from %s to %s\n", i, EntVar->GetName(), pValue, temp );
+						Msg( "   %d. Remapped %s: from %s to %s\n", j, EntVar->GetName(), pValue, temp );
 #endif // #ifdef MERGE_INSTANCE_DEBUG_INFO
 						SetKeyValue( entity, EntVar->GetName(), temp );
 					}
 					else
 					{
 #ifdef MERGE_INSTANCE_DEBUG_INFO
-						Msg( "   %d. Ignored %s: %s\n", i, EntVar->GetName(), pValue );
+						Msg( "   %d. Ignored %s: %s\n", j, EntVar->GetName(), pValue );
 #endif // #ifdef MERGE_INSTANCE_DEBUG_INFO
 					}
 				}
@@ -2470,7 +2577,13 @@ void CMapFile::MergeEntities( entity_t *pInstanceEntity, CMapFile *Instance, Vec
 
 		oldValue = Connection->m_Pair->value;
 		strcpy( origValue, oldValue );
-		char *pos = strchr( origValue, ',' );
+		char chDelim = VMF_IOPARAM_STRING_DELIMITER;
+		if (!strchr(origValue, VMF_IOPARAM_STRING_DELIMITER))
+		{
+			chDelim = ',';
+		}
+
+		char *pos = strchr( origValue, chDelim );
 		if ( pos )
 		{	// null terminate the first field
 			*pos = NULL;
@@ -2483,7 +2596,10 @@ void CMapFile::MergeEntities( entity_t *pInstanceEntity, CMapFile *Instance, Vec
 			strcpy( newValue, temp );
 			if ( pos )
 			{
-				strcat( newValue, "," );
+				char szDelim[ 2 ];
+				sprintf( szDelim, "%c", VMF_IOPARAM_STRING_DELIMITER );
+
+				strcat( newValue, szDelim );
 				strcat( newValue, pos + 1 );
 			}
 

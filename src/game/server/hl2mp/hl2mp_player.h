@@ -20,6 +20,14 @@ class CHL2MP_Player;
 #include "hl2mp_gamerules.h"
 #include "utldict.h"
 
+#ifdef MAPBASE
+#define HL2MP_PLAYER_USES_RESPONSE_SYSTEM 1
+#endif
+
+#ifdef RTBMP
+#define MODEL_CHANGE_INTERVAL 5.0f
+#endif
+
 //=============================================================================
 // >> HL2MP_Player
 //=============================================================================
@@ -51,6 +59,7 @@ public:
 
 	DECLARE_SERVERCLASS();
 	DECLARE_DATADESC();
+	DECLARE_ENT_SCRIPTDESC();
 
 	virtual void Precache( void );
 	virtual void Spawn( void );
@@ -64,11 +73,12 @@ public:
 	virtual bool BecomeRagdollOnClient( const Vector &force );
 	virtual void Event_Killed( const CTakeDamageInfo &info );
 	virtual int OnTakeDamage( const CTakeDamageInfo &inputInfo );
-	virtual bool WantsLagCompensationOnEntity( const CBasePlayer *pPlayer, const CUserCmd *pCmd, const CBitVec<MAX_EDICTS> *pEntityTransmitBits ) const;
+	virtual bool WantsLagCompensationOnEntity( const CBaseEntity *pEntity, const CUserCmd *pCmd, const CBitVec<MAX_EDICTS> *pEntityTransmitBits ) const;
 	virtual void FireBullets ( const FireBulletsInfo_t &info );
+	virtual void OnMyWeaponFired( CBaseCombatWeapon* weapon );
 	virtual bool Weapon_Switch( CBaseCombatWeapon *pWeapon, int viewmodelindex = 0);
 	virtual bool BumpWeapon( CBaseCombatWeapon *pWeapon );
-	virtual void ChangeTeam( int iTeam );
+	virtual void ChangeTeam( int iTeam ) OVERRIDE;
 	virtual void PickupObject ( CBaseEntity *pObject, bool bLimitMassAndSize );
 	virtual void PlayStepSound( Vector &vecOrigin, surfacedata_t *psurface, float fvol, bool force );
 	virtual void Weapon_Drop( CBaseCombatWeapon *pWeapon, const Vector *pvecTarget = NULL, const Vector *pVelocity = NULL );
@@ -94,9 +104,18 @@ public:
 	void NoteWeaponFired( void );
 
 	void ResetAnimation( void );
+#ifdef RTBMP
+	virtual void SetPlayerModel( void );
+	virtual void SetPlayerTeamModel( void );
+#else
 	void SetPlayerModel( void );
 	void SetPlayerTeamModel( void );
+#endif
 	Activity TranslateTeamActivity( Activity ActToTranslate );
+
+#ifdef SP_ANIM_STATE
+	Activity Weapon_TranslateActivity( Activity baseAct, bool *pRequired = NULL );
+#endif
 	
 	float GetNextModelChangeTime( void ) { return m_flNextModelChangeTime; }
 	float GetNextTeamChangeTime( void ) { return m_flNextTeamChangeTime; }
@@ -104,6 +123,17 @@ public:
 	void  SetupPlayerSoundsByModel( const char *pModelName );
 	const char *GetPlayerModelSoundPrefix( void );
 	int	  GetPlayerModelType( void ) { return m_iPlayerSoundType;	}
+
+#ifdef MAPBASE
+	virtual bool	ShouldCollide( int collisionGroup, int contentsMask ) const;
+
+	// TF2-style AFK checking
+	void				CheckForIdle( void );
+	void				ResetIdleCheck( void ) { m_flLastAction = gpGlobals->curtime; }
+	bool				IsAwayFromKeyboard( void ) const { return m_bIsAFK; }
+#endif
+
+	int	GetMaxAmmo( int iAmmoIndex ) const;
 	
 	void  DetonateTripmines( void );
 
@@ -137,21 +167,39 @@ public:
 
 	virtual bool	CanHearAndReadChatFrom( CBasePlayer *pPlayer );
 
-		
+	bool IsThreatAimingTowardMe( CBaseEntity* threat, float cosTolerance = 0.8f ) const;
+	bool IsThreatFiringAtMe( CBaseEntity* threat ) const;
+
+#ifdef MAPBASE
+	void			SetBotTakeOverAvatar( CHL2MP_Player *pAvatar ) { m_pBotTakeOverAvatar = pAvatar; }
+	CHL2MP_Player	*GetBotTakeOverAvatar() const { return m_pBotTakeOverAvatar; }
+#endif
+
+#ifdef RTBMP
+	int m_iModelType;
+	float m_flNextModelChangeTime;
+#endif
+
 private:
 
 	CNetworkQAngle( m_angEyeAngles );
+#ifndef SP_ANIM_STATE
 	CPlayerAnimState   m_PlayerAnimState;
+#endif
 
 	int m_iLastWeaponFireUsercmd;
+#ifndef RTBMP
 	int m_iModelType;
+#endif
 	CNetworkVar( int, m_iSpawnInterpCounter );
 	CNetworkVar( int, m_iPlayerSoundType );
 
+#ifndef RTBMP
 	float m_flNextModelChangeTime;
+#endif
 	float m_flNextTeamChangeTime;
 
-	float m_flSlamProtectTime;	
+	float m_flSlamProtectTime;
 
 	HL2MPPlayerState m_iPlayerState;
 	CHL2MPPlayerStateInfo *m_pCurStateInfo;
@@ -163,6 +211,14 @@ private:
 
     bool m_bEnterObserver;
 	bool m_bReady;
+
+#ifdef MAPBASE
+	bool	m_bIsAFK;
+	float	m_flLastAction;
+
+	// Used by bot takeover. If we are a bot, this is our real player. If we are the real player, this is the bot that's taken us over.
+	CHL2MP_Player *m_pBotTakeOverAvatar;
+#endif
 };
 
 inline CHL2MP_Player *ToHL2MPPlayer( CBaseEntity *pEntity )

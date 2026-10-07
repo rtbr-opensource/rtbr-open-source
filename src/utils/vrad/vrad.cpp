@@ -94,7 +94,7 @@ bool g_bOnlyStaticProps = false;
 bool g_bShowStaticPropNormals = false;
 
 
-float		gamma_value = 0.5;
+float		gamma = 0.5;
 float		indirect_sun = 1.0;
 float		reflectivityScale = 1.0;
 qboolean	do_extra = true;
@@ -2020,12 +2020,14 @@ bool RadWorld_Go()
 	}
 
 	// build initial facelights
+#ifdef MPI
 	if (g_bUseMPI) 
 	{
 		// RunThreadsOnIndividual (numfaces, true, BuildFacelights);
 		RunMPIBuildFacelights();
 	}
 	else 
+#endif
 	{
 		RunThreadsOnIndividual (numfaces, true, BuildFacelights);
 	}
@@ -2079,13 +2081,19 @@ bool RadWorld_Go()
 		StaticDispMgr()->InsertPatchSampleDataIntoHashTable();
 		StaticDispMgr()->EndTimer();
 
+#ifdef MPI
 		// blend bounced light into direct light and save
 		VMPI_SetCurrentStage( "FinalLightFace" );
 		if ( !g_bUseMPI || g_bMPIMaster )
+#endif
+		{
 			RunThreadsOnIndividual (numfaces, true, FinalLightFace);
+		}
 		
 		// Distribute the lighting data to workers.
+#ifdef MPI
 		VMPI_DistributeLightData();
+#endif
 			
 		Msg("FinalLightFace Done\n"); fflush(stdout);
 	}
@@ -2143,7 +2151,9 @@ void VRAD_LoadBSP( char const *pFilename )
 	// so we prepend qdir here.
 	strcpy( source, ExpandPath( source ) );
 
+#ifdef MPI
 	if ( !g_bUseMPI )
+#endif
 	{
 		// Setup the logfile.
 		char logFile[512];
@@ -2181,10 +2191,13 @@ void VRAD_LoadBSP( char const *pFilename )
 	Q_DefaultExtension(source, ".bsp", sizeof( source ));
 
 	Msg( "Loading %s\n", source );
+#ifdef MPI
 	VMPI_SetCurrentStage( "LoadBSPFile" );
+#endif
 	LoadBSPFile (source);
 
 	// Add this bsp to our search path so embedded resources can be found
+#ifdef MPI
 	if ( g_bUseMPI && g_bMPIMaster )
 	{
 		// MPI Master, MPI workers don't need to do anything
@@ -2192,6 +2205,7 @@ void VRAD_LoadBSP( char const *pFilename )
 		g_pOriginalPassThruFileSystem->AddSearchPath(source, "MOD", PATH_ADD_TO_HEAD);
 	}
 	else if ( !g_bUseMPI )
+#endif
 	{
 		// Non-MPI
 		g_pFullFileSystem->AddSearchPath(source, "GAME", PATH_ADD_TO_HEAD);
@@ -2323,7 +2337,9 @@ void VRAD_Finish()
 	}
 
 	Msg( "Writing %s\n", source );
+#ifdef MPI
 	VMPI_SetCurrentStage( "WriteBSPFile" );
+#endif
 	WriteBSPFile(source);
 
 	if ( g_bDumpPatches )
@@ -2451,11 +2467,13 @@ int ParseCommandLine( int argc, char **argv, bool *onlydetail )
 			if ( ++i < argc )
 			{
 				numthreads = atoi (argv[i]);
+#ifndef MAPBASE //Mapbase allows threads to be negative, go to ThreadSetDefault(void) in threads.cpp for a explanation.
 				if ( numthreads <= 0 )
 				{
 					Warning("Error: expected positive value after '-threads'\n" );
 					return -1;
 				}
+#endif
 			}
 			else
 			{
@@ -2491,6 +2509,15 @@ int ParseCommandLine( int argc, char **argv, bool *onlydetail )
 		{
 			do_fast = true;
 		}
+#ifdef MAPBASE
+		else if(!Q_stricmp(argv[i], "-ultrafast")) 
+		{
+			do_fast = true;
+			g_bFastAmbient = true;
+			do_extra = false; 
+			numbounce = 1;
+		}
+#endif
 		else if (!Q_stricmp(argv[i],"-noskyboxrecurse"))
 		{
 			g_bNoSkyRecurse = true;
@@ -2511,6 +2538,26 @@ int ParseCommandLine( int argc, char **argv, bool *onlydetail )
 				return -1;
 			}
 		}
+#ifdef MAPBASE
+		else if (!Q_stricmp(argv[i], "-extrapasses"))
+		{
+			if (++i < argc)
+			{
+				int extrapassesParam = atoi(argv[i]);
+				if (extrapassesParam < 0)
+				{
+					Warning("Error: expected non-negative value after '-extrapasses'\n");
+					return 1;
+				}
+				extrapasses = extrapassesParam;
+			}
+			else
+			{
+				Warning("Error: expected a value after '-extrapasses'\n");
+				return 1;
+			}
+		}
+#endif
 		else if (!Q_stricmp(argv[i],"-centersamples"))
 		{
 			do_centersamples = true;
@@ -2751,6 +2798,7 @@ int ParseCommandLine( int argc, char **argv, bool *onlydetail )
 			}
 		}
 #endif
+#ifdef MPI
 		// NOTE: the -mpi checks must come last here because they allow the previous argument 
 		// to be -mpi as well. If it game before something else like -game, then if the previous
 		// argument was -mpi and the current argument was something valid like -game, it would skip it.
@@ -2763,6 +2811,7 @@ int ParseCommandLine( int argc, char **argv, bool *onlydetail )
 			if ( i == argc - 1 && V_stricmp( argv[i], "-mpi_ListParams" ) != 0 )
 				break;
 		}
+#endif
 		else if ( mapArg == -1 )
 		{
 			mapArg = i;
@@ -2801,11 +2850,19 @@ void PrintUsage( int argc, char **argv )
 		"  -v (or -verbose): Turn on verbose output (also shows more command\n"
 		"  -bounce #       : Set max number of bounces (default: 100).\n"
 		"  -fast           : Quick and dirty lighting.\n"
+#ifdef MAPBASE
+		"  -ultrafast	  : Very quick and dirty lighting, same as -fast -fastambient -noextra -bounce 1\n"
+#endif
 		"  -fastambient    : Per-leaf ambient sampling is lower quality to save compute time.\n"
 		"  -final          : High quality processing. equivalent to -extrasky 16.\n"
-		"  -extrasky n     : trace N times as many rays for indirect light and sky ambient.\n"
+		"  -extrasky #     : trace # times as many rays for indirect light and sky ambient.\n"
+#ifdef MAPBASE
+		"  -extrapasses #  : Lets you scale how many extra passes you want your map to go through (default 4), differences above this value are minimal.\n"
+#endif
 		"  -low            : Run as an idle-priority process.\n"
+#ifdef MPI
 		"  -mpi            : Use VMPI to distribute computations.\n"
+#endif
 		"  -rederror       : Show errors in red.\n"
 		"\n"
 		"  -vproject <directory> : Override the VPROJECT environment variable.\n"
@@ -2816,8 +2873,9 @@ void PrintUsage( int argc, char **argv )
 		"  -dump           : Write debugging .txt files.\n"
 		"  -dumpnormals    : Write normals to debug files.\n"
 		"  -dumptrace      : Write ray-tracing environment to debug files.\n"
-		"  -threads        : Control the number of threads vbsp uses (defaults to the #\n"
+		"  -threads #      : Control the number of threads vrad uses (defaults to the #\n"
 		"                    or processors on your machine).\n"
+		"					 Threads can be negative; if so, they will be subtracted from the total thread count.\n"
 		"  -lights <file>  : Load a lights file in addition to lights.rad and the\n"
 		"                    level lights file.\n"
 		"  -noextra        : Disable supersampling.\n"
@@ -2828,7 +2886,9 @@ void PrintUsage( int argc, char **argv )
 		"  -dlightmap      : Force direct lighting into different lightmap than\n"
 		"                    radiosity.\n"
 		"  -stoponexit	   : Wait for a keypress on exit.\n"
+#ifdef MPI
 		"  -mpi_pw <pw>    : Use a password to choose a specific set of VMPI workers.\n"
+#endif
 		"  -nodetaillight  : Don't light detail props.\n"
 		"  -centersamples  : Move sample centers.\n"
 		"  -luxeldensity # : Rescale all luxels by the specified amount (default: 1.0).\n"
@@ -2837,7 +2897,7 @@ void PrintUsage( int argc, char **argv )
 		"  -loghash        : Log the sample hash table to samplehash.txt.\n"
 		"  -onlydetail     : Only light detail props and per-leaf lighting.\n"
 		"  -maxdispsamplesize #: Set max displacement sample size (default: 512).\n"
-		"  -softsun <n>    : Treat the sun as an area light source of size <n> degrees."
+		"  -softsun #    : Treat the sun as an area light source of size # degrees."
 		"                    Produces soft shadows.\n"
 		"                    Recommended values are between 0 and 5. Default is 0.\n"
 		"  -FullMinidumps  : Write large minidumps on crash.\n"
@@ -2922,7 +2982,9 @@ int RunVRAD( int argc, char **argv )
 
 	VRAD_Finish();
 
+#ifdef MPI
 	VMPI_SetCurrentStage( "master done" );
+#endif
 
 	DeleteCmdLine( argc, argv );
 	CmdLib_Cleanup();
@@ -2937,14 +2999,18 @@ int VRAD_Main(int argc, char **argv)
 	VRAD_Init();
 
 	// This must come first.
+#ifdef MPI
 	VRAD_SetupMPI( argc, argv );
+#endif
 
+#ifdef MPI
 #if !defined( _DEBUG )
 	if ( g_bUseMPI && !g_bMPIMaster )
 	{
 		SetupToolsMinidumpHandler( VMPI_ExceptionFilter );
 	}
 	else
+#endif
 #endif
 	{
 		LoadCmdLineFromFile( argc, argv, source, "vrad" ); // Don't do this if we're a VMPI worker..

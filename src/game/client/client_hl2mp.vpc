@@ -6,7 +6,7 @@
 
 $Macro SRCDIR		"..\.."
 $Macro GAMENAME 	"hl2mp" [!$SOURCESDK]
-$Macro GAMENAME 	"mod_hl2mp" [$SOURCESDK]
+$Macro GAMENAME 	"mod_hl2mp" [$SOURCESDK && !$RTBMP]
 
 $Include "$SRCDIR\game\client\client_base.vpc"
 
@@ -14,8 +14,8 @@ $Configuration
 {
 	$Compiler
 	{
-		$AdditionalIncludeDirectories		"$BASE;hl2mp\ui,.\hl2mp,$SRCDIR\game\shared\hl2mp,.\hl2,.\hl2\elements,$SRCDIR\game\shared\hl2"
-		$PreprocessorDefinitions			"$BASE;HL2MP;HL2_CLIENT_DLL"
+		$AdditionalIncludeDirectories		"$BASE;hl2mp\ui,.\hl2mp,$SRCDIR\game\shared\hl2mp,.\hl2,.\hl2\elements,$SRCDIR\game\shared\hl2;$SRCDIR\game\shared\episodic;..\..\public;$BASE"
+		$PreprocessorDefinitions			"$BASE;HL2MP;HL2_CLIENT_DLL;NEXT_BOT;HL2_EPISODIC"
 	}
 }
 
@@ -35,6 +35,12 @@ $Project "Client (HL2MP)"
 		$File	"$SRCDIR\game\shared\teamplay_round_timer.cpp"
 		$File	"$SRCDIR\game\shared\teamplay_round_timer.h"
 
+		$Folder	"NextBot"
+		{
+			$File	"NextBot\C_NextBot.cpp"
+			$File	"NextBot\C_NextBot.h"
+		}
+
 		$Folder	"HL2 DLL"
 		{
  			$File	"episodic\c_vort_charge_token.cpp"
@@ -48,6 +54,7 @@ $Project "Client (HL2MP)"
 			$File	"hl2\c_basehlcombatweapon.cpp"
 			$File	"hl2\c_basehlcombatweapon.h"
 			$File	"hl2\c_basehlplayer.cpp"
+			$File	"$SRCDIR\game\shared\hl2\hl2_player_shared.cpp"
 			$File	"hl2\c_basehlplayer.h"
 			$File	"hl2\c_citadel_effects.cpp"
 			$File	"hl2\c_corpse.cpp"
@@ -91,7 +98,7 @@ $Project "Client (HL2MP)"
 			$File	"$SRCDIR\game\shared\hl2\hl2_gamerules.cpp"
 			$File	"$SRCDIR\game\shared\hl2\hl2_gamerules.h"
 			$File	"$SRCDIR\game\shared\hl2\hl2_shareddefs.h"
-			$File	"$SRCDIR\game\shared\hl2\hl2_usermessages.cpp"
+			$File	"$SRCDIR\game\shared\hl2\hl2_usermessages.cpp" [!$RTBMP]
 			$File	"$SRCDIR\game\shared\hl2\hl_gamemovement.cpp"
 			$File	"$SRCDIR\game\shared\hl2\hl_gamemovement.h"
 			$File	"hl2\hl_in_main.cpp"
@@ -121,6 +128,8 @@ $Project "Client (HL2MP)"
 			$File	"hl2mp\c_te_hl2mp_shotgun_shot.cpp"
 			$File	"hl2mp\clientmode_hl2mpnormal.cpp"
 			$File	"hl2mp\clientmode_hl2mpnormal.h"
+			$File	"hl2mp\c_hl2mp_playerresource.cpp"
+			$File	"hl2mp\c_hl2mp_playerresource.h"
 			$File	"$SRCDIR\game\shared\hl2mp\hl2mp_gamerules.cpp"
 			$File	"$SRCDIR\game\shared\hl2mp\hl2mp_gamerules.h"
 			$File	"$SRCDIR\game\shared\hl2mp\hl2mp_player_shared.cpp"
@@ -169,6 +178,26 @@ $Project "Client (HL2MP)"
 				$File	"hl2mp\ui\hl2mptextwindow.h"
 				$File	"hl2mp\hud_deathnotice.cpp"
 			}
+		}
+		
+		$Folder "Episodic"
+		{
+			$File	"$SRCDIR\game\shared\hl2\survival_gamerules.cpp"
+			$File	"hl2\hud_radar.cpp"
+			$File	"hl2\hud_radar.h"
+			$File	"$SRCDIR\game\shared\episodic\achievements_ep1.cpp"
+			$File	"$SRCDIR\game\shared\episodic\achievements_ep2.cpp"
+			$File	"$SRCDIR\game\shared\episodic\achievements_epx.cpp"
+			$File	"episodic\c_prop_scalable.cpp"
+			$File	"episodic\c_vehicle_jeep_episodic.cpp"
+			$File	"episodic\c_vort_charge_token.cpp"
+			$File	"episodic\c_weapon_hopwire.cpp"
+			$File	"$SRCDIR\game\shared\episodic\npc_advisor_shared.h"
+			$File	"episodic\c_npc_advisor.cpp"
+			$File	"episodic\episodic_screenspaceeffects.cpp"
+			$File	"episodic\episodic_screenspaceeffects.h"
+			$File	"episodic\flesh_internal_material_proxy.cpp"
+			$File	"episodic\c_npc_puppet.cpp"			
 		}
 	}
 }

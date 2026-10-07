@@ -48,6 +48,23 @@ class CUserCmd;
 #define	SF_WEAPON_START_CONSTRAINED	(1<<0)	
 #define SF_WEAPON_NO_PLAYER_PICKUP	(1<<1)
 #define SF_WEAPON_NO_PHYSCANNON_PUNT (1<<2)
+#ifdef MAPBASE
+// I really, REALLY hope no weapon uses their own spawnflags.
+// If you want yours to use spawnflags, start at 16 just to be safe.
+
+#define SF_WEAPON_NO_NPC_PICKUP	(1<<3) // Prevents NPCs from picking up the weapon.
+#define SF_WEAPON_PRESERVE_AMMO (1<<4) // Prevents the weapon from filling up to max automatically when dropped or picked up by players.
+#define SF_WEAPON_PRESERVE_NAME	(1<<5) // Prevents the weapon's name from being cleared upon being picked up by a player.
+#define SF_WEAPON_ALWAYS_TOUCHABLE	(1<<6) // Makes a weapon always touchable/pickupable, even through walls.
+
+// ----------------------------------------------
+// These spawnflags are not supposed to be used by level designers.
+// They're just my way of trying to avoid adding new variables
+// that have to stay in memory and save/load.
+// ----------------------------------------------
+#define SF_WEAPON_NO_AUTO_SWITCH_WHEN_EMPTY (1<<6) // So weapons with ammo preserved at 0 don't switch.
+#define SF_WEAPON_USED (1<<7) // Weapon is being +USE'd, not bumped
+#endif
 
 //Percent
 #define	CLIP_PERC_THRESHOLD		0.75f	
@@ -81,29 +98,6 @@ typedef struct
 	bool		required;
 } acttable_t;
 
-
-struct poseparamtable_t
-{
-	const char *pszName;
-	float		flValue;
-};
-
-// Put this in your derived class definition to declare it's poseparam table
-#define DECLARE_POSEPARAMTABLE()	static poseparamtable_t m_poseparamtable[];\
-	virtual poseparamtable_t* PoseParamList( int &iPoseParamCount ) { return NULL; }
-
-// You also need to include the activity table itself in your class' implementation:
-// e.g.
-//	acttable_t	CTFGrapplingHook::m_poseparamtable[] = 
-//	{
-//		{ "r_arm", 2 },
-//	};
-//
-// The grapplinghook overrides the r_arm pose param, value to 2.
-
-#define IMPLEMENT_POSEPARAMTABLE(className)\
-	poseparamtable_t* className::PoseParamList( int &iPoseParamCount ) { iPoseParamCount = ARRAYSIZE(m_poseparamtable); return m_poseparamtable; }
-
 class CHudTexture;
 class Color;
 
@@ -111,6 +105,26 @@ namespace vgui2
 {
 	typedef unsigned long HFont;
 }
+
+#ifdef MAPBASE
+// ------------------
+// Weapon classes
+// ------------------
+// I found myself in situations where this is useful.
+// Their purpose is similar to Class_T on NPCs.
+
+enum WeaponClass_t
+{
+	WEPCLASS_INVALID = 0,
+
+	WEPCLASS_HANDGUN,
+	WEPCLASS_RIFLE,
+	WEPCLASS_SHOTGUN,
+	WEPCLASS_HEAVY,
+
+	WEPCLASS_MELEE,
+};
+#endif
 
 // -----------------------------------------
 //	Vector cones
@@ -180,6 +194,7 @@ public:
 	DECLARE_CLASS( CBaseCombatWeapon, BASECOMBATWEAPON_DERIVED_FROM );
 	DECLARE_NETWORKCLASS();
 	DECLARE_PREDICTABLE();
+	DECLARE_ENT_SCRIPTDESC();
 
 							CBaseCombatWeapon();
 	virtual 				~CBaseCombatWeapon();
@@ -194,11 +209,27 @@ public:
 	virtual void			Spawn( void );
 	virtual void			Precache( void );
 
+#ifdef MAPBASE
+	void					SetAmmoFromMapper( float flAmmo, bool bSecondary = false );
+	virtual bool			KeyValue( const char *szKeyName, const char *szValue );
+	virtual bool			GetKeyValue( const char *szKeyName, char *szValue, int iMaxLen );
+#endif
+
 	void					MakeTracer( const Vector &vecTracerSrc, const trace_t &tr, int iTracerType );
 
 	// Subtypes are used to manage multiple weapons of the same type on the player.
 	virtual int				GetSubType( void ) { return m_iSubType; }
 	virtual void			SetSubType( int iType ) { m_iSubType = iType; }
+
+#ifdef MAPBASE
+	virtual WeaponClass_t	WeaponClassify();
+	static WeaponClass_t	WeaponClassFromString(const char *str);
+
+	virtual bool			SupportsBackupActivity(Activity activity);
+	virtual acttable_t		*GetBackupActivityList();
+	virtual int				GetBackupActivityListCount();
+	static acttable_t		*GetDefaultBackupActivityList( acttable_t *pTable, int &actCount );
+#endif
 
 	virtual void			Equip( CBaseCombatCharacter *pOwner );
 	virtual void			Drop( const Vector &vecVelocity );
@@ -269,12 +300,20 @@ public:
 																	// but they are out of ammo. The default implementation
 																	// either reloads, switches weapons, or plays an empty sound.
 	virtual bool			CanPerformSecondaryAttack() const;
+	virtual bool			ShouldSecondaryAttackRecoil() const { return false; } // Should a weapon's secondary attack recoil (e.g. burst fires)
 
 	virtual bool			ShouldBlockPrimaryFire() { return false; }
 
 #ifdef CLIENT_DLL
+#ifdef MAPBASE
+	virtual bool			DispatchMuzzleEffect( const char *options, bool isFirstPerson );
+#endif
+
 	virtual void			CreateMove( float flInputSampleTime, CUserCmd *pCmd, const QAngle &vecOldViewAngles ) {}
 	virtual int				CalcOverrideModelIndex() OVERRIDE;
+
+	// misyl: If weapon mispred's don't reset all the player's variables.
+	virtual bool PredictionErrorShouldResetLatchedForAllPredictables( void ) OVERRIDE;
 #endif
 
 	virtual bool			IsWeaponZoomed() { return false; }		// Is this weapon in its 'zoomed in' mode?
@@ -284,8 +323,16 @@ public:
 	virtual void			FinishReload( void );
 	virtual void			AbortReload( void );
 	virtual bool			Reload( void );
+#ifdef RTBMP
+	virtual bool			DefaultReload( int iClipSize1, int iClipSize2, int iActivity );
+#else
 	bool					DefaultReload( int iClipSize1, int iClipSize2, int iActivity );
+#endif
 	bool					ReloadsSingly( void ) const;
+#ifdef MAPBASE
+	// Originally created for the crossbow, can be used to add special NPC reloading behavior
+	virtual void			Reload_NPC( bool bPlaySound = true );
+#endif
 
 	virtual bool			AutoFiresFullClip( void ) const { return false; }
 	virtual void			UpdateAutoFire( void );
@@ -351,7 +398,7 @@ public:
 	bool					IsLocked( CBaseEntity *pAsker );
 
 	//All weapons can be picked up by NPCs by default
-	virtual bool			CanBePickedUpByNPCs( void ) { return true;	}
+	virtual bool			CanBePickedUpByNPCs(void);
 
 	virtual int				GetSkinOverride() const { return -1; }
 
@@ -380,6 +427,15 @@ public:
 	virtual bool			UsesClipsForAmmo1( void ) const;
 	virtual bool			UsesClipsForAmmo2( void ) const;
 	bool					IsMeleeWeapon() const;
+#ifdef MAPBASE
+	virtual float			GetViewmodelFOVOverride() const;
+	float					GetBobScale() const;
+	float					GetSwayScale() const;
+	float					GetSwaySpeedScale() const;
+	virtual const char		*GetDroppedModel( void ) const;
+	virtual bool			UsesHands( void ) const;
+	virtual int				GetHandRig( void ) const;
+#endif
 
 	// derive this function if you mod uses encrypted weapon info files
 	virtual const unsigned char *GetEncryptionKey( void );
@@ -410,12 +466,58 @@ public:
 	virtual Activity		ActivityOverride( Activity baseAct, bool *pRequired );
 	virtual	acttable_t*		ActivityList( int &iActivityCount ) { return NULL; }
 
-	virtual void			PoseParameterOverride( bool bReset );
-	virtual poseparamtable_t* PoseParamList( int &iPoseParamCount ) { return NULL; }
-
 	virtual void			Activate( void );
 
 	virtual bool ShouldUseLargeViewModelVROverride() { return false; }
+
+	// Derived classes can override this to provide more nuanced fidget conditions per-weapon.
+	virtual bool		ShouldWeaponFidget() { return true; }
+
+#ifdef MAPBASE
+	// Gets the weapon script name to load.
+	virtual const char*		GetWeaponScriptName() { return GetClassname(); }
+#endif
+
+#ifdef MAPBASE_VSCRIPT
+	void				ScriptSetClip1( int ammo ) { m_iClip1 = ammo; }
+	void				ScriptSetClip2( int ammo ) { m_iClip2 = ammo; }
+
+	HSCRIPT				ScriptGetOwner();
+	void				ScriptSetOwner( HSCRIPT owner );
+
+	int					ScriptWeaponClassify() { return WeaponClassify(); }
+	void				ScriptWeaponSound( int sound_type, float soundtime = 0.0f ) { WeaponSound( (WeaponSound_t)sound_type, soundtime ); }
+
+	const Vector&		ScriptGetBulletSpread( void ) { return GetBulletSpread(); }
+	Vector				ScriptGetBulletSpreadForProficiency( int proficiency ) { return GetBulletSpread( (WeaponProficiency_t)proficiency ); }
+
+	int					ScriptGetPrimaryAttackActivity( void ) { return GetPrimaryAttackActivity(); }
+	int					ScriptGetSecondaryAttackActivity( void ) { return GetSecondaryAttackActivity(); }
+	int					ScriptGetDrawActivity( void ) { return GetDrawActivity(); }
+
+	bool				FiresUnderwater() { return m_bFiresUnderwater; }
+	void				SetFiresUnderwater( bool bVal ) { m_bFiresUnderwater = bVal; }
+	bool				AltFiresUnderwater() { return m_bAltFiresUnderwater; }
+	void				SetAltFiresUnderwater( bool bVal ) { m_bAltFiresUnderwater = bVal; }
+	float				MinRange1() { return m_fMinRange1; }
+	void				SetMinRange1( float flVal ) { m_fMinRange1 = flVal; }
+	float				MinRange2() { return m_fMinRange2; }
+	void				SetMinRange2( float flVal ) { m_fMinRange2 = flVal; }
+	float				MaxRange1() { return m_fMaxRange1; }
+	void				SetMaxRange1( float flVal ) { m_fMaxRange1 = flVal; }
+	float				MaxRange2() { return m_fMaxRange2; }
+	void				SetMaxRange2( float flVal ) { m_fMaxRange2 = flVal; }
+	//bool				ReloadsSingly() { return m_bReloadsSingly; }
+	void				SetReloadsSingly( bool bVal ) { m_bReloadsSingly = bVal; }
+	float				FireDuration() { return m_fFireDuration; }
+	void				SetFireDuration( float flVal ) { m_fFireDuration = flVal; }
+
+	float				NextPrimaryAttack() { return m_flNextPrimaryAttack; }
+	void				SetNextPrimaryAttack( float flVal ) { m_flNextPrimaryAttack = flVal; }
+	float				NextSecondaryAttack() { return m_flNextSecondaryAttack; }
+	void				SetNextSecondaryAttack( float flVal ) { m_flNextSecondaryAttack = flVal; }
+#endif
+
 public:
 // Server Only Methods
 #if !defined( CLIENT_DLL )
@@ -432,6 +534,9 @@ public:
 	void					AttemptToMaterialize( void );			// see if the game rules will let the weapon become visible and tangible
 	virtual void			CheckRespawn( void );					// see if this weapon should respawn after being picked up
 	CBaseEntity				*Respawn ( void );						// copy a weapon
+
+	float m_flRespawnTime; // more an interval rather than a time
+	float GetRespawnTime( void ) { return m_flRespawnTime; }
 
 	static int				GetAvailableWeaponsInBox( CBaseCombatWeapon **pList, int listMax, const Vector &mins, const Vector &maxs );
 
@@ -462,10 +567,28 @@ public:
 
 	virtual int				UpdateTransmitState( void );
 
+#ifdef MAPBASE
+	void					InputSetAmmo1( inputdata_t &inputdata );
+	void					InputSetAmmo2( inputdata_t &inputdata );
+	void					InputGiveDefaultAmmo( inputdata_t &inputdata );
+	void					InputEnablePlayerPickup( inputdata_t &inputdata );
+	void					InputDisablePlayerPickup( inputdata_t &inputdata );
+	void					InputEnableNPCPickup( inputdata_t &inputdata );
+	void					InputDisableNPCPickup( inputdata_t &inputdata );
+	void					InputBreakConstraint( inputdata_t &inputdata );
+	void					InputForceFire( inputdata_t &inputdata, bool bSecondary = false );
+	void					InputForcePrimaryFire( inputdata_t &inputdata );
+	void					InputForceSecondaryFire( inputdata_t &inputdata );
+#endif
 	void					InputHideWeapon( inputdata_t &inputdata );
 	void					Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
 
 	virtual CDmgAccumulator	*GetDmgAccumulator( void ) { return NULL; }
+
+	void					SetSoundsEnabled( bool bSoundsEnabled ) { m_bSoundsEnabled = bSoundsEnabled; }
+
+	void					SetCustomViewModel( const char *pszCustomViewModel );
+	void					SetCustomViewModelModelIndex( int nCustomViewModelModelIndex );
 
 // Client only methods
 #else
@@ -524,6 +647,7 @@ public:
 	virtual int				GetWorldModelIndex( void );
 
 	virtual void			GetToolRecordingState( KeyValues *msg );
+	void					EnsureCorrectRenderingModel();
 
 	virtual void			GetWeaponCrosshairScale( float &flScale ) { flScale = 1.f; }
 
@@ -536,6 +660,9 @@ public:
 	bool					WantsToOverrideViewmodelAttachments( void ) { return false; }
 #endif
 
+	//Tony; notifications of any third person switches.
+	virtual void			ThirdPersonSwitch( bool bThirdPerson ) {};
+
 #endif // End client-only methods
 
 	virtual bool			CanLower( void ) { return false; }
@@ -544,6 +671,33 @@ public:
 
 	virtual void			HideThink( void );
 	virtual bool			CanReload( void );
+
+	virtual float			GetNextSecondaryAttackDelay( void ) { return 0.5f; } // This is for setting the next attack timer from inside SecondaryAttack()
+
+	void SetClip1( int nClip )
+	{
+		if ( UsesClipsForAmmo1() )
+		{
+			m_iClip1 = nClip;
+		}
+		else
+		{
+			SetPrimaryAmmoCount( m_iClip1 );
+			m_iClip1 = WEAPON_NOCLIP;
+		}
+	}
+	void SetClip2( int nClip )
+	{
+		if ( UsesClipsForAmmo1() )
+		{
+			m_iClip2 = nClip;
+		}
+		else
+		{
+			SetPrimaryAmmoCount( m_iClip2 );
+			m_iClip2 = WEAPON_NOCLIP;
+		}
+	}
 
 private:
 	typedef CHandle< CBaseCombatCharacter > CBaseCombatCharacterHandle;
@@ -577,6 +731,9 @@ public:
 	// Weapon art
 	CNetworkVar( int, m_iViewModelIndex );
 	CNetworkVar( int, m_iWorldModelIndex );
+#ifdef MAPBASE
+	CNetworkVar( int, m_iDroppedModelIndex );
+#endif
 	// Sounds
 	float					m_flNextEmptySoundTime;				// delay on empty sound playing
 
@@ -585,6 +742,12 @@ public:
 
 	bool					SetIdealActivity( Activity ideal );
 	void					MaintainIdealActivity( void );
+
+#ifdef CLIENT_DLL
+	virtual const Vector&	GetViewmodelOffset() { return vec3_origin; }
+#endif // CLIENT_DLL
+
+	virtual bool			UsesCenterFireProjectile( void ) const { return false; }
 
 private:
 	Activity				m_Activity;
@@ -621,11 +784,24 @@ public:
 	bool					m_bReloadsSingly;		// True if this weapon reloads 1 round at a time
 	float					m_fFireDuration;		// The amount of time that the weapon has sustained firing
 	int						m_iSubType;
+	float					m_flNextFidgetReload;
 
 	float					m_flUnlockTime;
 	EHANDLE					m_hLocker;				// Who locked this weapon.
 
 	CNetworkVar( bool, m_bFlipViewModel );
+
+#ifdef MAPBASE
+#ifdef CLIENT_DLL
+	int				m_spawnflags;
+
+	inline bool		HasSpawnFlags( int flags ) { return (m_spawnflags & flags) != 0; }
+	inline void		RemoveSpawnFlags( int flags ) { m_spawnflags &= ~flags; }
+	inline void		AddSpawnFlags( int flags ) { m_spawnflags |= flags; }
+#else
+	//IMPLEMENT_NETWORK_VAR_FOR_DERIVED(m_spawnflags);
+#endif
+#endif
 
 	IPhysicsConstraint		*GetConstraint() { return m_pConstraint; }
 
@@ -640,8 +816,12 @@ private:
 	float					m_flHudHintPollTime;	// When to poll the weapon again for whether it should display a hud hint.
 	float					m_flHudHintMinDisplayTime; // if the hint is squelched before this, reset my counter so we'll display it again.
 	
+	CNetworkVar( short, m_nCustomViewmodelModelIndex );
+
 	// Server only
 #if !defined( CLIENT_DLL )
+
+	bool					m_bSoundsEnabled;
 
 	// Outputs
 protected:
@@ -649,6 +829,9 @@ protected:
 	COutputEvent			m_OnPlayerPickup;	// Fired when the player picks up the weapon.
 	COutputEvent			m_OnNPCPickup;		// Fired when an NPC picks up the weapon.
 	COutputEvent			m_OnCacheInteraction;	// For awarding lambda cache achievements in HL2 on 360. See .FGD file for details 
+#ifdef MAPBASE
+	COutputEvent			m_OnDropped;
+#endif
 
 #else // Client .dll only
 	bool					m_bJustRestored;

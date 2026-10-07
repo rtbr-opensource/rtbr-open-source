@@ -55,9 +55,14 @@ public:
 	virtual bool				IsActive( void ) { return m_bActive; };
 	virtual void				SetActive( bool bActive );
 
+	virtual GameActionSet_t GetPreferredActionSet() { return GAME_ACTION_SET_NONE; }
+
 	// Hidden bits. 
 	// HIDEHUD_ flags that note when this element should be hidden in the HUD
 	virtual void				SetHiddenBits( int iBits );
+#ifdef MAPBASE_VSCRIPT
+	int							GetHiddenBits() const { return m_iHiddenBits; }
+#endif
 
 	bool						IsParentedToClientDLLRootPanel() const;
 	void						SetParentedToClientDLLRootPanel( bool parented );

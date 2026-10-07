@@ -18,11 +18,6 @@
 
 class CHudViewport;
 
-namespace vgui
-{
-	typedef unsigned long HScheme;
-}
-
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -37,6 +32,8 @@ public:
 
 	virtual void	Init();
 	virtual int		GetDeathMessageStartHeight( void );
+
+	virtual void	FireGameEvent( IGameEvent *event );
 };
 
 extern IClientMode *GetClientModeNormal();

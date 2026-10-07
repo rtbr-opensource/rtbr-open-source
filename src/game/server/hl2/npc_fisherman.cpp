@@ -131,7 +131,7 @@ END_DATADESC()
 //-----------------------------------------------------------------------------
 void CNPC_Fisherman::SelectModel()
 {
-	SetModelName( AllocPooledString( FISHERMAN_MODEL ) );
+	SetModelName( AllocPooledString( DefaultOrCustomModel( FISHERMAN_MODEL ) ) );
 }
 
 //-----------------------------------------------------------------------------

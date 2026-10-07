@@ -27,6 +27,18 @@
 #include "datacache/idatacache.h"
 #include "smoke_trail.h"
 #include "props.h"
+#ifdef MAPBASE
+#include "ai_speech.h"
+#include "gib.h"
+#include "CRagdollMagnet.h"
+#endif
+#ifdef MAPBASE_VSCRIPT
+#include "mapbase/vscript_funcs_shared.h"
+#endif
+
+#ifdef RTBMP
+#include "rtbmp_player.h"
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -198,13 +210,26 @@ BEGIN_DATADESC( CBaseAnimating )
  // DEFINE_FIELD( m_boneCacheHandle, memhandle_t ),
 
 	DEFINE_INPUTFUNC( FIELD_VOID, "Ignite", InputIgnite ),
+#ifdef RTBMP
+	DEFINE_INPUTFUNC( FIELD_VOID, "IgniteCrem", InputIgniteCrem ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "Extinguish", InputExtinguish ),
+#endif
 	DEFINE_INPUTFUNC( FIELD_FLOAT, "IgniteLifetime", InputIgniteLifetime ),
 	DEFINE_INPUTFUNC( FIELD_INTEGER, "IgniteNumHitboxFires", InputIgniteNumHitboxFires ),
 	DEFINE_INPUTFUNC( FIELD_FLOAT, "IgniteHitboxFireScale", InputIgniteHitboxFireScale ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "BecomeRagdoll", InputBecomeRagdoll ),
+#ifdef MAPBASE
+	DEFINE_INPUTFUNC( FIELD_VOID, "CreateSeparateRagdoll", InputCreateSeparateRagdoll ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "CreateSeparateRagdollClient", InputCreateSeparateRagdollClient ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetPoseParameter", InputSetPoseParameter ),
+#endif
 	DEFINE_INPUTFUNC( FIELD_STRING, "SetLightingOriginHack", InputSetLightingOriginRelative ),
 	DEFINE_INPUTFUNC( FIELD_STRING, "SetLightingOrigin", InputSetLightingOrigin ),
 	DEFINE_OUTPUT( m_OnIgnite, "OnIgnite" ),
+	DEFINE_OUTPUT( m_OnExtinguish, "OnExtinguish" ),
+#ifdef MAPBASE
+	DEFINE_OUTPUT( m_OnServerRagdoll, "OnServerRagdoll" ),
+#endif
 
 	DEFINE_INPUT( m_fadeMinDist, FIELD_FLOAT, "fademindist" ),
 	DEFINE_INPUT( m_fadeMaxDist, FIELD_FLOAT, "fademaxdist" ),
@@ -212,6 +237,9 @@ BEGIN_DATADESC( CBaseAnimating )
 
 	DEFINE_KEYFIELD( m_flModelScale, FIELD_FLOAT, "modelscale" ),
 	DEFINE_INPUTFUNC( FIELD_VECTOR, "SetModelScale", InputSetModelScale ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetModel", InputSetModel ),
+	DEFINE_INPUTFUNC( FIELD_FLOAT, "SetCycle", InputSetCycle ),
+	DEFINE_INPUTFUNC( FIELD_FLOAT, "SetPlaybackRate", InputSetPlaybackRate ),
 
 	DEFINE_FIELD( m_fBoneCacheFlags, FIELD_SHORT ),
 
@@ -263,6 +291,105 @@ IMPLEMENT_SERVERCLASS_ST(CBaseAnimating, DT_BaseAnimating)
 
 END_SEND_TABLE()
 
+#ifdef MAPBASE_VSCRIPT
+ScriptHook_t	CBaseAnimating::g_Hook_OnServerRagdoll;
+ScriptHook_t	CBaseAnimating::g_Hook_HandleAnimEvent;
+#endif
+
+BEGIN_ENT_SCRIPTDESC( CBaseAnimating, CBaseEntity, "Animating models" )
+	#ifdef PORTAL2
+	DEFINE_SCRIPTFUNC( GetObjectScaleLevel, "The scale size of the entity" )
+	#endif // PORTAL2
+	DEFINE_SCRIPTFUNC( LookupAttachment, "Get the named attachement id"  )
+	DEFINE_SCRIPTFUNC( GetAttachmentBone, "Get the named attachement's parent bone index"  )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetBoneOrigin, "GetBoneOrigin", "Get the bone id's origin vector"  )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetBoneAngles, "GetBoneAngles", "Get the bone id's angles as a p,y,r vector"  )
+	DEFINE_SCRIPTFUNC( LookupActivity, "Get the named activity index"  )
+	DEFINE_SCRIPTFUNC( LookupBone, "Get the named bone index"  )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptLookupSequence, "LookupSequence", "Looks up a sequence by sequence name or activity name"  )
+	DEFINE_SCRIPTFUNC( SetSequence, "Set a sequence by id"  )
+	DEFINE_SCRIPTFUNC( ResetSequence, "Reset a sequence by id. If the id is different than the current sequence, switch to the new sequence"  )
+	DEFINE_SCRIPTFUNC( GetSequence, "Get the current sequence id"  )
+	DEFINE_SCRIPTFUNC( GetSequenceActivityName, "Get the activity name for a sequence by id"  )
+	DEFINE_SCRIPTFUNC( GetSequenceName, "Get a sequence name by id"  )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetSequenceDuration, "GetSequenceDuration", "Get a sequence duration by id"  )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetAttachmentOrigin, "GetAttachmentOrigin", "Get the attachement id's origin vector"  )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetAttachmentAngles, "GetAttachmentAngles", "Get the attachement id's angles as a p,y,r vector"  )
+#ifdef MAPBASE_VSCRIPT
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetAttachmentMatrix, "GetAttachmentMatrix", "Get the attachement id's matrix transform" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetPoseParameter, "GetPoseParameter", "Get the specified pose parameter's value" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetBoneTransform, "GetBoneTransform", "Get the transform for the specified bone" )
+	DEFINE_SCRIPTFUNC( GetPhysicsBone, "Get physics bone from bone index" )
+	DEFINE_SCRIPTFUNC( GetNumBones, "Get the number of bones" )
+	DEFINE_SCRIPTFUNC( SequenceLoops, "Does the current sequence loop?" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSequenceDuration, "SequenceDuration", "Get the specified sequence duration" )
+	DEFINE_SCRIPTFUNC_NAMED( HasMovement, "SequenceHasMovement", "Checks if the specified sequence has movement" )
+	DEFINE_SCRIPTFUNC( GetSequenceMoveYaw, "Gets the move yaw of the specified sequence" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetSequenceMoveDist, "GetSequenceMoveDist", "Gets the move distance of the specified sequence" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetSequenceActivity, "GetSequenceActivity", "Gets the activity ID of the specified sequence index" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSelectWeightedSequence, "SelectWeightedSequence", "Selects a sequence for the specified activity ID" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSelectHeaviestSequence, "SelectHeaviestSequence", "Selects the sequence with the heaviest weight for the specified activity ID" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetSequenceKeyValues, "GetSequenceKeyValues", "Get a KeyValue class instance on the specified sequence" )
+	DEFINE_SCRIPTFUNC( ResetSequenceInfo, "" )
+#endif
+	DEFINE_SCRIPTFUNC( IsSequenceFinished, "Ask whether the main sequence is done playing" )
+	DEFINE_SCRIPTFUNC( SetBodygroup, "Sets a bodygroup")
+	DEFINE_SCRIPTFUNC( GetBodygroup, "Get a bodygroup by id")
+	DEFINE_SCRIPTFUNC( GetBodygroupName, "Get the bodygroup id's name")
+	DEFINE_SCRIPTFUNC( FindBodygroupByName, "Find a bodygroup id by name")
+	DEFINE_SCRIPTFUNC( GetBodygroupPartName, "Get name by group and part")
+	DEFINE_SCRIPTFUNC( StopAnimation, "Stop the current animation (same as SetPlaybackRate 0.0)" )
+	DEFINE_SCRIPTFUNC( SetPlaybackRate, "Set the current playback rate." )
+	DEFINE_SCRIPTFUNC( GetPlaybackRate, "Set the current playback rate." )
+	DEFINE_SCRIPTFUNC( GetModelScale, "" )
+#ifdef MAPBASE_VSCRIPT
+
+	// Mapbase's SetModelScale did not support a second parameter.
+	// When Mapbase syntax is prioritized, allow this through SetModelScaleEx.
+	// When TF2 syntax is prioritized, hide SetModelScaleEx but allow it to be used.
+#ifdef VSCRIPT_PRIORITIZE_TF2_SYNTAX
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetModelScale, "SetModelScale", "(scale, change_duration) Changes a model's scale over time" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetModelScale, "SetModelScaleEx", SCRIPT_HIDE )
+#else
+	DEFINE_SCRIPTFUNC( SetModelScale, "(scale) Changes a model's scale over time" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetModelScale, "SetModelScaleEx", "(scale, change_duration) Changes a model's scale over time" )
+#endif
+
+#else
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetModelScale, "SetModelScale", "(scale, change_duration) Changes a model's scale over time" )
+#endif
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetPoseParameter, "SetPoseParameter", "(id, value) Sets a pose parameter value" )
+	DEFINE_SCRIPTFUNC( GetSkin, "Gets the current skin index." )
+	DEFINE_SCRIPTFUNC( SetSkin, "Sets the skin." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetModel, "SetModelSimple", "Set a model for this entity. Matches easier behaviour of the SetModel input, automatically precaches, maintains sequence/cycle if possible." )
+	DEFINE_SCRIPTFUNC( SetCycle, "Sets the models current cycle" )
+	DEFINE_SCRIPTFUNC( GetCycle, "Gets the models current cycle" )
+	DEFINE_SCRIPTFUNC( BecomeRagdollOnClient, "Becomes a ragdoll with a force" )
+	DEFINE_SCRIPTFUNC( StudioFrameAdvance, "Advance animation frame to some time in the future with an automatically calculated interval" )
+	DEFINE_SCRIPTFUNC( StudioFrameAdvanceManual, "Advance animation frame to some time in the future with a manual interval" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptDispatchAnimEvents, "DispatchAnimEvents", "Dispatch animation events to a CBaseAnimating" )
+	DEFINE_SCRIPTFUNC_WRAPPED( LookupPoseParameter, "Looks up a pose parameter index by name" );
+#ifdef MAPBASE_VSCRIPT
+	DEFINE_SCRIPTFUNC( GetBodygroupCount, "Gets the number of models in a bodygroup" )
+	DEFINE_SCRIPTFUNC( GetNumBodyGroups, "Gets the number of bodygroups" )
+
+	DEFINE_SCRIPTFUNC( Dissolve, "Use 'sprites/blueglow1.vmt' for the default material, Time() for the default start time, false for npcOnly if you don't want it to check if the entity is a NPC first, 0 for the default dissolve type, Vector(0,0,0) for the default dissolver origin, and 0 for the default magnitude." )
+	DEFINE_SCRIPTFUNC( Ignite, "'NPCOnly' only lets this fall through if the entity is a NPC and 'CalledByLevelDesigner' determines whether to treat this like the Ignite input or just an internal ignition call." )
+	DEFINE_SCRIPTFUNC( Scorch, "Makes the entity darker from scorching" )
+
+	DEFINE_SCRIPTFUNC( IsRagdoll, "" )
+	DEFINE_SCRIPTFUNC( CanBecomeRagdoll, "" )
+
+	BEGIN_SCRIPTHOOK( CBaseAnimating::g_Hook_OnServerRagdoll, "OnServerRagdoll", FIELD_VOID, "Called when this entity creates/turns into a server-side ragdoll." )
+		DEFINE_SCRIPTHOOK_PARAM( "ragdoll", FIELD_HSCRIPT )
+		DEFINE_SCRIPTHOOK_PARAM( "submodel", FIELD_BOOLEAN )
+	END_SCRIPTHOOK()
+
+	BEGIN_SCRIPTHOOK( CBaseAnimating::g_Hook_HandleAnimEvent, "HandleAnimEvent", FIELD_BOOLEAN, "Called when handling animation events. Return false to cancel base handling." )
+		DEFINE_SCRIPTHOOK_PARAM( "event", FIELD_HSCRIPT )
+	END_SCRIPTHOOK()
+#endif
+END_SCRIPTDESC();
 
 CBaseAnimating::CBaseAnimating()
 {
@@ -420,6 +547,11 @@ void CBaseAnimating::StudioFrameAdvanceInternal( CStudioHdr *pStudioHdr, float f
 	float flNewCycle = GetCycle() + flCycleDelta;
 	if (flNewCycle < 0.0 || flNewCycle >= 1.0) 
 	{
+		if (flNewCycle >= 1.0f)
+		{
+			ReachedEndOfSequence();
+		}
+
 		if (m_bSequenceLoops)
 		{
 			flNewCycle -= (int)(flNewCycle);
@@ -525,7 +657,11 @@ void CBaseAnimating::StudioFrameAdvance()
 //-----------------------------------------------------------------------------
 // Set the relative lighting origin
 //-----------------------------------------------------------------------------
+#ifdef MAPBASE
+void CBaseAnimating::SetLightingOriginRelative( string_t strLightingOriginRelative, inputdata_t *inputdata )
+#else
 void CBaseAnimating::SetLightingOriginRelative( string_t strLightingOriginRelative )
+#endif
 {
 	if ( strLightingOriginRelative == NULL_STRING )
 	{
@@ -533,7 +669,11 @@ void CBaseAnimating::SetLightingOriginRelative( string_t strLightingOriginRelati
 	}
 	else
 	{
+#ifdef MAPBASE
+		CBaseEntity *pLightingOrigin = gEntList.FindEntityByName( NULL, strLightingOriginRelative, this, inputdata ? inputdata->pActivator : NULL, inputdata ? inputdata->pCaller : NULL );
+#else
 		CBaseEntity *pLightingOrigin = gEntList.FindEntityByName( NULL, strLightingOriginRelative );
+#endif
 		if ( !pLightingOrigin )
 		{
 			DevWarning( "%s: Could not find info_lighting_relative '%s'!\n", GetClassname(), STRING( strLightingOriginRelative ) );
@@ -563,7 +703,11 @@ void CBaseAnimating::SetLightingOriginRelative( string_t strLightingOriginRelati
 //-----------------------------------------------------------------------------
 // Set the lighting origin
 //-----------------------------------------------------------------------------
+#ifdef MAPBASE
+void CBaseAnimating::SetLightingOrigin( string_t strLightingOrigin, inputdata_t *inputdata )
+#else
 void CBaseAnimating::SetLightingOrigin( string_t strLightingOrigin )
+#endif
 {
 	if ( strLightingOrigin == NULL_STRING )
 	{
@@ -571,7 +715,11 @@ void CBaseAnimating::SetLightingOrigin( string_t strLightingOrigin )
 	}
 	else
 	{
+#ifdef MAPBASE
+		CBaseEntity *pLightingOrigin = gEntList.FindEntityByName( NULL, strLightingOrigin, this, inputdata ? inputdata->pActivator : NULL, inputdata ? inputdata->pCaller : NULL );
+#else
 		CBaseEntity *pLightingOrigin = gEntList.FindEntityByName( NULL, strLightingOrigin );
+#endif
 		if ( !pLightingOrigin )
 		{
 			DevWarning( "%s: Could not find lighting origin entity named '%s'!\n", GetClassname(), STRING( strLightingOrigin ) );
@@ -594,9 +742,15 @@ void CBaseAnimating::SetLightingOrigin( string_t strLightingOrigin )
 //-----------------------------------------------------------------------------
 void CBaseAnimating::InputSetLightingOriginRelative( inputdata_t &inputdata )
 { 
+#ifdef MAPBASE
+	// Pass our input data now.
+	// (and stop doing that MAKE_STRING nonsense)
+	SetLightingOriginRelative( inputdata.value.StringID(), &inputdata );
+#else
 	// Find our specified target
 	string_t strLightingOriginRelative = MAKE_STRING( inputdata.value.String() );
 	SetLightingOriginRelative( strLightingOriginRelative );
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -605,9 +759,15 @@ void CBaseAnimating::InputSetLightingOriginRelative( inputdata_t &inputdata )
 //-----------------------------------------------------------------------------
 void CBaseAnimating::InputSetLightingOrigin( inputdata_t &inputdata )
 { 
+#ifdef MAPBASE
+	// Pass our input data now.
+	// (and stop doing that MAKE_STRING nonsense)
+	SetLightingOrigin( inputdata.value.StringID(), &inputdata );
+#else
 	// Find our specified target
 	string_t strLightingOrigin = MAKE_STRING( inputdata.value.String() );
 	SetLightingOrigin( strLightingOrigin );
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -621,6 +781,57 @@ void CBaseAnimating::InputSetModelScale( inputdata_t &inputdata )
 	SetModelScale( vecScale.x, vecScale.y );
 }
 
+//-----------------------------------------------------------------------------
+// Purpose: SetModel input handler
+//-----------------------------------------------------------------------------
+void CBaseAnimating::ScriptSetModel( const char *pszModel )
+{
+	if ( !pszModel || !*pszModel )
+		return;
+
+	const bool bPrecacheAllowed = CBaseEntity::IsPrecacheAllowed();
+	CBaseEntity::SetAllowPrecache( true );
+	{
+		if ( PrecacheModel( pszModel, false ) != -1 )
+		{
+			// Josh:
+			// We need to maintain the current sequence as when changing models
+			// on a nextbot, etc, we want the activity to be able to complete.
+			// Otherwise things get stuck.
+			// So, get the current sequence name, and then look it back up
+			// after.
+			const char *pszCurrentSequence = GetSequenceName( GetSequence() );
+			SetModelName( AllocPooledString( pszModel ) );
+			SetModel( pszModel );
+			int nNewSequence = LookupSequence( pszCurrentSequence );
+			if ( nNewSequence != -1 )
+				SetSequence( nNewSequence );
+		}
+	}
+	CBaseEntity::SetAllowPrecache( bPrecacheAllowed );
+}
+
+void CBaseAnimating::InputSetModel( inputdata_t &inputdata )
+{
+	const char *pszModel = inputdata.value.String();
+	ScriptSetModel( pszModel );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: SetCycle input handler
+//-----------------------------------------------------------------------------
+void CBaseAnimating::InputSetCycle( inputdata_t &inputdata )
+{
+	SetCycle( inputdata.value.Float() );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: SetPlaybackRate input handler
+//-----------------------------------------------------------------------------
+void CBaseAnimating::InputSetPlaybackRate( inputdata_t &inputdata )
+{
+	SetPlaybackRate( inputdata.value.Float() );
+}
 
 //=========================================================
 // SelectWeightedSequence
@@ -935,6 +1146,17 @@ void CBaseAnimating::SetSequence( int nSequence )
 
 //=========================================================
 //=========================================================
+float CBaseAnimating::ScriptGetSequenceDuration( int iSequence )
+{
+	Assert( IsDynamicModelLoading() || GetModelPtr() );
+	if ( IsDynamicModelLoading() )
+		return 0.1f;
+
+	return SequenceDuration( GetModelPtr(), iSequence );
+}
+
+//=========================================================
+//=========================================================
 float CBaseAnimating::SequenceDuration( CStudioHdr *pStudioHdr, int iSequence )
 {
 	if ( !pStudioHdr )
@@ -959,14 +1181,11 @@ float CBaseAnimating::GetSequenceCycleRate( CStudioHdr *pStudioHdr, int iSequenc
 {
 	float t = SequenceDuration( pStudioHdr, iSequence );
 
-	if (t > 0.0f)
+	if ( t != 0.0f )
 	{
 		return 1.0f / t;
 	}
-	else
-	{
-		return 1.0f / 0.1f;
-	}
+	return t;
 }
 
 
@@ -1107,6 +1326,12 @@ void CBaseAnimating::DispatchAnimEvents ( CBaseAnimating *eventHandler )
 			event.eventtime = m_flAnimTime + (flCycle - GetCycle()) / flCycleRate + GetAnimTimeInterval();
 		}
 
+#ifdef MAPBASE_VSCRIPT
+		scriptanimevent_t wrapper( event );
+		if (!eventHandler->ScriptHookHandleAnimEvent( wrapper ))
+			continue;
+#endif
+
 		/*
 		if (m_debugOverlays & OVERLAY_NPC_SELECTED_BIT)
 		{
@@ -1118,7 +1343,8 @@ void CBaseAnimating::DispatchAnimEvents ( CBaseAnimating *eventHandler )
 				(float)flCycleRate );
 		}
 		*/
-		eventHandler->HandleAnimEvent( &event );
+		if ( eventHandler )
+			eventHandler->HandleAnimEvent( &event );
 
 		// FAILSAFE:
 		// If HandleAnimEvent has somehow reset my internal pointer
@@ -1137,6 +1363,29 @@ void CBaseAnimating::DispatchAnimEvents ( CBaseAnimating *eventHandler )
 	}
 }
 
+#ifdef MAPBASE_VSCRIPT
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+bool CBaseAnimating::ScriptHookHandleAnimEvent( scriptanimevent_t &event )
+{
+	if (m_ScriptScope.IsInitialized() && g_Hook_HandleAnimEvent.CanRunInScope(m_ScriptScope))
+	{
+		HSCRIPT hEvent = g_pScriptVM->RegisterInstance( &event );
+
+		// event
+		ScriptVariant_t args[] = { hEvent };
+		ScriptVariant_t returnValue = true;
+		g_Hook_HandleAnimEvent.Call( m_ScriptScope, &returnValue, args );
+
+		g_pScriptVM->RemoveInstance( hEvent );
+		return returnValue.Get<bool>();
+	}
+
+	return true;
+}
+#endif
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
@@ -1149,6 +1398,33 @@ void CBaseAnimating::HandleAnimEvent( animevent_t *pEvent )
 			EmitSound( pEvent->options );
 			return;
 		}
+#ifdef MAPBASE
+		else if ( pEvent->event == AE_NPC_RESPONSE )
+		{
+			if (MyNPCPointer() && MyNPCPointer()->GetExpresser() && !MyNPCPointer()->GetExpresser()->IsSpeaking())
+			{
+				DispatchResponse( pEvent->options );
+			}
+			return;
+		}
+		else if ( pEvent->event == AE_NPC_RESPONSE_FORCED )
+		{
+			DispatchResponse( pEvent->options );
+			return;
+		}
+		else if ( pEvent->event == AE_VSCRIPT_RUN )
+		{
+			if (!RunScript( pEvent->options ))
+				Warning( "%s failed to run AE_VSCRIPT_RUN on server with \"%s\"\n", GetDebugName(), pEvent->options );
+			return;
+		}
+		else if ( pEvent->event == AE_VSCRIPT_RUN_FILE )
+		{
+			if (!RunScriptFile( pEvent->options ))
+				Warning( "%s failed to run AE_VSCRIPT_RUN_FILE on server with \"%s\"\n", GetDebugName(), pEvent->options );
+			return;
+		}
+#endif
 		else if ( pEvent->event == AE_RAGDOLL )
 		{
 			// Convert to ragdoll immediately
@@ -1636,9 +1912,12 @@ void CBaseAnimating::CalculateIKLocks( float currentTime )
 					enginetrace->TraceRay( ray, MASK_SOLID, &traceFilter, &trace );
 
 					/*
-					debugoverlay->AddBoxOverlay( p1, Vector(-r,-r,0), Vector(r,r,1), QAngle( 0, 0, 0 ), 255, 0, 0, 0, 1.0f );
-					debugoverlay->AddBoxOverlay( trace.endpos, Vector(-r,-r,0), Vector(r,r,1), QAngle( 0, 0, 0 ), 255, 0, 0, 0, 1.0f );
-					debugoverlay->AddLineOverlay( p1, trace.endpos, 255, 0, 0, 0, 1.0f );
+					if ( debugoverlay )
+					{
+						debugoverlay->AddBoxOverlay( p1, Vector(-r,-r,0), Vector(r,r,1), QAngle( 0, 0, 0 ), 255, 0, 0, 0, 1.0f );
+						debugoverlay->AddBoxOverlay( trace.endpos, Vector(-r,-r,0), Vector(r,r,1), QAngle( 0, 0, 0 ), 255, 0, 0, 0, 1.0f );
+						debugoverlay->AddLineOverlay( p1, trace.endpos, 255, 0, 0, 0, 1.0f );
+					}
 					*/
 
 					if (trace.startsolid)
@@ -1756,7 +2035,7 @@ ConVar ai_setupbones_debug( "ai_setupbones_debug", "0", 0, "Shows that bones tha
 
 
 
-inline bool CBaseAnimating::CanSkipAnimation( void )
+bool CBaseAnimating::CanSkipAnimation( void )
 {
 	if ( !sv_pvsskipanimation.GetBool() )
 		return false;
@@ -1925,6 +2204,53 @@ bool CBaseAnimating::GetAttachment( const char *szName, Vector &absOrigin, QAngl
 }
 
 //-----------------------------------------------------------------------------
+// Purpose: Returns the world location and world angles of an attachment to vscript caller
+// Input  : attachment name
+// Output :	location and angles
+//-----------------------------------------------------------------------------
+Vector CBaseAnimating::ScriptGetAttachmentOrigin( int iAttachment )
+{	
+	Vector absOrigin;
+	QAngle qa;
+
+	CBaseAnimating::GetAttachment( iAttachment, absOrigin, qa );
+
+	return absOrigin;
+}
+
+QAngle CBaseAnimating::ScriptGetAttachmentAngles( int iAttachment )
+{	
+	Vector absOrigin;
+	QAngle qa;
+
+	CBaseAnimating::GetAttachment( iAttachment, absOrigin, qa );
+	return qa;
+}
+
+//-----------------------------------------------------------------------------
+Vector CBaseAnimating::ScriptGetBoneOrigin( int iBone )
+{
+	Vector vOrigin;
+	QAngle qAngles;
+
+	GetBonePosition( iBone, vOrigin, qAngles );
+
+	return vOrigin;
+}
+
+//-----------------------------------------------------------------------------
+QAngle CBaseAnimating::ScriptGetBoneAngles( int iBone )
+{
+	Vector vOrigin;
+	QAngle qAngles;
+
+	GetBonePosition( iBone, vOrigin, qAngles );
+
+	return qAngles;
+}
+
+
+//-----------------------------------------------------------------------------
 // Purpose: Returns the world location and world angles of an attachment
 // Input  : attachment index
 // Output :	location and angles
@@ -2028,6 +2354,60 @@ bool CBaseAnimating::GetAttachment( int iAttachment, Vector &absOrigin, Vector *
 	return bRet;
 }
 
+#ifdef MAPBASE_VSCRIPT
+HSCRIPT CBaseAnimating::ScriptGetAttachmentMatrix( int iAttachment )
+{	
+	static matrix3x4_t matrix;
+
+	CBaseAnimating::GetAttachment( iAttachment, matrix );
+	return g_pScriptVM->RegisterInstance( &matrix );
+}
+
+#ifndef VSCRIPT_PRIORITIZE_TF2_SYNTAX
+float CBaseAnimating::ScriptGetPoseParameter( const char* szName )
+{
+	CStudioHdr* pHdr = GetModelPtr();
+	if (pHdr == NULL)
+		return 0.0f;
+
+	int iPoseParam = LookupPoseParameter( pHdr, szName );
+	return GetPoseParameter( iPoseParam );
+}
+
+void CBaseAnimating::ScriptSetPoseParameter( const char* szName, float fValue )
+{
+	CStudioHdr* pHdr = GetModelPtr();
+	if (pHdr == NULL)
+		return;
+
+	int iPoseParam = LookupPoseParameter( pHdr, szName );
+	SetPoseParameter( pHdr, iPoseParam, fValue );
+}
+#endif
+
+void CBaseAnimating::ScriptGetBoneTransform( int iBone, HSCRIPT hTransform )
+{
+	if (hTransform == NULL)
+		return;
+
+	GetBoneTransform( iBone, *HScriptToClass<matrix3x4_t>( hTransform ) );
+}
+
+//-----------------------------------------------------------------------------
+// VScript access to sequence's key values
+//-----------------------------------------------------------------------------
+HSCRIPT_RC CBaseAnimating::ScriptGetSequenceKeyValues( int iSequence )
+{
+	KeyValues *pSeqKeyValues = GetSequenceKeyValues( iSequence );
+	HSCRIPT hScript = NULL;
+	if ( pSeqKeyValues )
+	{
+		hScript = scriptmanager->CreateScriptKeyValues( g_pScriptVM, pSeqKeyValues );
+	}
+
+	return hScript;
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Returns the attachment in local space
@@ -2156,6 +2536,12 @@ const char *CBaseAnimating::GetBodygroupName( int iGroup )
 {
 	Assert( IsDynamicModelLoading() || GetModelPtr() );
 	return IsDynamicModelLoading() ? "" : ::GetBodygroupName( GetModelPtr( ), iGroup );
+}
+
+const char *CBaseAnimating::GetBodygroupPartName( int iGroup, int iPart )
+{
+	Assert( IsDynamicModelLoading() || GetModelPtr() );
+	return IsDynamicModelLoading() ? "" : ::GetBodygroupPartName( GetModelPtr( ), iGroup, iPart );
 }
 
 int CBaseAnimating::FindBodygroupByName( const char *name )
@@ -2557,7 +2943,7 @@ void CBaseAnimating::LockStudioHdr()
 
 			if ( pStudioHdrContainer && pStudioHdrContainer->GetVirtualModel() )
 			{
-				MDLHandle_t hVirtualModel = (MDLHandle_t)(int)(pStudioHdrContainer->GetRenderHdr()->virtualModel)&0xffff;
+				MDLHandle_t hVirtualModel = VoidPtrToMDLHandle(pStudioHdrContainer->GetRenderHdr()->VirtualModel());
 				mdlcache->LockStudioHdr( hVirtualModel );
 			}
 			m_pStudioHdr = pStudioHdrContainer; // must be last to ensure virtual model correctly set up
@@ -2575,7 +2961,7 @@ void CBaseAnimating::UnlockStudioHdr()
 			mdlcache->UnlockStudioHdr( modelinfo->GetCacheHandle( mdl ) );
 			if ( m_pStudioHdr->GetVirtualModel() )
 			{
-				MDLHandle_t hVirtualModel = (MDLHandle_t)(int)(m_pStudioHdr->GetRenderHdr()->virtualModel)&0xffff;
+				MDLHandle_t hVirtualModel = VoidPtrToMDLHandle(m_pStudioHdr->GetRenderHdr()->VirtualModel());
 				mdlcache->UnlockStudioHdr( hVirtualModel );
 			}
 		}
@@ -2647,9 +3033,9 @@ void CBaseAnimating::InvalidateBoneCache( void )
 bool CBaseAnimating::TestCollision( const Ray_t &ray, unsigned int fContentsMask, trace_t& tr )
 {
 	// Return a special case for scaled physics objects
-	if ( GetModelScale() != 1.0f )
+	IPhysicsObject *pPhysObject = VPhysicsGetObject();
+	if ( GetModelScale() != 1.0f && pPhysObject )
 	{
-		IPhysicsObject *pPhysObject = VPhysicsGetObject();
 		Vector vecPosition;
 		QAngle vecAngles;
 		pPhysObject->GetPosition( &vecPosition, &vecAngles );
@@ -3215,6 +3601,18 @@ void CBaseAnimating::CopyAnimationDataFrom( CBaseAnimating *pSource )
 	this->m_flAnimTime = pSource->m_flAnimTime;
 	this->m_nBody = pSource->m_nBody;
 	this->m_nSkin = pSource->m_nSkin;
+#ifdef MAPBASE
+	this->m_clrRender = pSource->m_clrRender;
+	this->m_nRenderMode = pSource->m_nRenderMode;
+	this->m_nRenderFX = pSource->m_nRenderFX;
+	this->m_iViewHideFlags = pSource->m_iViewHideFlags;
+	this->m_fadeMinDist = pSource->m_fadeMinDist;
+	this->m_fadeMaxDist = pSource->m_fadeMaxDist;
+	this->m_flFadeScale = pSource->m_flFadeScale;
+
+	if (this->GetModelScale() != pSource->GetModelScale())
+		this->SetModelScale( pSource->GetModelScale() );
+#endif
 	this->LockStudioHdr();
 }
 
@@ -3398,6 +3796,49 @@ void CBaseAnimating::Ignite( float flFlameLifetime, bool bNPCOnly, float flSize,
 	m_OnIgnite.FireOutput( this, this );
 }
 
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CBaseAnimating::IgniteGreen( float flFlameLifetime, bool bNPCOnly, float flSize, bool bCalledByLevelDesigner )
+{
+	if (IsOnFire())
+		return;
+
+	bool bIsNPC = IsNPC();
+
+	// Right now this prevents stuff we don't want to catch on fire from catching on fire.
+	if (bNPCOnly && bIsNPC == false)
+	{
+		return;
+	}
+
+	if (bIsNPC == true && bCalledByLevelDesigner == false)
+	{
+		CAI_BaseNPC *pNPC = MyNPCPointer();
+
+		if (pNPC && pNPC->AllowedToIgnite() == false)
+			return;
+	}
+
+	CEntityFlame *pFlame = CEntityFlame::CreateGreen( this );
+	if (pFlame)
+	{
+		pFlame->SetLifetime( flFlameLifetime );
+		//AddFlag( FL_ONFIREGREEN );
+		AddFlag( FL_ONFIRE );
+
+		SetEffectEntity( pFlame );
+
+		if (flSize > 0.0f)
+		{
+			pFlame->SetSize( flSize );
+		}
+	}
+
+	m_OnIgnite.FireOutput( this, this );
+}
+
+
+
 void CBaseAnimating::IgniteLifetime( float flFlameLifetime )
 {
 	if( !IsOnFire() )
@@ -3406,6 +3847,19 @@ void CBaseAnimating::IgniteLifetime( float flFlameLifetime )
 	CEntityFlame *pFlame = dynamic_cast<CEntityFlame*>( GetEffectEntity() );
 
 	if ( !pFlame )
+		return;
+
+	pFlame->SetLifetime( flFlameLifetime );
+}
+
+void CBaseAnimating::IgniteLifetimeGreen( float flFlameLifetime )
+{
+	if (!IsOnFire())
+		IgniteGreen( 30, false, 0.0f, true );
+
+	CEntityFlame *pFlame = dynamic_cast<CEntityFlame *>(GetEffectEntity());
+
+	if (!pFlame)
 		return;
 
 	pFlame->SetLifetime( flFlameLifetime );
@@ -3528,7 +3982,29 @@ void CBaseAnimating::InputIgnite( inputdata_t &inputdata )
 {
 	Ignite( 30, false, 0.0f, true );
 }
+#ifdef RTBMP
+void CBaseAnimating::InputIgniteCrem( inputdata_t &inputdata )
+{
+	// move all to cbaseplayer
+	CRTBMP_Player *pPlayer = dynamic_cast<CRTBMP_Player *>(this);
+	if (pPlayer == NULL) {
+		IgniteGreen( 3, false, 0.0f, true );
+	}
+	else {
+		pPlayer->SetIgniteBegin( NULL );
+	}
 
+}
+void CBaseAnimating::InputExtinguish( inputdata_t &inputdata )
+{
+	CBasePlayer *pPlayer = dynamic_cast<CBasePlayer *>(this);
+
+	Extinguish();
+	if (pPlayer != NULL) {
+		pPlayer->m_Local.m_bOnFireImmolator = false;
+	}
+}
+#endif
 void CBaseAnimating::InputIgniteLifetime( inputdata_t &inputdata )
 {
 	IgniteLifetime( inputdata.value.Float() );
@@ -3548,6 +4024,72 @@ void CBaseAnimating::InputBecomeRagdoll( inputdata_t &inputdata )
 {
 	BecomeRagdollOnClient( vec3_origin );
 }
+
+#ifdef MAPBASE
+void CBaseAnimating::InputCreateSeparateRagdoll( inputdata_t &inputdata )
+{
+	CTakeDamageInfo info( this, inputdata.pActivator, 0.0f, DMG_GENERIC );
+
+	// See if there's a ragdoll magnet that should influence our force.
+	CRagdollMagnet *pMagnet = CRagdollMagnet::FindBestMagnet( this );
+	if( pMagnet )
+	{
+		info.SetDamageForce(pMagnet->GetForceVector( this ));
+		pMagnet->m_OnUsed.Set(info.GetDamageForce(), this, pMagnet);
+	}
+
+	CreateServerRagdoll( this, 0, info, COLLISION_GROUP_INTERACTIVE_DEBRIS, true );
+}
+
+void CBaseAnimating::InputCreateSeparateRagdollClient( inputdata_t &inputdata )
+{
+	// I remember there being a reason why this must be initialized to all 0's...
+	Vector forceVector = Vector(0.0f, 0.0f, 0.0f);
+
+	// See if there's a ragdoll magnet that should influence our force.
+	CRagdollMagnet *pMagnet = CRagdollMagnet::FindBestMagnet( this );
+	if( pMagnet )
+	{
+		forceVector += pMagnet->GetForceVector( this );
+		pMagnet->m_OnUsed.Set(forceVector, this, pMagnet);
+	}
+
+	CBaseEntity *pRagdoll = CreateRagGib( STRING( GetModelName() ), GetAbsOrigin(), GetAbsAngles(), forceVector, 25.0f );
+
+	if (pRagdoll->GetBaseAnimating())
+	{
+		pRagdoll->GetBaseAnimating()->CopyAnimationDataFrom( this );
+	}
+}
+
+void CBaseAnimating::InputSetPoseParameter( inputdata_t &inputdata )
+{
+	char token[64];
+	Q_strncpy( token, inputdata.value.String(), sizeof(token) );
+	char *sChar = strchr( token, ' ' );
+	if ( sChar )
+	{
+		*sChar = '\0';
+
+		// Name
+		const int index = LookupPoseParameter( token );
+		if (index == -1)
+		{
+			Warning("SetPoseParameter: Could not find pose parameter \"%s\" on %s\n", token, GetDebugName());
+			return;
+		}
+
+		// Value
+		const float value = atof( sChar+1 );
+
+		SetPoseParameter( index, value );
+	}
+	else
+	{
+		Warning("SetPoseParameter: \"%s\" is invalid; format is \"<pose parameter name> <value>\"\n", inputdata.value.String());
+	}
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: 

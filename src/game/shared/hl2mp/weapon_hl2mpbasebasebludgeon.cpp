@@ -13,14 +13,27 @@
 #include "mathlib/mathlib.h"
 #include "in_buttons.h"
 #include "animation.h"
+#include "rumble_shared.h"
+#include "gamestats.h"
 
 #if defined( CLIENT_DLL )
 	#include "c_hl2mp_player.h"
+	#include "takedamageinfo.h"
+	#ifdef MAPBASE_MP
+	#include "c_ai_basenpc.h"
+	#endif
 #else
 	#include "hl2mp_player.h"
 	#include "ndebugoverlay.h"
 	#include "te_effect_dispatch.h"
 	#include "ilagcompensationmanager.h"
+	#ifdef MAPBASE
+	#include "ai_basenpc.h"
+	#endif
+	#include "soundent.h"
+#ifdef RTBMP
+	#include "rtbmp_player.h"
+#endif
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -69,6 +82,28 @@ void CBaseHL2MPBludgeonWeapon::Precache( void )
 	BaseClass::Precache();
 }
 
+#if defined(MAPBASE) && !defined(CLIENT_DLL)
+int CBaseHL2MPBludgeonWeapon::CapabilitiesGet()
+{ 
+	return bits_CAP_WEAPON_MELEE_ATTACK1; 
+}
+
+
+int CBaseHL2MPBludgeonWeapon::WeaponMeleeAttack1Condition( float flDot, float flDist )
+{
+	if (flDist > 64)
+	{
+		return COND_TOO_FAR_TO_ATTACK;
+	}
+	else if (flDot < 0.7)
+	{
+		return COND_NOT_FACING_ATTACK;
+	}
+
+	return COND_CAN_MELEE_ATTACK1;
+}
+#endif
+
 //------------------------------------------------------------------------------
 // Purpose : Update weapon
 //------------------------------------------------------------------------------
@@ -79,6 +114,29 @@ void CBaseHL2MPBludgeonWeapon::ItemPostFrame( void )
 	if ( pOwner == NULL )
 		return;
 
+	if (pOwner->m_nButtons & IN_RELOAD) {
+		if (GetActivity() == ACT_VM_IDLE && m_flNextFidgetReload < gpGlobals->curtime) {
+			SendWeaponAnim( ACT_VM_FIDGET );
+			m_flNextFidgetReload = gpGlobals->curtime + 2.0f;
+		}
+	}
+
+#ifdef MAPBASE
+	if (pOwner->HasSpawnFlags( SF_PLAYER_SUPPRESS_FIRING ))
+	{
+		m_bShotDelayed = false;
+		WeaponIdle();
+		return;
+	}
+
+	// See if we need to fire off our secondary round
+	if (m_bShotDelayed)
+	{
+		if (gpGlobals->curtime > m_flDelayedFire)
+			DelayedAttack();
+	}
+	else
+#endif
 	if ( (pOwner->m_nButtons & IN_ATTACK) && (m_flNextPrimaryAttack <= gpGlobals->curtime) )
 	{
 		PrimaryAttack();
@@ -111,8 +169,9 @@ void CBaseHL2MPBludgeonWeapon::PrimaryAttack()
 #ifndef CLIENT_DLL
 	// Move other players back to history positions based on local player's lag
 	lagcompensation->FinishLagCompensation( pPlayer );
-#endif
 
+	pPlayer->OnMyWeaponFired( this );
+#endif
 }
 
 //------------------------------------------------------------------------------
@@ -122,19 +181,69 @@ void CBaseHL2MPBludgeonWeapon::PrimaryAttack()
 //------------------------------------------------------------------------------
 void CBaseHL2MPBludgeonWeapon::SecondaryAttack()
 {
+#ifndef CLIENT_DLL
+	CHL2MP_Player *pPlayer = ToHL2MPPlayer( GetPlayerOwner() );
+	// Move other players back to history positions based on local player's lag
+	lagcompensation->StartLagCompensation( pPlayer, pPlayer->GetCurrentCommand() );
+#endif
 	Swing( true );
+#ifndef CLIENT_DLL
+	// Move other players back to history positions based on local player's lag
+	lagcompensation->FinishLagCompensation( pPlayer );
+#endif
 }
 
+//------------------------------------------------------------------------------
+// Purpose :
+// Input   :
+// Output  :
+//------------------------------------------------------------------------------
+void CBaseHL2MPBludgeonWeapon::PrimaryAttack( int iDamage, int iDamageType )
+{
+#ifndef CLIENT_DLL
+	CHL2MP_Player *pPlayer = ToHL2MPPlayer( GetPlayerOwner() );
+	// Move other players back to history positions based on local player's lag
+	lagcompensation->StartLagCompensation( pPlayer, pPlayer->GetCurrentCommand() );
+#endif
+	Swing( false, iDamage, iDamageType );
+#ifndef CLIENT_DLL
+	// Move other players back to history positions based on local player's lag
+	lagcompensation->FinishLagCompensation( pPlayer );
+#endif
+}
+//------------------------------------------------------------------------------
+// Purpose :
+// Input   :
+// Output  :
+//------------------------------------------------------------------------------
+void CBaseHL2MPBludgeonWeapon::SecondaryAttack( int iDamage, int iDamageType )
+{
+#ifndef CLIENT_DLL
+	CHL2MP_Player *pPlayer = ToHL2MPPlayer( GetPlayerOwner() );
+	// Move other players back to history positions based on local player's lag
+	lagcompensation->StartLagCompensation( pPlayer, pPlayer->GetCurrentCommand() );
+#endif
+	Swing( true, iDamage, iDamageType );
+#ifndef CLIENT_DLL
+	// Move other players back to history positions based on local player's lag
+	lagcompensation->FinishLagCompensation( pPlayer );
+#endif
+}
 
 //------------------------------------------------------------------------------
 // Purpose: Implement impact function
 //------------------------------------------------------------------------------
-void CBaseHL2MPBludgeonWeapon::Hit( trace_t &traceHit, Activity nHitActivity )
+void CBaseHL2MPBludgeonWeapon::Hit( trace_t &traceHit, Activity nHitActivity, bool bIsSecondary )
 {
 	CBasePlayer *pPlayer = ToBasePlayer( GetOwner() );
 	
 	//Do view kick
 //	AddViewKick();
+
+#if defined(MAPBASE_MP) && !defined(CLIENT_DLL)
+	//Make sound for the AI
+	CSoundEnt::InsertSound( SOUND_BULLET_IMPACT, traceHit.endpos, 400, 0.2f, pPlayer );
+#endif
 
 	CBaseEntity	*pHitEntity = traceHit.m_pEnt;
 
@@ -146,7 +255,11 @@ void CBaseHL2MPBludgeonWeapon::Hit( trace_t &traceHit, Activity nHitActivity )
 		VectorNormalize( hitDirection );
 
 #ifndef CLIENT_DLL
+#ifdef MAPBASE
+		CTakeDamageInfo info( GetOwner(), GetOwner(), GetDamageForActivity( nHitActivity ), GetDamageType() );
+#else
 		CTakeDamageInfo info( GetOwner(), GetOwner(), GetDamageForActivity( nHitActivity ), DMG_CLUB );
+#endif
 
 		if( pPlayer && pHitEntity->IsNPC() )
 		{
@@ -162,9 +275,60 @@ void CBaseHL2MPBludgeonWeapon::Hit( trace_t &traceHit, Activity nHitActivity )
 		// Now hit all triggers along the ray that... 
 		TraceAttackToTriggers( info, traceHit.startpos, traceHit.endpos, hitDirection );
 #endif
-		WeaponSound( MELEE_HIT );
+
+		if ( this->PlayFleshyHittySoundOnHit() )
+			WeaponSound( MELEE_HIT );
+
+#ifdef MAPBASE_MP
+		// Don't do impact effect if this is an ally
+		if ( pHitEntity->MyNPCPointer() && pHitEntity->MyNPCPointer()->IsPlayerAlly( pPlayer ) )
+			return;
+#endif
 	}
 
+	// Apply an impact effect
+	ImpactEffect( traceHit );
+}
+
+void CBaseHL2MPBludgeonWeapon::Hit( trace_t &traceHit, Activity nHitActivity, bool bIsSecondary, int iDamage, int iDamageType )
+{
+	CBasePlayer *pPlayer = ToBasePlayer( GetOwner() );
+	//Do view kick
+	AddViewKick();
+#ifndef CLIENT_DLL
+	//Make sound for the AI
+	CSoundEnt::InsertSound( SOUND_BULLET_IMPACT, traceHit.endpos, 400, 0.2f, pPlayer );
+#endif
+#ifndef CLIENT_DLL
+	// This isn't great, but it's something for when the crowbar hits.
+	pPlayer->RumbleEffect( RUMBLE_AR2, 0, RUMBLE_FLAG_RESTART );
+#endif
+	CBaseEntity *pHitEntity = traceHit.m_pEnt;
+	//Apply damage to a hit target
+	if (pHitEntity != NULL)
+	{
+		Vector hitDirection;
+		pPlayer->EyeVectors( &hitDirection, NULL, NULL );
+		VectorNormalize( hitDirection );
+#ifndef CLIENT_DLL
+		CTakeDamageInfo info( GetOwner(), GetOwner(), iDamage, iDamageType );
+		if (pPlayer && pHitEntity->IsNPC())
+		{
+			// If bonking an NPC, adjust damage.
+			info.AdjustPlayerDamageInflictedForSkillLevel();
+		}
+		CalculateMeleeDamageForce( &info, hitDirection, traceHit.endpos );
+		pHitEntity->DispatchTraceAttack( info, hitDirection, &traceHit );
+		ApplyMultiDamage();
+		// Now hit all triggers along the ray that... 
+		TraceAttackToTriggers( info, traceHit.startpos, traceHit.endpos, hitDirection );
+		if (ToBaseCombatCharacter( pHitEntity ))
+		{
+			gamestats->Event_WeaponHit( pPlayer, !bIsSecondary, GetClassname(), info );
+		}
+#endif
+		WeaponSound( MELEE_HIT );
+	}
 	// Apply an impact effect
 	ImpactEffect( traceHit );
 }
@@ -300,9 +464,12 @@ void CBaseHL2MPBludgeonWeapon::Swing( int bIsSecondary )
 
 #ifndef CLIENT_DLL
 	// Like bullets, bludgeon traces have to trace against triggers.
+#ifdef MAPBASE
+	CTakeDamageInfo triggerInfo( GetOwner(), GetOwner(), GetDamageForActivity( nHitActivity ), GetDamageType() );
+#else
 	CTakeDamageInfo triggerInfo( GetOwner(), GetOwner(), GetDamageForActivity( nHitActivity ), DMG_CLUB );
-	TraceAttackToTriggers( triggerInfo, traceHit.startpos, traceHit.endpos, vec3_origin );
 #endif
+	TraceAttackToTriggers( triggerInfo, traceHit.startpos, traceHit.endpos, vec3_origin );
 
 	if ( traceHit.fraction == 1.0 )
 	{
@@ -331,8 +498,11 @@ void CBaseHL2MPBludgeonWeapon::Swing( int bIsSecondary )
 			}
 		}
 	}
+#endif
 
+#ifndef MAPBASE
 	WeaponSound( SINGLE );
+#endif
 
 	// -------------------------
 	//	Miss
@@ -341,16 +511,23 @@ void CBaseHL2MPBludgeonWeapon::Swing( int bIsSecondary )
 	{
 		nHitActivity = bIsSecondary ? ACT_VM_MISSCENTER2 : ACT_VM_MISSCENTER;
 
+#ifdef MAPBASE
+		//Play swing sound
+		WeaponSound( SINGLE );
+#else
 		// We want to test the first swing again
 		Vector testEnd = swingStart + forward * GetRange();
 		
 		// See if we happened to hit water
 		ImpactWater( swingStart, testEnd );
+#endif
 	}
+#ifndef MAPBASE
 	else
 	{
-		Hit( traceHit, nHitActivity );
+		Hit( traceHit, nHitActivity, bIsSecondary );
 	}
+#endif
 
 	// Send the anim
 	SendWeaponAnim( nHitActivity );
@@ -359,5 +536,236 @@ void CBaseHL2MPBludgeonWeapon::Swing( int bIsSecondary )
 
 	//Setup our next attack times
 	m_flNextPrimaryAttack = gpGlobals->curtime + GetFireRate();
-	m_flNextSecondaryAttack = gpGlobals->curtime + SequenceDuration();
+	m_flNextSecondaryAttack = gpGlobals->curtime + GetViewModelSequenceDuration();
+
+#if !defined(CLIENT_DLL) && defined(RTBMP)
+	CRTBMP_Player *pMPPlayer = ToRTBMPPlayer( pOwner );
+	if (pMPPlayer)
+		pMPPlayer->DisableSpawnProtection();
+#endif
+
+#ifdef MAPBASE
+	if (GetHitDelay() > 0.f)
+	{
+		//Play swing sound
+		WeaponSound(SINGLE);
+
+		m_flDelayedFire = gpGlobals->curtime + GetHitDelay();
+		m_bShotDelayed = true;
+	}
+	else
+	{
+		if (traceHit.fraction == 1.0f)
+		{
+			// We want to test the first swing again
+			Vector testEnd = swingStart + forward * GetRange();
+
+			//Play swing sound
+			WeaponSound(SINGLE);
+
+			// See if we happened to hit water
+			ImpactWater(swingStart, testEnd);
+		}
+		else
+		{
+			// Other melee sounds
+			if (traceHit.m_pEnt && traceHit.m_pEnt->IsWorld())
+				WeaponSound(MELEE_HIT_WORLD);
+#ifndef CLIENT_DLL
+			else if (traceHit.m_pEnt && !traceHit.m_pEnt->PassesDamageFilter(triggerInfo))
+				WeaponSound(MELEE_MISS);
+#endif
+			else
+				WeaponSound(MELEE_HIT);
+
+			Hit( traceHit, nHitActivity, bIsSecondary );
+		}
+	}
+#endif
 }
+
+void CBaseHL2MPBludgeonWeapon::Swing( int bIsSecondary, int iDamage, int iDamageType )
+{
+	trace_t traceHit;
+	// Try a ray
+	CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
+	if (!pOwner)
+		return;
+#ifndef CLIENT_DLL
+	pOwner->RumbleEffect( RUMBLE_CROWBAR_SWING, 0, RUMBLE_FLAG_RESTART );
+#endif
+	Vector swingStart = pOwner->Weapon_ShootPosition();
+	Vector forward;
+	pOwner->EyeVectors( &forward, NULL, NULL );
+	Vector swingEnd = swingStart + forward * GetRange();
+	UTIL_TraceLine( swingStart, swingEnd, MASK_SHOT_HULL, pOwner, COLLISION_GROUP_NONE, &traceHit );
+	Activity nHitActivity = ACT_VM_HITCENTER;
+#ifndef CLIENT_DLL
+	// Like bullets, bludgeon traces have to trace against triggers.
+	CTakeDamageInfo triggerInfo( GetOwner(), GetOwner(), GetDamageForActivity( nHitActivity ), iDamageType );
+	triggerInfo.SetDamagePosition( traceHit.startpos );
+	triggerInfo.SetDamageForce( forward );
+	TraceAttackToTriggers( triggerInfo, traceHit.startpos, traceHit.endpos, forward );
+#endif
+	if (traceHit.fraction == 1.0)
+	{
+		float bludgeonHullRadius = 1.732f * BLUDGEON_HULL_DIM;  // hull is +/- 16, so use cuberoot of 2 to determine how big the hull is from center to the corner point
+		// Back off by hull "radius"
+		swingEnd -= forward * bludgeonHullRadius;
+		UTIL_TraceHull( swingStart, swingEnd, g_bludgeonMins, g_bludgeonMaxs, MASK_SHOT_HULL, pOwner, COLLISION_GROUP_NONE, &traceHit );
+		if (traceHit.fraction < 1.0 && traceHit.m_pEnt)
+		{
+			Vector vecToTarget = traceHit.m_pEnt->GetAbsOrigin() - swingStart;
+			VectorNormalize( vecToTarget );
+			float dot = vecToTarget.Dot( forward );
+			// YWB:  Make sure they are sort of facing the guy at least...
+			if (dot < 0.70721f)
+			{
+				// Force amiss
+				traceHit.fraction = 1.0f;
+			}
+			else
+			{
+				nHitActivity = ChooseIntersectionPointAndActivity( traceHit, g_bludgeonMins, g_bludgeonMaxs, pOwner );
+			}
+		}
+	}
+#ifndef CLIENT_DLL
+	gamestats->Event_WeaponFired( pOwner, !bIsSecondary, GetClassname() );
+#endif
+	WeaponSound( SINGLE );
+	// -------------------------
+	//	Miss
+	// -------------------------
+	if (traceHit.fraction == 1.0f)
+	{
+		nHitActivity = bIsSecondary ? ACT_VM_MISSCENTER2 : ACT_VM_MISSCENTER;
+		// We want to test the first swing again
+		Vector testEnd = swingStart + forward * GetRange();
+#ifdef MAPBASE
+		// Sound has been moved here since we're using the other melee sounds now
+		WeaponSound( SINGLE );
+#endif
+		// See if we happened to hit water
+		ImpactWater( swingStart, testEnd );
+	}
+	else
+	{
+#ifndef MAPBASE // currently broken...?
+		CTakeDamageInfo triggerInfo( GetOwner(), GetOwner(), GetDamageForActivity( GetActivity() ), GetDamageType() );
+		triggerInfo.SetDamagePosition( traceHit.startpos );
+		triggerInfo.SetDamageForce( forward );
+
+		// Other melee sounds
+		if (traceHit.m_pEnt && traceHit.m_pEnt->IsWorld())
+			WeaponSound( MELEE_HIT_WORLD );
+		else if (traceHit.m_pEnt && !traceHit.m_pEnt->PassesDamageFilter( triggerInfo ))
+			WeaponSound( MELEE_MISS );
+		else
+			WeaponSound( MELEE_HIT );
+#endif
+		if (iDamage != NULL) {
+			Hit( traceHit, nHitActivity, bIsSecondary ? true : false, iDamage, iDamageType );
+		}
+		else {
+			Hit( traceHit, nHitActivity, bIsSecondary ? true : false );
+		}
+	}
+	// Send the anim
+	SendWeaponAnim( nHitActivity );
+	//Setup our next attack times
+	m_flNextPrimaryAttack = gpGlobals->curtime + GetFireRate();
+	m_flNextSecondaryAttack = gpGlobals->curtime + GetViewModelSequenceDuration();
+#if !defined(CLIENT_DLL) && defined(RTBMP)
+	CRTBMP_Player *pMPPlayer = ToRTBMPPlayer( pOwner );
+	if (pMPPlayer)
+		pMPPlayer->DisableSpawnProtection();
+#endif
+}
+
+#ifdef MAPBASE
+void CBaseHL2MPBludgeonWeapon::DelayedAttack(void)
+{
+	m_bShotDelayed = false;
+
+	trace_t traceHit;
+
+	// Try a ray
+	CBasePlayer* pOwner = ToBasePlayer(GetOwner());
+	if (!pOwner)
+		return;
+
+	Vector swingStart = pOwner->Weapon_ShootPosition();
+	Vector forward;
+
+	pOwner->EyeVectors( &forward, NULL, NULL );
+
+	Vector swingEnd = swingStart + forward * GetRange();
+	UTIL_TraceLine( swingStart, swingEnd, MASK_SHOT_HULL, pOwner, COLLISION_GROUP_NONE, &traceHit );
+
+	if (traceHit.fraction == 1.0)
+	{
+		float bludgeonHullRadius = 1.732f * BLUDGEON_HULL_DIM;  // hull is +/- 16, so use cuberoot of 2 to determine how big the hull is from center to the corner point
+
+		// Back off by hull "radius"
+		swingEnd -= forward * bludgeonHullRadius;
+
+		UTIL_TraceHull(swingStart, swingEnd, g_bludgeonMins, g_bludgeonMaxs, MASK_SHOT_HULL, pOwner, COLLISION_GROUP_NONE, &traceHit);
+		if (traceHit.fraction < 1.0 && traceHit.m_pEnt)
+		{
+			Vector vecToTarget = traceHit.m_pEnt->GetAbsOrigin() - swingStart;
+			VectorNormalize(vecToTarget);
+
+			float dot = vecToTarget.Dot(forward);
+
+			// YWB:  Make sure they are sort of facing the guy at least...
+			if (dot < 0.70721f)
+			{
+				// Force amiss
+				traceHit.fraction = 1.0f;
+			}
+			else
+			{
+				ChooseIntersectionPointAndActivity(traceHit, g_bludgeonMins, g_bludgeonMaxs, pOwner);
+			}
+		}
+	}
+
+	if (traceHit.fraction == 1.0f)
+	{
+		// We want to test the first swing again
+		Vector testEnd = swingStart + forward * GetRange();
+
+		// See if we happened to hit water
+		ImpactWater(swingStart, testEnd);
+	}
+	else
+	{
+#ifndef CLIENT_DLL
+		CTakeDamageInfo triggerInfo(GetOwner(), GetOwner(), GetDamageForActivity(GetActivity()), GetDamageType());
+		triggerInfo.SetDamagePosition(traceHit.startpos);
+		triggerInfo.SetDamageForce(forward);
+#endif
+
+		// Other melee sounds
+		if (traceHit.m_pEnt && traceHit.m_pEnt->IsWorld())
+			WeaponSound(MELEE_HIT_WORLD);
+#ifndef CLIENT_DLL
+		else if (traceHit.m_pEnt && !traceHit.m_pEnt->PassesDamageFilter(triggerInfo))
+			WeaponSound(MELEE_MISS);
+#endif
+		else
+			WeaponSound(MELEE_HIT);
+
+		Hit( traceHit, GetActivity(), true );
+	}
+}
+
+bool CBaseHL2MPBludgeonWeapon::CanHolster(void)
+{
+	if (m_bShotDelayed)
+		return false;
+
+	return BaseClass::CanHolster();
+}
+#endif // MAPBASE

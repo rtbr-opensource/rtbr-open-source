@@ -87,6 +87,7 @@ IMPLEMENT_CLIENTCLASS_DT( C_FireSmoke, DT_FireSmoke, CFireSmoke )
 	RecvPropInt( RECVINFO( m_nFlags ) ),
 	RecvPropInt( RECVINFO( m_nFlameModelIndex ) ),
 	RecvPropInt( RECVINFO( m_nFlameFromAboveModelIndex ) ),
+	RecvPropBool( RECVINFO( m_bIsFlareFire ) ),
 END_RECV_TABLE()
 
 //==================================================
@@ -167,24 +168,29 @@ void C_FireSmoke::Start( void )
 {
 	const char *lpszEffectName;
 	int nSize = (int) floor( m_flStartScale / 36.0f );
-	switch ( nSize )
-	{
-	case 0:
-		lpszEffectName = ( m_nFlags & bitsFIRESMOKE_SMOKE ) ? "env_fire_tiny_smoke" : "env_fire_tiny";
-		break;
+	if (!m_bIsFlareFire) {
+		switch (nSize)
+		{
+		case 0:
+			lpszEffectName = (m_nFlags & bitsFIRESMOKE_SMOKE) ? "env_fire_tiny_smoke" : "env_fire_tiny";
+			break;
 
-	case 1:
-		lpszEffectName = ( m_nFlags & bitsFIRESMOKE_SMOKE ) ? "env_fire_small_smoke" : "env_fire_small";
-		break;
+		case 1:
+			lpszEffectName = (m_nFlags & bitsFIRESMOKE_SMOKE) ? "env_fire_small_smoke" : "env_fire_small";
+			break;
 
-	case 2:
-		lpszEffectName = ( m_nFlags & bitsFIRESMOKE_SMOKE ) ? "env_fire_medium_smoke" : "env_fire_medium";
-		break;
+		case 2:
+			lpszEffectName = (m_nFlags & bitsFIRESMOKE_SMOKE) ? "env_fire_medium_smoke" : "env_fire_medium";
+			break;
 
-	case 3:
-	default:
-		lpszEffectName = ( m_nFlags & bitsFIRESMOKE_SMOKE ) ? "env_fire_large_smoke" : "env_fire_large";
-		break;
+		case 3:
+		default:
+			lpszEffectName = (m_nFlags & bitsFIRESMOKE_SMOKE) ? "env_fire_large_smoke" : "env_fire_large";
+			break;
+		}
+	}
+	else {
+		lpszEffectName = "weapon_flare_fire";
 	}
 
 	// Create the effect of the correct size
@@ -217,7 +223,7 @@ void C_FireSmoke::RemoveClientOnly(void)
 	// Remove from the client entity list.
 	ClientEntityList().RemoveEntity( GetClientHandle() );
 
-	partition->Remove( PARTITION_CLIENT_SOLID_EDICTS | PARTITION_CLIENT_RESPONSIVE_EDICTS | PARTITION_CLIENT_NON_STATIC_EDICTS, CollisionProp()->GetPartitionHandle() );
+	::partition->Remove( PARTITION_CLIENT_SOLID_EDICTS | PARTITION_CLIENT_RESPONSIVE_EDICTS | PARTITION_CLIENT_NON_STATIC_EDICTS, CollisionProp()->GetPartitionHandle() );
 
 	RemoveFromLeafSystem();
 }
@@ -269,6 +275,7 @@ void C_FireSmoke::SpawnSmoke( void )
 
 IMPLEMENT_CLIENTCLASS_DT( C_EntityFlame, DT_EntityFlame, CEntityFlame )
 	RecvPropEHandle(RECVINFO(m_hEntAttached)),
+	RecvPropBool( RECVINFO( m_bIsGreen ) ),
 END_RECV_TABLE()
 
 //-----------------------------------------------------------------------------
@@ -335,7 +342,13 @@ void C_EntityFlame::CreateEffect( void )
 #ifdef TF_CLIENT_DLL
 	m_hEffect = ParticleProp()->Create( "burningplayer_red", PATTACH_ABSORIGIN_FOLLOW );
 #else
-	m_hEffect = ParticleProp()->Create( "burning_character", PATTACH_ABSORIGIN_FOLLOW );
+	if (m_bIsGreen && m_hEntAttached != C_BasePlayer::GetLocalPlayer()) {
+		// Don't draw this particle on the player being burned.
+		m_hEffect = ParticleProp()->Create( "burning_character_immo", PATTACH_ABSORIGIN_FOLLOW );
+	}
+	else if (!m_bIsGreen) {
+		m_hEffect = ParticleProp()->Create( "burning_character", PATTACH_ABSORIGIN_FOLLOW );
+	}
 #endif
 
 	if ( m_hEffect )

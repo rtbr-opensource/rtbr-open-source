@@ -25,6 +25,11 @@
 #define SUPPORT_DX8 1
 #define SUPPORT_DX7 1
 #endif
+
+#ifdef MAPBASE
+extern ConVar mat_specular_disable_on_missing;
+#endif
+
 //-----------------------------------------------------------------------------
 // Helper macro for vertex shaders
 //-----------------------------------------------------------------------------
@@ -297,6 +302,9 @@ public:
 		int m_nFlashlightTextureFrameVar;
 		int m_nBaseTexture2Var;
 		int m_nBaseTexture2FrameVar;
+#ifdef MAPBASE
+		int m_nBaseTexture2TransformVar;
+#endif
 		int m_nBumpmap2Var;
 		int m_nBumpmap2Frame;
 		int m_nBump2Transform;

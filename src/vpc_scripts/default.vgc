@@ -10,7 +10,18 @@
 
 $Games
 {
+	"RTBMP"
+	"CSTRIKE"
+	"DOD"
+	"EPISODIC"
+	"HL1"
+	"HL1MP"
+	"HL2"
 	"HL2MP"
+	"LOSTCOAST"
+	"PORTAL"
+	"SDK"
+	"TF"
 }
 
 // Makes the VPC scripts work in the SDK's context

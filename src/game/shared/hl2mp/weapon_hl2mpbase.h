@@ -13,6 +13,9 @@
 #include "hl2mp_player_shared.h"
 #include "basecombatweapon_shared.h"
 #include "hl2mp_weapon_parse.h"
+#ifdef MAPBASE_MP
+#include "npcevent.h"
+#endif
 
 #if defined( CLIENT_DLL )
 	#define CWeaponHL2MPBase C_WeaponHL2MPBase
@@ -45,6 +48,7 @@ public:
 
 		void Materialize( void );
 		virtual	int	ObjectCaps( void );
+		virtual void	FallThink( void );						// make the weapon fall to the ground after spawning
 	#endif
 
 	// All predicted weapons need to implement and return true
@@ -60,6 +64,13 @@ public:
 
 	virtual void FireBullets( const FireBulletsInfo_t &info );
 	virtual void FallInit( void );
+
+#ifdef MAPBASE
+	virtual const char *GetViewModel( int viewmodelindex = 0 ) const;
+	virtual float	GetViewmodelFOVOverride() const;
+	virtual bool	UsesHands( void ) const;
+	virtual int		GetHandRig( void ) const;
+#endif
 	
 public:
 	#if defined( CLIENT_DLL )
@@ -68,6 +79,10 @@ public:
 		virtual void	OnDataChanged( DataUpdateType_t type );
 
 		virtual bool	OnFireEvent( C_BaseViewModel *pViewModel, const Vector& origin, const QAngle& angles, int event, const char *options );
+
+#ifdef MAPBASE_MP
+		virtual void	Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatCharacter *pOperator );
+#endif
 
 	#else
 

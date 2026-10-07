@@ -8,18 +8,15 @@
 #include "cbase.h"
 #include "basegrenade_shared.h"
 #include "grenade_frag.h"
+#include "particle_parse.h"
+#include "particles/particles.h"
 #include "Sprite.h"
 #include "SpriteTrail.h"
 #include "soundent.h"
+#include "rtbr_shareddefs.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
-
-#define FRAG_GRENADE_BLIP_FREQUENCY			1.0f
-#define FRAG_GRENADE_BLIP_FAST_FREQUENCY	0.3f
-
-#define FRAG_GRENADE_GRACE_TIME_AFTER_PICKUP 1.5f
-#define FRAG_GRENADE_WARN_TIME 1.5f
 
 const float GRENADE_COEFFICIENT_OF_RESTITUTION = 0.2f;
 
@@ -27,7 +24,7 @@ ConVar sk_plr_dmg_fraggrenade	( "sk_plr_dmg_fraggrenade","0");
 ConVar sk_npc_dmg_fraggrenade	( "sk_npc_dmg_fraggrenade","0");
 ConVar sk_fraggrenade_radius	( "sk_fraggrenade_radius", "0");
 
-#define GRENADE_MODEL "models/Weapons/w_grenade.mdl"
+#define GRENADE_MODEL "models/weapons/grenade/w_grenade.mdl"
 
 class CGrenadeFrag : public CBaseGrenade
 {
@@ -49,6 +46,7 @@ public:
 	void	SetVelocity( const Vector &velocity, const AngularImpulse &angVelocity );
 	int		OnTakeDamage( const CTakeDamageInfo &inputInfo );
 	void	BlipSound() { EmitSound( "Grenade.Blip" ); }
+	void	SetBlipTime( float nextTime ) { m_flNextBlipTime = nextTime; }
 	void	DelayThink();
 	void	VPhysicsUpdate( IPhysicsObject *pPhysics );
 	void	OnPhysGunPickup( CBasePlayer *pPhysGunUser, PhysGunPickup_t reason );
@@ -58,9 +56,6 @@ public:
 	bool	WasPunted( void ) const { return m_punted; }
 
 	// this function only used in episodic.
-#if defined(HL2_EPISODIC) && 0 // FIXME: HandleInteraction() is no longer called now that base grenade derives from CBaseAnimating
-	bool	HandleInteraction(int interactionType, void *data, CBaseCombatCharacter* sourceEnt);
-#endif 
 
 	void	InputSetTimer( inputdata_t &inputdata );
 
@@ -68,7 +63,7 @@ protected:
 	CHandle<CSprite>		m_pMainGlow;
 	CHandle<CSpriteTrail>	m_pGlowTrail;
 
-	float	m_flNextBlipTime;
+	float	m_flNextBlipTime = -1;
 	bool	m_inSolid;
 	bool	m_combineSpawned;
 	bool	m_punted;
@@ -126,8 +121,11 @@ void CGrenadeFrag::Spawn( void )
 	SetCollisionGroup( COLLISION_GROUP_WEAPON );
 	CreateVPhysics();
 
-	BlipSound();
-	m_flNextBlipTime = gpGlobals->curtime + FRAG_GRENADE_BLIP_FREQUENCY;
+	if (m_flNextBlipTime != -1)
+	{
+		BlipSound();
+		m_flNextBlipTime = gpGlobals->curtime + FRAG_GRENADE_BLIP_FREQUENCY;
+	}
 
 	AddSolidFlags( FSOLID_NOT_STANDABLE );
 
@@ -155,7 +153,10 @@ void CGrenadeFrag::OnRestore( void )
 void CGrenadeFrag::CreateEffects( void )
 {
 	// Start up the eye glow
-	m_pMainGlow = CSprite::SpriteCreate( "sprites/redglow1.vmt", GetLocalOrigin(), false );
+	if ( !m_pMainGlow.Get() )
+	{
+		m_pMainGlow = CSprite::SpriteCreate("sprites/redglow1.vmt", GetLocalOrigin(), false);
+	}
 
 	int	nAttachment = LookupAttachment( "fuse" );
 
@@ -169,7 +170,10 @@ void CGrenadeFrag::CreateEffects( void )
 	}
 
 	// Start up the eye trail
-	m_pGlowTrail	= CSpriteTrail::SpriteTrailCreate( "sprites/bluelaser1.vmt", GetLocalOrigin(), false );
+	if ( !m_pGlowTrail.Get() )
+	{
+		m_pGlowTrail = CSpriteTrail::SpriteTrailCreate("sprites/bluelaser1.vmt", GetLocalOrigin(), false);
+	}
 
 	if ( m_pGlowTrail != NULL )
 	{
@@ -282,6 +286,8 @@ void CGrenadeFrag::Precache( void )
 	PrecacheModel( "sprites/redglow1.vmt" );
 	PrecacheModel( "sprites/bluelaser1.vmt" );
 
+	PrecacheParticleSystem( "explosion_grenade" );
+
 	BaseClass::Precache();
 }
 
@@ -327,6 +333,7 @@ void CGrenadeFrag::DelayThink()
 	if( gpGlobals->curtime > m_flDetonateTime )
 	{
 		Detonate();
+		DispatchParticleEffect( "explosion_grenade", GetAbsOrigin(), QAngle( 0, 0, 0 ) );
 		return;
 	}
 
@@ -376,40 +383,6 @@ int CGrenadeFrag::OnTakeDamage( const CTakeDamageInfo &inputInfo )
 	return BaseClass::OnTakeDamage( inputInfo );
 }
 
-#if defined(HL2_EPISODIC) && 0 // FIXME: HandleInteraction() is no longer called now that base grenade derives from CBaseAnimating
-extern int	g_interactionBarnacleVictimGrab; ///< usually declared in ai_interactions.h but no reason to haul all of that in here.
-extern int g_interactionBarnacleVictimBite;
-extern int g_interactionBarnacleVictimReleased;
-bool CGrenadeFrag::HandleInteraction(int interactionType, void *data, CBaseCombatCharacter* sourceEnt)
-{
-	// allow fragnades to be grabbed by barnacles. 
-	if ( interactionType == g_interactionBarnacleVictimGrab )
-	{
-		// give the grenade another five seconds seconds so the player can have the satisfaction of blowing up the barnacle with it
-		float timer = m_flDetonateTime - gpGlobals->curtime + 5.0f;
-		SetTimer( timer, timer - FRAG_GRENADE_WARN_TIME );
-
-		return true;
-	}
-	else if ( interactionType == g_interactionBarnacleVictimBite )
-	{
-		// detonate the grenade immediately 
-		SetTimer( 0, 0 );
-		return true;
-	}
-	else if ( interactionType == g_interactionBarnacleVictimReleased )
-	{
-		// take the five seconds back off the timer.
-		float timer = MAX(m_flDetonateTime - gpGlobals->curtime - 5.0f,0.0f);
-		SetTimer( timer, timer - FRAG_GRENADE_WARN_TIME );
-		return true;
-	}
-	else
-	{
-		return BaseClass::HandleInteraction( interactionType, data, sourceEnt );
-	}
-}
-#endif
 
 void CGrenadeFrag::InputSetTimer( inputdata_t &inputdata )
 {
@@ -421,7 +394,35 @@ CBaseGrenade *Fraggrenade_Create( const Vector &position, const QAngle &angles, 
 	// Don't set the owner here, or the player can't interact with grenades he's thrown
 	CGrenadeFrag *pGrenade = (CGrenadeFrag *)CBaseEntity::Create( "npc_grenade_frag", position, angles, pOwner );
 	
-	pGrenade->SetTimer( timer, timer - FRAG_GRENADE_WARN_TIME );
+	if (timer < GRENADE_TIMER) {
+		// cooked grenade
+		float flStartTime = gpGlobals->curtime - (GRENADE_TIMER - timer);
+		float flElapsedTime = GRENADE_TIMER - timer;
+		bool isWarned = flElapsedTime > (GRENADE_TIMER - FRAG_GRENADE_WARN_TIME);
+		if (!isWarned) {
+			pGrenade->SetTimer( timer, timer - FRAG_GRENADE_WARN_TIME );
+		}
+		else {
+			pGrenade->SetTimer( timer, 0 ); // warn enemy AI immediately
+		}
+
+		// find the most optimal next blip time to keep blipping consistent with cooking
+		if (flElapsedTime < (GRENADE_TIMER - FRAG_GRENADE_WARN_TIME)) {
+			pGrenade->SetBlipTime( flStartTime + ceil( flElapsedTime ) ); // slow blips
+		}
+		else {
+			float blipTime = GRENADE_TIMER - FRAG_GRENADE_WARN_TIME;
+			while (flStartTime + blipTime <= gpGlobals->curtime)
+			{
+				blipTime += FRAG_GRENADE_BLIP_FAST_FREQUENCY; // fast blips; no upper limit on timer since the grenade will detonate anyway
+			}
+			pGrenade->SetBlipTime( flStartTime + blipTime );
+		}
+	}
+	else {
+		// uncooked grenade
+		pGrenade->SetTimer( timer, timer - FRAG_GRENADE_WARN_TIME );
+	}
 	pGrenade->SetVelocity( velocity, angVelocity );
 	pGrenade->SetThrower( ToBaseCombatCharacter( pOwner ) );
 	pGrenade->m_takedamage = DAMAGE_EVENTS_ONLY;

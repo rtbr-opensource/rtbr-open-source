@@ -21,15 +21,15 @@ class CHudNumericDisplay : public vgui::Panel
 	DECLARE_CLASS_SIMPLE( CHudNumericDisplay, vgui::Panel );
 
 public:
-	CHudNumericDisplay(vgui::Panel *parent, const char *name);
+	CHudNumericDisplay( vgui::Panel *parent, const char *name );
 
-	void SetDisplayValue(int value);
-	void SetSecondaryValue(int value);
-	void SetShouldDisplayValue(bool state);
-	void SetShouldDisplaySecondaryValue(bool state);
-	void SetLabelText(const wchar_t *text);
-	void SetIndent(bool state);
-	void SetIsTime(bool state);
+	void SetDisplayValue( int value );
+	void SetSecondaryValue( int value );
+	void SetShouldDisplayValue( bool state );
+	void SetShouldDisplaySecondaryValue( bool state );
+	void SetLabelText( const wchar_t *text );
+	void SetIndent( bool state );
+	void SetIsTime( bool state );
 
 	bool ShouldDisplayValue( void ) { return m_bDisplayValue; }
 	bool ShouldDisplaySecondaryValue( void ) { return m_bDisplaySecondaryValue; }
@@ -41,7 +41,7 @@ protected:
 	virtual void Paint();
 	virtual void PaintLabel();
 
-	virtual void PaintNumbers(vgui::HFont font, int xpos, int ypos, int value);
+	virtual void PaintNumbers( vgui::HFont font, int xpos, int ypos, int value );
 
 protected:
 

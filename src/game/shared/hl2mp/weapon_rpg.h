@@ -37,6 +37,8 @@ class CMissile : public CBaseCombatCharacter
 	DECLARE_CLASS( CMissile, CBaseCombatCharacter );
 
 public:
+	static const int EXPLOSION_RADIUS = 200;
+
 	CMissile();
 	~CMissile();
 
@@ -70,6 +72,11 @@ public:
 
 	static CMissile *Create( const Vector &vecOrigin, const QAngle &vecAngles, edict_t *pentOwner );
 
+	void CreateDangerSounds( bool bState ){ m_bCreateDangerSounds = bState; }
+
+	static void AddCustomDetonator( CBaseEntity *pEntity, float radius, float height = -1 );
+	static void RemoveCustomDetonator( CBaseEntity *pEntity );
+
 protected:
 	virtual void DoExplosion();	
 	virtual void ComputeActualDotPosition( CLaserDot *pLaserDot, Vector *pActualDotPosition, float *pHomingSpeed );
@@ -86,8 +93,18 @@ protected:
 	float					m_flMarkDeadTime;
 	float					m_flDamage;
 
+	struct CustomDetonator_t
+	{
+		EHANDLE hEntity;
+		float radiusSq;
+		float halfHeight;
+	};
+
+	static CUtlVector<CustomDetonator_t> gm_CustomDetonators;
+
 private:
 	float					m_flGracePeriodEndsAt;
+	bool					m_bCreateDangerSounds;
 
 	DECLARE_DATADESC();
 };
@@ -125,6 +142,8 @@ public:
 	void	AimAtSpecificTarget( CBaseEntity *pTarget );
 	void	SetGuidanceHint( const char *pHintName );
 
+	void	APCSeekThink( void );
+
 	CAPCMissile			*m_pNext;
 
 protected:
@@ -154,6 +173,9 @@ private:
 //-----------------------------------------------------------------------------
 CAPCMissile *FindAPCMissileInCone( const Vector &vecOrigin, const Vector &vecDirection, float flAngle );
 
+#ifdef MAPBASE
+extern ConVar weapon_rpg_fire_rate;
+#endif
 #endif
 
 //-----------------------------------------------------------------------------
@@ -164,9 +186,9 @@ CAPCMissile *FindAPCMissileInCone( const Vector &vecOrigin, const Vector &vecDir
 #define CWeaponRPG C_WeaponRPG
 #endif
 
-class CWeaponRPG : public CBaseHL2MPCombatWeapon
+class CWeaponRPG : public CBaseHLCombatWeapon
 {
-	DECLARE_CLASS( CWeaponRPG, CBaseHL2MPCombatWeapon );
+	DECLARE_CLASS( CWeaponRPG, CBaseHLCombatWeapon );
 public:
 
 	CWeaponRPG();
@@ -178,7 +200,11 @@ public:
 	void	Precache( void );
 
 	void	PrimaryAttack( void );
+#if defined(MAPBASE) && !defined(CLIENT_DLL)
+	virtual float GetFireRate( void ) { return weapon_rpg_fire_rate.GetFloat(); };
+#else
 	virtual float GetFireRate( void ) { return 1; };
+#endif
 	void	ItemPostFrame( void );
 
 	void	Activate( void );
@@ -199,6 +225,15 @@ public:
 	float	GetMinRestTime() { return 4.0; }
 	float	GetMaxRestTime() { return 4.0; }
 
+	bool	WeaponLOSCondition( const Vector &ownerPos, const Vector &targetPos, bool bSetConditions );
+	int		WeaponRangeAttack1Condition( float flDot, float flDist );
+
+#ifndef CLIENT_DLL
+	void	Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatCharacter *pOperator );
+#ifdef MAPBASE
+	void	Operator_ForceNPCFire( CBaseCombatCharacter *pOperator, bool bSecondary );
+#endif
+#endif
 	void	StartGuiding( void );
 	void	StopGuiding( void );
 	void	ToggleGuiding( void );
@@ -214,10 +249,19 @@ public:
 	void	UpdateLaserPosition( Vector vecMuzzlePos = vec3_origin, Vector vecEndPos = vec3_origin );
 	Vector	GetLaserPosition( void );
 
+#ifndef CLIENT_DLL
+
 	// NPC RPG users cheat and directly set the laser pointer's origin
 	void	UpdateNPCLaserPosition( const Vector &vecTarget );
 	void	SetNPCLaserPosition( const Vector &vecTarget );
 	const Vector &GetNPCLaserPosition( void );
+
+	int		CapabilitiesGet( void ) { return bits_CAP_WEAPON_RANGE_ATTACK1; }
+
+#ifdef MAPBASE
+	bool	SupportsBackupActivity( Activity activity );
+#endif
+#endif
 	
 #ifdef CLIENT_DLL
 
@@ -240,10 +284,17 @@ public:
 
 #endif	//CLIENT_DLL
 
+	virtual const Vector& GetBulletSpread( void )
+	{
+		static Vector cone = VECTOR_CONE_3DEGREES;
+		return cone;
+	}
+
 	CBaseEntity *GetMissile( void ) { return m_hMissile; }
 
-#ifndef CLIENT_DLL
 	DECLARE_ACTTABLE();
+#ifndef CLIENT_DLL
+	DECLARE_DATADESC();
 #endif
 	
 protected:
@@ -256,6 +307,7 @@ protected:
 	CNetworkVar(	Vector,			m_vecLaserDot );
 
 #ifndef CLIENT_DLL
+	Vector				m_vecNPCLaserDot;
 	CHandle<CLaserDot>	m_hLaserDot;
 #endif
 

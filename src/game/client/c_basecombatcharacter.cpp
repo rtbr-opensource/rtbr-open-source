@@ -35,6 +35,10 @@ C_BaseCombatCharacter::C_BaseCombatCharacter()
 	m_bGlowEnabled = false;
 	m_bOldGlowEnabled = false;
 	m_bClientSideGlowEnabled = false;
+	m_GlowColor.Init( 0.0f, 0.0f, 0.0f );
+	m_OldGlowColor = m_GlowColor;
+	m_GlowAlpha = 1.0f;
+	m_OldGlowAlpha = 1.0f;
 #endif // GLOWS_ENABLE
 }
 
@@ -67,6 +71,8 @@ void C_BaseCombatCharacter::OnPreDataChanged( DataUpdateType_t updateType )
 
 #ifdef GLOWS_ENABLE
 	m_bOldGlowEnabled = m_bGlowEnabled;
+	m_OldGlowColor = m_GlowColor;
+	m_OldGlowAlpha = m_GlowAlpha;
 #endif // GLOWS_ENABLE
 }
 
@@ -78,7 +84,7 @@ void C_BaseCombatCharacter::OnDataChanged( DataUpdateType_t updateType )
 	BaseClass::OnDataChanged( updateType );
 
 #ifdef GLOWS_ENABLE
-	if ( m_bOldGlowEnabled != m_bGlowEnabled )
+	if ( m_bOldGlowEnabled != m_bGlowEnabled || m_OldGlowColor != m_GlowColor || m_OldGlowAlpha != m_GlowAlpha )
 	{
 		UpdateGlowEffect();
 	}
@@ -103,6 +109,25 @@ void C_BaseCombatCharacter::DoMuzzleFlash()
 	}
 }
 
+#ifdef MAPBASE
+// UNDONE: Should these operate on a list of weapon/items
+Activity C_BaseCombatCharacter::Weapon_TranslateActivity( Activity baseAct, bool *pRequired )
+{
+	Activity translated = baseAct;
+
+	if ( m_hActiveWeapon )
+	{
+		translated = m_hActiveWeapon->ActivityOverride( baseAct, pRequired );
+	}
+	else if (pRequired)
+	{
+		*pRequired = false;
+	}
+
+	return translated;
+}
+#endif
+
 #ifdef GLOWS_ENABLE
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -112,6 +137,17 @@ void C_BaseCombatCharacter::GetGlowEffectColor( float *r, float *g, float *b )
 	*r = 0.76f;
 	*g = 0.76f;
 	*b = 0.76f;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void C_BaseCombatCharacter::GetCustomGlowEffectColor( float *r, float *g, float *b, float *a )
+{
+	*r = m_GlowColor.x;
+	*g = m_GlowColor.y;
+	*b = m_GlowColor.z;
+	*a = m_GlowAlpha;
 }
 
 //-----------------------------------------------------------------------------
@@ -144,10 +180,19 @@ void C_BaseCombatCharacter::UpdateGlowEffect( void )
 	// create a new effect
 	if ( m_bGlowEnabled || m_bClientSideGlowEnabled )
 	{
-		float r, g, b;
-		GetGlowEffectColor( &r, &g, &b );
+		float r, g, b, a;
 
-		m_pGlowEffect = new CGlowObject( this, Vector( r, g, b ), 1.0, true );
+		if ( IsServerSideGlowEnabled() && IsCustomGlowColor() )
+		{
+			GetCustomGlowEffectColor( &r, &g, &b, &a );
+		}
+		else
+		{
+			GetGlowEffectColor( &r, &g, &b );
+			a = 1.0f;
+		}
+
+		m_pGlowEffect = new CGlowObject( this, Vector( r, g, b ), a, true );
 	}
 }
 
@@ -171,6 +216,12 @@ BEGIN_RECV_TABLE_NOBASE( C_BaseCombatCharacter, DT_BCCLocalPlayerExclusive )
 	RecvPropTime( RECVINFO( m_flNextAttack ) ),
 END_RECV_TABLE();
 
+#ifdef GLOWS_ENABLE
+BEGIN_RECV_TABLE_NOBASE( C_BaseCombatCharacter, DT_BCCGlowData )
+	RecvPropVector( RECVINFO( m_GlowColor ) ),
+	RecvPropFloat( RECVINFO( m_GlowAlpha ) ),
+END_RECV_TABLE();
+#endif
 
 BEGIN_RECV_TABLE(C_BaseCombatCharacter, DT_BaseCombatCharacter)
 	RecvPropDataTable( "bcc_localdata", 0, 0, &REFERENCE_RECV_TABLE(DT_BCCLocalPlayerExclusive) ),
@@ -178,6 +229,7 @@ BEGIN_RECV_TABLE(C_BaseCombatCharacter, DT_BaseCombatCharacter)
 	RecvPropArray3( RECVINFO_ARRAY(m_hMyWeapons), RecvPropEHandle( RECVINFO( m_hMyWeapons[0] ) ) ),
 #ifdef GLOWS_ENABLE
 	RecvPropBool( RECVINFO( m_bGlowEnabled ) ),
+	RecvPropDataTable( "bcc_glowdata", 0, 0, &REFERENCE_RECV_TABLE( DT_BCCGlowData ) ),
 #endif // GLOWS_ENABLE
 
 #ifdef INVASION_CLIENT_DLL
@@ -195,3 +247,39 @@ BEGIN_PREDICTION_DATA( C_BaseCombatCharacter )
 	DEFINE_PRED_ARRAY( m_hMyWeapons, FIELD_EHANDLE, MAX_WEAPONS, FTYPEDESC_INSENDTABLE ),
 
 END_PREDICTION_DATA()
+
+#ifdef MAPBASE_VSCRIPT
+
+BEGIN_ENT_SCRIPTDESC( C_BaseCombatCharacter, C_BaseAnimating, "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetAmmoCount, "GetAmmoCount", "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetActiveWeapon, "GetActiveWeapon", "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetWeapon, "GetWeapon", "" )
+END_SCRIPTDESC();
+
+
+int C_BaseCombatCharacter::ScriptGetAmmoCount( int i )
+{
+	Assert( i == -1 || i < MAX_AMMO_SLOTS );
+
+	if ( i < 0 || i >= MAX_AMMO_SLOTS )
+		return NULL;
+
+	return GetAmmoCount( i );
+}
+
+HSCRIPT C_BaseCombatCharacter::ScriptGetActiveWeapon()
+{
+	return ToHScript( GetActiveWeapon() );
+}
+
+HSCRIPT C_BaseCombatCharacter::ScriptGetWeapon( int i )
+{
+	Assert( i >= 0 && i < MAX_WEAPONS );
+
+	if ( i < 0 || i >= MAX_WEAPONS )
+		return NULL;
+
+	return ToHScript( GetWeapon(i) );
+}
+
+#endif

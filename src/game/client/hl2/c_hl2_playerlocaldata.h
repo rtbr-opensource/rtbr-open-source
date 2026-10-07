@@ -30,6 +30,9 @@ public:
 	C_HL2PlayerLocalData();
 
 	float	m_flSuitPower;
+	float	m_flSuitPowerLoad;
+	float	m_flTimeAllSuitDevicesOff;
+	bool	m_bNewSprinting;
 	bool	m_bZooming;
 	int		m_bitsActiveDevices;
 	int		m_iSquadMemberCount;
@@ -42,12 +45,14 @@ public:
 	bool	m_bStickyAutoAim;
 	bool	m_bAutoAimTarget;
 #ifdef HL2_EPISODIC
+#ifndef RTBMP
 	float	m_flFlashBattery;
+#endif
 	Vector	m_vecLocatorOrigin;
 #endif
 
 	// Ladder related data
-	EHANDLE			m_hLadder;
+	CNetworkHandle( CBaseEntity, m_hLadder );
 	LadderMove_t	m_LadderMove;
 };
 

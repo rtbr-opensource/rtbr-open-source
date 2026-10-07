@@ -29,6 +29,7 @@ enum
 	MM_NONE = 0,
 	MM_SAY,
 	MM_SAY_TEAM,
+	MM_SAY_PARTY,
 };
 
 abstract_class IClientMode
@@ -112,6 +113,11 @@ public:
 
 	virtual bool	CanRecordDemo( char *errorMsg, int length ) const = 0;
 
+#ifdef MAPBASE // From Alien Swarm SDK
+	virtual void	OnColorCorrectionWeightsReset( void ) = 0;
+	virtual float	GetColorCorrectionScale( void ) const = 0;
+#endif
+
 	virtual void	ComputeVguiResConditions( KeyValues *pkvConditions ) = 0;
 
 	//=============================================================================
@@ -148,6 +154,9 @@ public:
 	virtual bool	IsInfoPanelAllowed() = 0;
 	virtual void	InfoPanelDisplayed() = 0;
 	virtual bool	IsHTMLInfoPanelAllowed() = 0;
+
+	virtual void	OnDemoRecordStart( char const* pDemoBaseName ) = 0;
+	virtual void	OnDemoRecordStop() = 0;
 };	
 
 extern IClientMode *g_pClientMode;

@@ -74,12 +74,13 @@
 #define SIGNED_GUID_LEN 32 // Hashed CD Key (32 hex alphabetic chars + 0 terminator )
 
 // Used for networking ehandles.
-#define NUM_ENT_ENTRY_BITS		(MAX_EDICT_BITS + 1)
+#define NUM_ENT_ENTRY_BITS		(MAX_EDICT_BITS + 2)
 #define NUM_ENT_ENTRIES			(1 << NUM_ENT_ENTRY_BITS)
-#define ENT_ENTRY_MASK			(NUM_ENT_ENTRIES - 1)
 #define INVALID_EHANDLE_INDEX	0xFFFFFFFF
 
-#define NUM_SERIAL_NUM_BITS		(32 - NUM_ENT_ENTRY_BITS)
+#define NUM_SERIAL_NUM_BITS		16 // (32 - NUM_ENT_ENTRY_BITS)
+#define NUM_SERIAL_NUM_SHIFT_BITS (32 - NUM_SERIAL_NUM_BITS)
+#define ENT_ENTRY_MASK			(( 1 << NUM_SERIAL_NUM_BITS) - 1)
 
 
 // Networked ehandles use less bits to encode the serial number.
@@ -120,7 +121,7 @@
 #define	FL_INWATER				(1<<9)	// In water
 
 // NOTE if you move things up, make sure to change this value
-#define PLAYER_FLAG_BITS		10
+#define PLAYER_FLAG_BITS		32
 
 #define	FL_FLY					(1<<10)	// Changes the SV_Movestep() behavior to not need to be on ground
 #define	FL_SWIM					(1<<11)	// Changes the SV_Movestep() behavior to not need to be on ground (but stay in water)
@@ -162,7 +163,7 @@
 #define	FL_INWATER				(1<<10)	// In water
 
 // NOTE if you move things up, make sure to change this value
-#define PLAYER_FLAG_BITS		11
+#define PLAYER_FLAG_BITS		32
 
 #define	FL_FLY					(1<<11)	// Changes the SV_Movestep() behavior to not need to be on ground
 #define	FL_SWIM					(1<<12)	// Changes the SV_Movestep() behavior to not need to be on ground (but stay in water)
@@ -185,6 +186,9 @@
 #define FL_DISSOLVING			(1<<29) // We're dissolving!
 #define FL_TRANSRAGDOLL			(1<<30) // In the process of turning into a client side ragdoll.
 #define FL_UNBLOCKABLE_BY_PLAYER (1<<31) // pusher that can't be blocked by the player
+#if 0 // We don't use this flag. This needs to be removed from singleplayer.
+#define FL_ONFIREGREEN			(1<<31) // I want to believe that this won't utterly and completely explode. I don't even know if this is actually used anyway.
+#endif
 #endif
 
 // edict->movetype values
@@ -258,7 +262,12 @@ enum SolidFlags_t
 	FSOLID_ROOT_PARENT_ALIGNED	= 0x0100,	// Collisions are defined in root parent's local coordinate space
 	FSOLID_TRIGGER_TOUCH_DEBRIS	= 0x0200,	// This trigger will touch debris objects
 
-	FSOLID_MAX_BITS	= 10
+#ifdef MAPBASE
+	// From https://developer.valvesoftware.com/wiki/Owner
+	FSOLID_COLLIDE_WITH_OWNER	= 0X0400,
+#endif
+
+	FSOLID_MAX_BITS = 11
 };
 
 //-----------------------------------------------------------------------------
@@ -337,8 +346,15 @@ enum
 #define BOUNCE_WOOD		BREAK_WOOD
 #define BOUNCE_SHRAP	0x10
 #define BOUNCE_SHELL	0x20
+#define BOUNCE_RIFLESHELL 0x30
+#define BOUNCE_REVOLVERSHELL 0x60
+#define BOUNCE_FLARESHELL 0x50
 #define	BOUNCE_CONCRETE BREAK_CONCRETE
 #define BOUNCE_SHOTSHELL 0x80
+#define BOUNCE_OICWMAG 0x90
+#define BOUNCE_SMG1MAG 0x100
+#define BOUNCE_PISTOLMAG 0x110
+#define BOUNCE_GRENADEMAG 0x120
 
 // Temp entity bounce sound types
 #define TE_BOUNCE_NULL		0
@@ -442,6 +458,18 @@ typedef CThreadMutex CSourceMutex;
 class CThreadNullMutex;
 typedef CThreadNullMutex CSourceMutex;
 #endif
+
+//Tony; added for IPlayerInfo V3.
+//Putting all standard possible stances, but GetStance in CBasePlayer will only return standing or ducking by default -
+//up to the mod to specify the others, or override what GetStance returns.
+enum player_Stance
+{
+	PINFO_STANCE_STANDING = 0,
+	PINFO_STANCE_DUCKING,
+
+	PINFO_STANCE_SPRINTING,
+	PINFO_STANCE_PRONE,
+};
 
 #endif
 

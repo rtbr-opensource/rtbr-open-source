@@ -259,6 +259,9 @@ END_SHADER_PARAMS
 #ifdef _X360
 			SET_STATIC_VERTEX_SHADER_COMBO( FLASHLIGHT, hasFlashlight );
 #endif
+#ifdef MAPBASE
+			SET_STATIC_VERTEX_SHADER_COMBO( BASETEXTURETRANSFORM2, false );
+#endif
 			SET_STATIC_VERTEX_SHADER( lightmappedgeneric_vs20 );
 
 			if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
@@ -417,7 +420,7 @@ END_SHADER_PARAMS
 				// Don't write fog to alpha if we're using translucency
 				SET_DYNAMIC_PIXEL_SHADER_COMBO( WRITEWATERFOGTODESTALPHA, bWriteWaterFogToAlpha );
 				SET_DYNAMIC_PIXEL_SHADER_COMBO( WRITE_DEPTH_TO_DESTALPHA, bWriteDepthToAlpha );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
+				SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo1( true ) );
 				SET_DYNAMIC_PIXEL_SHADER_COMBO( FLASHLIGHTSHADOWS, bFlashlightShadows );
 				SET_DYNAMIC_PIXEL_SHADER( worldtwotextureblend_ps20b );
 			}

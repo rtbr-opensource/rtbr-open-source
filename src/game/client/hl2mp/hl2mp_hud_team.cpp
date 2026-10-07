@@ -93,10 +93,12 @@ void CTeamPlayHud::ApplySchemeSettings( vgui::IScheme *pScheme )
 
 	m_pBackground->SetBgColor( GetSchemeColor("BgColor", pScheme) );
 	m_pBackground->SetPaintBackgroundType( 2 );
+	m_pBackground->SetPaintBackgroundEnabled( false );
 
 	SetAlpha( 255 );
 	SetBgColor( Color( 0, 0, 0, 0 ) );
 	SetPaintBackgroundType( 0 );
+	SetPaintBackgroundEnabled( false );
 }
 
 //-----------------------------------------------------------------------------

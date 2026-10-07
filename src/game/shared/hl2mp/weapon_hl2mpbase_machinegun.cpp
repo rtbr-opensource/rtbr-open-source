@@ -10,6 +10,9 @@
 	#include "c_hl2mp_player.h"
 #else
 	#include "hl2mp_player.h"
+	#ifdef MAPBASE
+	#include "ai_basenpc.h"
+	#endif
 #endif
 
 #include "weapon_hl2mpbase_machinegun.h"
@@ -24,6 +27,9 @@ BEGIN_NETWORK_TABLE( CHL2MPMachineGun, DT_HL2MPMachineGun )
 END_NETWORK_TABLE()
 
 BEGIN_PREDICTION_DATA( CHL2MPMachineGun )
+#ifdef CLIENT_DLL
+	DEFINE_PRED_FIELD( m_nShotsFired, FIELD_INTEGER, 0 ),
+#endif
 END_PREDICTION_DATA()
 
 //=========================================================
@@ -55,7 +61,7 @@ const Vector &CHL2MPMachineGun::GetBulletSpread( void )
 //
 //
 //-----------------------------------------------------------------------------
-void CHL2MPMachineGun::PrimaryAttack( void )
+void CHL2MPMachineGun::PrimaryAttack( WeaponSound_t weaponSound /* = SINGLE */ )
 {
 	// Only the player fires this way so we can cast
 	CBasePlayer *pPlayer = ToBasePlayer( GetOwner() );
@@ -78,7 +84,7 @@ void CHL2MPMachineGun::PrimaryAttack( void )
 	while ( m_flNextPrimaryAttack <= gpGlobals->curtime )
 	{
 		// MUST call sound before removing a round from the clip of a CHLMachineGun
-		WeaponSound(SINGLE, m_flNextPrimaryAttack);
+		WeaponSound(weaponSound, m_flNextPrimaryAttack);
 		m_flNextPrimaryAttack = m_flNextPrimaryAttack + fireRate;
 		iBulletsToFire++;
 	}
@@ -101,11 +107,15 @@ void CHL2MPMachineGun::PrimaryAttack( void )
 	info.m_vecSpread = pHL2MPPlayer->GetAttackSpread( this );
 	info.m_flDistance = MAX_TRACE_LENGTH;
 	info.m_iAmmoType = m_iPrimaryAmmoType;
-	info.m_iTracerFreq = 2;
+	info.m_iTracerFreq = 1;
 	FireBullets( info );
 
 	//Factor in the view kick
 	AddViewKick();
+
+#if defined(MAPBASE_MP) && !defined(CLIENT_DLL)
+	CSoundEnt::InsertSound( SOUND_COMBAT, GetAbsOrigin(), SOUNDENT_VOLUME_MACHINEGUN, 0.2, pPlayer, SOUNDENT_CHANNEL_WEAPON );
+#endif
 	
 	if (!m_iClip1 && pPlayer->GetAmmoCount(m_iPrimaryAmmoType) <= 0)
 	{
@@ -115,6 +125,11 @@ void CHL2MPMachineGun::PrimaryAttack( void )
 
 	SendWeaponAnim( GetPrimaryAttackActivity() );
 	pPlayer->SetAnimation( PLAYER_ATTACK1 );
+
+#if defined(MAPBASE_MP) && !defined(CLIENT_DLL)
+	// Register a muzzleflash for the AI
+	pPlayer->SetMuzzleFlashTime( gpGlobals->curtime + 0.5 );
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -128,6 +143,33 @@ void CHL2MPMachineGun::FireBullets( const FireBulletsInfo_t &info )
 		pPlayer->FireBullets(info);
 	}
 }
+
+#if defined(MAPBASE_MP) && !defined(CLIENT_DLL)
+//-----------------------------------------------------------------------------
+// Purpose: Weapon firing conditions
+//-----------------------------------------------------------------------------
+int CHL2MPMachineGun::WeaponRangeAttack1Condition( float flDot, float flDist )
+{
+	if ( m_iClip1 <=0 )
+	{
+		return COND_NO_PRIMARY_AMMO;
+	}
+	else if ( flDist < m_fMinRange1 ) 
+	{
+		return COND_TOO_CLOSE_TO_ATTACK;
+	}
+	else if ( flDist > m_fMaxRange1 )
+	{
+		return COND_TOO_FAR_TO_ATTACK;
+	}
+	else if ( flDot < 0.5f )	// UNDONE: Why check this here? Isn't the AI checking this already?
+	{
+		return COND_NOT_FACING_ATTACK;
+	}
+
+	return COND_CAN_RANGE_ATTACK1;
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -239,4 +281,149 @@ void CHL2MPMachineGun::ItemPostFrame( void )
 	BaseClass::ItemPostFrame();
 }
 
+//-----------------------------------------------------------------------------
+// Purpose: 
+// Output : int
+//-----------------------------------------------------------------------------
+Activity CHL2MPMachineGun::GetPrimaryAttackActivity( void )
+{
+	if (m_nShotsFired < 2)
+		return ACT_VM_PRIMARYATTACK;
 
+	if (m_nShotsFired < 3)
+		return ACT_VM_RECOIL1;
+
+	if (m_nShotsFired < 4)
+		return ACT_VM_RECOIL2;
+
+	return ACT_VM_RECOIL3;
+}
+
+#ifdef CLIENT_DLL
+
+#define	HL2_BOB_CYCLE_MIN	1.0f
+#define	HL2_BOB_CYCLE_MAX	0.45f
+#define	HL2_BOB			0.002f
+#define	HL2_BOB_UP		0.5f
+
+extern float	g_lateralBob;
+extern float	g_verticalBob;
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+// Output : float
+//-----------------------------------------------------------------------------
+float CHL2MPMachineGun::CalcViewmodelBob( void )
+{
+	static	float bobtime;
+	static	float lastbobtime;
+	float	cycle;
+
+	CBasePlayer *player = ToBasePlayer( GetOwner() );
+	//Assert( player );
+
+	//NOTENOTE: For now, let this cycle continue when in the air, because it snaps badly without it
+
+	if ((!gpGlobals->frametime) || (player == NULL))
+	{
+		//NOTENOTE: We don't use this return value in our case (need to restructure the calculation function setup!)
+		return 0.0f;// just use old value
+	}
+
+	//Find the speed of the player
+	float speed = player->GetLocalVelocity().Length2D();
+
+	//FIXME: This maximum speed value must come from the server.
+	//		 MaxSpeed() is not sufficient for dealing with sprinting - jdw
+
+	speed = clamp( speed, -320, 320 );
+
+	float bob_offset = RemapVal( speed, 0, 320, 0.0f, 1.0f );
+
+	bobtime += (gpGlobals->curtime - lastbobtime) * bob_offset;
+	lastbobtime = gpGlobals->curtime;
+
+	//Calculate the vertical bob
+	cycle = bobtime - (int)(bobtime / HL2_BOB_CYCLE_MAX)*HL2_BOB_CYCLE_MAX;
+	cycle /= HL2_BOB_CYCLE_MAX;
+
+	if (cycle < HL2_BOB_UP)
+	{
+		cycle = M_PI * cycle / HL2_BOB_UP;
+	}
+	else
+	{
+		cycle = M_PI + M_PI*(cycle - HL2_BOB_UP) / (1.0 - HL2_BOB_UP);
+	}
+
+	g_verticalBob = speed*0.005f;
+	g_verticalBob = g_verticalBob*0.3 + g_verticalBob*0.7*sin( cycle );
+
+	g_verticalBob = clamp( g_verticalBob, -7.0f, 4.0f );
+
+	//Calculate the lateral bob
+	cycle = bobtime - (int)(bobtime / HL2_BOB_CYCLE_MAX * 2)*HL2_BOB_CYCLE_MAX * 2;
+	cycle /= HL2_BOB_CYCLE_MAX * 2;
+
+	if (cycle < HL2_BOB_UP)
+	{
+		cycle = M_PI * cycle / HL2_BOB_UP;
+	}
+	else
+	{
+		cycle = M_PI + M_PI*(cycle - HL2_BOB_UP) / (1.0 - HL2_BOB_UP);
+	}
+
+	g_lateralBob = speed*0.005f;
+	g_lateralBob = g_lateralBob*0.3 + g_lateralBob*0.7*sin( cycle );
+	g_lateralBob = clamp( g_lateralBob, -7.0f, 4.0f );
+
+	//NOTENOTE: We don't use this return value in our case (need to restructure the calculation function setup!)
+	return 0.0f;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+// Input  : &origin - 
+//			&angles - 
+//			viewmodelindex - 
+//-----------------------------------------------------------------------------
+void CHL2MPMachineGun::AddViewmodelBob( CBaseViewModel *viewmodel, Vector &origin, QAngle &angles )
+{
+	Vector	forward, right;
+	AngleVectors( angles, &forward, &right, NULL );
+
+	CalcViewmodelBob();
+
+	// Apply bob, but scaled down to 40%
+	VectorMA( origin, g_verticalBob * 0.1f, forward, origin );
+
+	// Z bob a bit more
+	origin[2] += g_verticalBob * 0.1f;
+
+	// bob the angles
+	angles[ROLL] += g_verticalBob * 0.5f;
+	angles[PITCH] -= g_verticalBob * 0.4f;
+
+	angles[YAW] -= g_lateralBob  * 0.3f;
+
+	VectorMA( origin, g_lateralBob * 0.8f, right, origin );
+}
+#else
+
+// Server stubs
+float CHL2MPMachineGun::CalcViewmodelBob( void )
+{
+	return 0.0f;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+// Input  : &origin - 
+//			&angles - 
+//			viewmodelindex - 
+//-----------------------------------------------------------------------------
+void CHL2MPMachineGun::AddViewmodelBob( CBaseViewModel *viewmodel, Vector &origin, QAngle &angles )
+{
+}
+#endif

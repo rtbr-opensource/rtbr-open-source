@@ -66,6 +66,10 @@ public:
 		}
 		return false;
 	}
+
+#if defined( HL2MP )
+	virtual const char *GetWeaponClassForAmmo() const { return "weapon_pistol"; }
+#endif
 };
 LINK_ENTITY_TO_CLASS(item_box_srounds, CItem_BoxSRounds);
 LINK_ENTITY_TO_CLASS(item_ammo_pistol, CItem_BoxSRounds);
@@ -100,6 +104,10 @@ public:
 		}
 		return false;
 	}
+
+#if defined( HL2MP )
+	virtual const char *GetWeaponClassForAmmo() const { return "weapon_pistol"; }
+#endif
 };
 LINK_ENTITY_TO_CLASS(item_large_box_srounds, CItem_LargeBoxSRounds);
 LINK_ENTITY_TO_CLASS(item_ammo_pistol_large, CItem_LargeBoxSRounds);
@@ -134,6 +142,10 @@ public:
 		}
 		return false;
 	}
+
+#if defined( HL2MP )
+	virtual const char *GetWeaponClassForAmmo() const { return "weapon_smg1"; }
+#endif
 };
 LINK_ENTITY_TO_CLASS(item_box_mrounds, CItem_BoxMRounds);
 LINK_ENTITY_TO_CLASS(item_ammo_smg1, CItem_BoxMRounds);
@@ -168,6 +180,10 @@ public:
 		}
 		return false;
 	}
+
+#if defined( HL2MP )
+	virtual const char *GetWeaponClassForAmmo() const { return "weapon_smg1"; }
+#endif
 };
 LINK_ENTITY_TO_CLASS(item_large_box_mrounds, CItem_LargeBoxMRounds);
 LINK_ENTITY_TO_CLASS(item_ammo_smg1_large, CItem_LargeBoxMRounds);
@@ -202,6 +218,10 @@ public:
 		}
 		return false;
 	}
+
+#if defined( HL2MP )
+	virtual const char *GetWeaponClassForAmmo() const { return "weapon_ar2"; }
+#endif
 };
 LINK_ENTITY_TO_CLASS(item_box_lrounds, CItem_BoxLRounds);
 LINK_ENTITY_TO_CLASS(item_ammo_ar2, CItem_BoxLRounds);
@@ -236,6 +256,11 @@ public:
 		}
 		return false;
 	}
+
+
+#if defined( HL2MP )
+	virtual const char *GetWeaponClassForAmmo() const { return "weapon_ar2"; }
+#endif
 };
 LINK_ENTITY_TO_CLASS(item_large_box_lrounds, CItem_LargeBoxLRounds);
 LINK_ENTITY_TO_CLASS(item_ammo_ar2_large, CItem_LargeBoxLRounds);
@@ -272,6 +297,10 @@ public:
 		}
 		return false;
 	}
+
+#if defined( HL2MP )
+	virtual const char *GetWeaponClassForAmmo() const { return "weapon_357"; }
+#endif
 };
 LINK_ENTITY_TO_CLASS(item_ammo_357, CItem_Box357Rounds);
 
@@ -307,6 +336,10 @@ public:
 		}
 		return false;
 	}
+
+#if defined( HL2MP )
+	virtual const char *GetWeaponClassForAmmo() const { return "weapon_357"; }
+#endif
 };
 LINK_ENTITY_TO_CLASS(item_ammo_357_large, CItem_LargeBox357Rounds);
 
@@ -343,6 +376,10 @@ public:
 		}
 		return false;
 	}
+
+#if defined( HL2MP )
+	virtual const char *GetWeaponClassForAmmo() const { return "weapon_crossbow"; }
+#endif
 };
 LINK_ENTITY_TO_CLASS(item_ammo_crossbow, CItem_BoxXBowRounds);
 
@@ -377,6 +414,10 @@ public:
 		}
 		return false;
 	}
+
+#if defined( HL2MP )
+	virtual const char *GetWeaponClassForAmmo() const { return "weapon_flaregun"; }
+#endif
 };
 LINK_ENTITY_TO_CLASS(item_flare_round, CItem_FlareRound);
 
@@ -445,6 +486,10 @@ public:
 		}
 		return false;
 	}
+
+#if defined( HL2MP )
+	virtual const char *GetWeaponClassForAmmo() const { return "weapon_rpg"; }
+#endif
 };
 LINK_ENTITY_TO_CLASS( item_ml_grenade, CItem_RPG_Round );
 LINK_ENTITY_TO_CLASS( item_rpg_round, CItem_RPG_Round );
@@ -479,6 +524,10 @@ public:
 		}
 		return false;
 	}
+
+#if defined( HL2MP )
+	virtual const char *GetWeaponClassForAmmo() const { return "weapon_smg1"; }
+#endif
 };
 LINK_ENTITY_TO_CLASS(item_ar2_grenade, CItem_AR2_Grenade);
 LINK_ENTITY_TO_CLASS(item_ammo_smg1_grenade, CItem_AR2_Grenade);
@@ -549,6 +598,9 @@ public:
 		}
 		return false;
 	}
+#if defined( HL2MP )
+	virtual const char *GetWeaponClassForAmmo() const { return "weapon_shotgun"; }
+#endif
 };
 LINK_ENTITY_TO_CLASS(item_box_buckshot, CItem_BoxBuckshot);
 
@@ -585,9 +637,227 @@ public:
 		}
 		return false;
 	}
+#if defined( HL2MP )
+	virtual const char *GetWeaponClassForAmmo() const { return "weapon_ar2"; }
+#endif
 };
 
 LINK_ENTITY_TO_CLASS( item_ammo_ar2_altfire, CItem_AR2AltFireRound );
+
+// ========================================================================
+//	>> CItem_BoxAnnabelleRounds
+// ========================================================================
+class CItem_BoxAnnabelleRounds : public CItem
+{
+public:
+	DECLARE_CLASS( CItem_BoxAnnabelleRounds, CItem );
+
+	void Precache( void )
+	{
+		PrecacheModel( "models/items/annabelleammo.mdl" );
+	}
+
+	void Spawn( void )
+	{
+		Precache();
+		SetModel( "models/items/annabelleammo.mdl" );
+		BaseClass::Spawn();
+	}
+
+	bool MyTouch( CBasePlayer *pPlayer )
+	{
+		if (ITEM_GiveAmmo( pPlayer, SIZE_AMMO_ANNABELLE, "Annabelle" ))
+		{
+			if (g_pGameRules->ItemShouldRespawn( this ) == GR_ITEM_RESPAWN_NO)
+			{
+				UTIL_Remove( this );
+			}
+			return true;
+		}
+		return false;
+	}
+};
+
+LINK_ENTITY_TO_CLASS( item_ammo_annabelle, CItem_BoxAnnabelleRounds );
+
+// ========================================================================
+//	>> CItem_BoxOICWRounds
+// ========================================================================
+class CItem_BoxOICWRounds : public CItem
+{
+public:
+	DECLARE_CLASS( CItem_BoxOICWRounds, CItem );
+
+	void Spawn( void )
+	{
+		Precache();
+		SetModel( "models/items/boxoicwrounds.mdl" );
+		BaseClass::Spawn();
+	}
+	void Precache( void )
+	{
+		PrecacheModel( "models/items/boxoicwrounds.mdl" );
+	}
+	bool MyTouch( CBasePlayer *pPlayer )
+	{
+		if (ITEM_GiveAmmo( pPlayer, SIZE_AMMO_OICW, "OICW" ))
+		{
+			if (g_pGameRules->ItemShouldRespawn( this ) == GR_ITEM_RESPAWN_NO)
+			{
+				UTIL_Remove( this );
+			}
+
+			return true;
+		}
+		return false;
+	}
+};
+
+LINK_ENTITY_TO_CLASS( item_ammo_oicw, CItem_BoxOICWRounds );
+
+// ========================================================================
+//	>> CItem_SmallBoxXBowRounds
+// ========================================================================
+class CItem_SmallBoxXBowRounds : public CItem
+{
+public:
+	DECLARE_CLASS( CItem_SmallBoxXBowRounds, CItem );
+
+	void Precache( void )
+	{
+		PrecacheModel( "models/items/crossbowrounds_small.mdl" );
+	}
+
+	void Spawn( void )
+	{
+		Precache();
+		SetModel( "models/items/crossbowrounds_small.mdl" );
+		BaseClass::Spawn();
+	}
+
+	bool MyTouch( CBasePlayer *pPlayer )
+	{
+		if (ITEM_GiveAmmo( pPlayer, SIZE_AMMO_CROSSBOW_SMALL, "XBowBolt" ))
+		{
+			if (g_pGameRules->ItemShouldRespawn( this ) == GR_ITEM_RESPAWN_NO)
+			{
+				UTIL_Remove( this );
+			}
+			return true;
+		}
+		return false;
+	}
+};
+
+LINK_ENTITY_TO_CLASS( item_ammo_crossbow_small, CItem_SmallBoxXBowRounds );
+
+#if 0
+// unused in any game so far
+// ========================================================================
+//	>> CItem_AKMMagazine
+// ========================================================================
+class CItem_AKMMagazine : public CItem
+{
+public:
+	DECLARE_CLASS( CItem_AKMMagazine, CItem );
+
+	void Spawn( void )
+	{
+		Precache();
+		SetModel( "models/items/akm_magazine.mdl" );
+		BaseClass::Spawn();
+	}
+	void Precache( void )
+	{
+		PrecacheModel( "models/items/akm_magazine.mdl" );
+	}
+	bool MyTouch( CBasePlayer *pPlayer )
+	{
+		if (ITEM_GiveAmmo( pPlayer, SIZE_AMMO_AKM, "AKM" ))
+		{
+			if (g_pGameRules->ItemShouldRespawn( this ) == GR_ITEM_RESPAWN_NO)
+			{
+				UTIL_Remove( this );
+			}
+
+			return true;
+		}
+		return false;
+	}
+};
+
+LINK_ENTITY_TO_CLASS( item_ammo_akm, CItem_AKMMagazine );
+
+// ========================================================================
+//	>> CItem_BoxM16Rounds
+// ========================================================================
+class CItem_BoxM16Rounds : public CItem
+{
+public:
+	DECLARE_CLASS( CItem_BoxM16Rounds, CItem );
+
+	void Spawn( void )
+	{
+		Precache();
+		SetModel( "models/items/boxm16rounds.mdl" );
+		BaseClass::Spawn();
+	}
+	void Precache( void )
+	{
+		PrecacheModel( "models/items/boxm16rounds.mdl" );
+	}
+	bool MyTouch( CBasePlayer *pPlayer )
+	{
+		if (ITEM_GiveAmmo( pPlayer, SIZE_AMMO_M16, "M16" ))
+		{
+			if (g_pGameRules->ItemShouldRespawn( this ) == GR_ITEM_RESPAWN_NO)
+			{
+				UTIL_Remove( this );
+			}
+
+			return true;
+		}
+		return false;
+	}
+};
+
+LINK_ENTITY_TO_CLASS( item_ammo_m16, CItem_BoxM16Rounds );
+
+// ========================================================================
+//	>> CItem_BoxHMGRounds
+// ========================================================================
+class CItem_BoxHMGRounds : public CItem
+{
+public:
+	DECLARE_CLASS( CItem_BoxHMGRounds, CItem );
+
+	void Spawn( void )
+	{
+		Precache();
+		SetModel( "models/items/boxhmgrounds.mdl" );
+		BaseClass::Spawn();
+	}
+	void Precache( void )
+	{
+		PrecacheModel( "models/items/boxhmgrounds.mdl" );
+	}
+	bool MyTouch( CBasePlayer *pPlayer )
+	{
+		if (ITEM_GiveAmmo( pPlayer, SIZE_AMMO_HMG, "HMG" ))
+		{
+			if (g_pGameRules->ItemShouldRespawn( this ) == GR_ITEM_RESPAWN_NO)
+			{
+				UTIL_Remove( this );
+			}
+
+			return true;
+		}
+		return false;
+	}
+};
+
+LINK_ENTITY_TO_CLASS( item_ammo_hmg, CItem_BoxHMGRounds );
+#endif
 
 // ==================================================================
 // Ammo crate which will supply infinite ammo of the specified type

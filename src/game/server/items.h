@@ -33,9 +33,24 @@
 #define SIZE_AMMO_357				6
 #define SIZE_AMMO_357_LARGE			20
 #define SIZE_AMMO_CROSSBOW			6
+#define SIZE_AMMO_CROSSBOW_SMALL	1
 #define	SIZE_AMMO_AR2_ALTFIRE		1
+#define SIZE_AMMO_ANNABELLE			12
+#define SIZE_AMMO_AKM				30
+#define SIZE_AMMO_OICW				20
+#define SIZE_AMMO_M16				20
+#define SIZE_AMMO_HMG				50
 
 #define SF_ITEM_START_CONSTRAINED	0x00000001
+#ifdef MAPBASE
+// Copied from CBaseCombatWeapon's flags, including any additions we made to those.
+// I really, REALLY hope no item uses their own spawnflags either.
+#define SF_ITEM_NO_PLAYER_PICKUP	(1<<1)
+#define SF_ITEM_NO_PHYSCANNON_PUNT (1<<2)
+#define SF_ITEM_NO_NPC_PICKUP	(1<<3)
+
+#define SF_ITEM_ALWAYS_TOUCHABLE	(1<<6) // This needs to stay synced with the weapon spawnflag
+#endif
 
 
 class CItem : public CBaseAnimating, public CDefaultPlayerPickupVPhysics
@@ -77,6 +92,27 @@ public:
 #if defined( HL2MP ) || defined( TF_DLL )
 	void	FallThink( void );
 	float  m_flNextResetCheckTime;
+	float m_flRespawnTime; // more an interval rather than a time
+	float GetRespawnTime( void ) { return m_flRespawnTime; }
+#endif
+
+#if defined( HL2MP )
+	virtual const char *GetWeaponClassForAmmo() const { return NULL; }
+#endif
+
+#ifdef MAPBASE
+	// This appeared to have no prior use in Source SDK 2013.
+	// It may have been originally intended for TF2 or some other game-specific item class.
+	virtual bool IsCombatItem() const { return true; }
+
+	// Used to access item_healthkit values, etc. from outside of the class
+	virtual float GetItemAmount() { return 1.0f; }
+
+	void	InputEnablePlayerPickup( inputdata_t &inputdata );
+	void	InputDisablePlayerPickup( inputdata_t &inputdata );
+	void	InputEnableNPCPickup( inputdata_t &inputdata );
+	void	InputDisableNPCPickup( inputdata_t &inputdata );
+	void	InputBreakConstraint( inputdata_t &inputdata );
 #endif
 
 	DECLARE_DATADESC();
@@ -85,7 +121,7 @@ protected:
 	bool		m_bActivateWhenAtRest;
 
 private:
-	
+
 	COutputEvent m_OnPlayerTouch;
 	COutputEvent m_OnCacheInteraction;
 	

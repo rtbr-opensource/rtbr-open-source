@@ -37,6 +37,10 @@ class CReplayScreenshotTaker;
 	class CStunEffect;
 #endif // HL2_EPISODIC
 
+#ifdef MAPBASE
+	class C_FuncFakeWorldPortal;
+#endif
+
 //-----------------------------------------------------------------------------
 // Data specific to intro mode to control rendering.
 //-----------------------------------------------------------------------------
@@ -51,11 +55,22 @@ struct IntroData_t
 	bool	m_bDrawPrimary;
 	Vector	m_vecCameraView;
 	QAngle	m_vecCameraViewAngles;
+#ifdef MAPBASE
+	// Used for ortho views
+	CHandle<C_PointCamera> m_hCameraEntity;
+#endif
 	float	m_playerViewFOV;
 	CUtlVector<IntroDataBlendPass_t> m_Passes;
 
 	// Fade overriding for the intro
 	float	m_flCurrentFadeColor[4];
+
+#ifdef MAPBASE
+	// Draws the skybox.
+	bool	m_bDrawSky;
+	// Draws the skybox in the secondary camera as well.
+	bool	m_bDrawSky2;
+#endif
 };
 
 // Robin, make this point at something to get intro mode.
@@ -423,6 +438,12 @@ public:
 	{
 		m_UnderWaterOverlayMaterial.Init( pMaterial );
 	}
+
+#ifdef MAPBASE
+	virtual bool	BSetupSkyBox( const char *pszSkyName );
+	virtual void	DrawSkyBox( const CViewSetup &View, bool bNoHeightClip );
+#endif //MAPBASE
+
 private:
 	int				m_BuildWorldListsNumber;
 
@@ -436,6 +457,12 @@ private:
 	bool			DrawOneMonitor( ITexture *pRenderTarget, int cameraNum, C_PointCamera *pCameraEnt, const CViewSetup &cameraView, C_BasePlayer *localPlayer, 
 						int x, int y, int width, int height );
 
+#ifdef MAPBASE
+	bool			DrawFakeWorldPortal( ITexture *pRenderTarget, C_FuncFakeWorldPortal *pCameraEnt, const CViewSetup &cameraView, C_BasePlayer *localPlayer, 
+						int x, int y, int width, int height,
+						const CViewSetup &mainView, const Vector &vecAbsPlaneNormal, float flLocalPlaneDist );
+#endif
+
 	// Drawing primitives
 	bool			ShouldDrawViewModel( bool drawViewmodel );
 	void			DrawViewModels( const CViewSetup &view, bool drawViewmodel );
@@ -447,12 +474,23 @@ private:
 	IMaterial		*GetScreenOverlayMaterial( );
 	void			PerformScreenOverlay( int x, int y, int w, int h );
 
+#ifdef MAPBASE
+	void			SetIndexedScreenOverlayMaterial( int i, IMaterial *pMaterial );
+	IMaterial		*GetIndexedScreenOverlayMaterial( int i );
+	void			ResetIndexedScreenOverlays();
+	int				GetMaxIndexedScreenOverlays() const;
+#endif
+
 	void DrawUnderwaterOverlay( void );
 
 	// Water-related methods
 	void			DrawWorldAndEntities( bool drawSkybox, const CViewSetup &view, int nClearFlags, ViewCustomVisibility_t *pCustomVisibility = NULL );
 
+#ifdef MAPBASE
+	virtual void			ViewDrawScene_Intro( const CViewSetup &view, int nClearFlags, const IntroData_t &introData, bool bDrew3dSkybox = false, SkyboxVisibility_t nSkyboxVisible = SKYBOX_NOT_VISIBLE, bool bDrawViewModel = false, ViewCustomVisibility_t *pCustomVisibility = NULL );
+#else
 	virtual void			ViewDrawScene_Intro( const CViewSetup &view, int nClearFlags, const IntroData_t &introData );
+#endif
 
 #ifdef PORTAL 
 	// Intended for use in the middle of another ViewDrawScene call, this allows stencils to be drawn after opaques but before translucents are drawn in the main view.
@@ -486,7 +524,14 @@ private:
 	CMaterialReference	m_TranslucentSingleColor;
 	CMaterialReference	m_ModulateSingleColor;
 	CMaterialReference	m_ScreenOverlayMaterial;
+#ifdef MAPBASE
+	CMaterialReference	m_IndexedScreenOverlayMaterials[MAX_SCREEN_OVERLAYS];
+	bool m_bUsingIndexedScreenOverlays;
+#endif
 	CMaterialReference m_UnderWaterOverlayMaterial;
+
+	CMaterialReference	m_ScriptOverlayMaterial;
+	char m_szCurrentScriptMaterialName[ MAX_PATH ];
 
 	Vector			m_vecLastFacing;
 	float			m_flCheapWaterStartDistance;
@@ -523,6 +568,33 @@ private:
 #if defined( REPLAY_ENABLED )
 	CReplayScreenshotTaker	*m_pReplayScreenshotTaker;
 #endif
+
+#ifdef MAPBASE
+	enum ESkyFace
+	{
+		k_ESkyFaceLeft = 0,
+		k_ESkyFaceRight,
+		k_ESkyFaceFront,
+		k_ESkyFaceBack,
+		k_ESkyFaceUp,
+		k_ESkyFaceDown,
+
+		k_ESkyFaceCount,
+
+		k_ESkyFaceFirst = k_ESkyFaceLeft,
+		k_ESkyFaceLast = k_ESkyFaceDown
+	};
+
+	struct skyface_t
+	{
+		const char *pszPostfix;					// Postfix of the texture filename
+		const Vector		vecNormal, vecRight, vecUp; // Face direction and local tangent axes for building quads
+		CMaterialReference	pMaterial;					// Material associated with this face
+		int					nSamplingResolution;		// Used for UV clamping, smallest of texture width/height
+	};
+
+	static skyface_t		s_rgSkyFaces[k_ESkyFaceCount];
+#endif //MAPBASE
 };
 
 #endif // VIEWRENDER_H

@@ -25,6 +25,7 @@
 #include "tier0/memdbgon.h"
 
 ConVar hud_showemptyweaponslots( "hud_showemptyweaponslots", "1", FCVAR_ARCHIVE, "Shows slots for missing weapons when recieving weapons out of order" );
+ConVar hud_fastswitch_showselection( "hud_fastswitch_showselection", "1", FCVAR_ARCHIVE, "Show weapon selection when using fast weapon switch" );
 
 #define SELECTION_TIMEOUT_THRESHOLD		0.5f	// Seconds
 #define SELECTION_FADEOUT_TIME			0.75f
@@ -50,6 +51,8 @@ class CHudWeaponSelection : public CBaseHudWeaponSelection, public vgui::Panel
 public:
 	CHudWeaponSelection(const char *pElementName );
 
+	virtual void Init( void );
+	virtual void Reset( void );
 	virtual bool ShouldDraw();
 	virtual void OnWeaponPickup( C_BaseCombatWeapon *pWeapon );
 
@@ -88,7 +91,6 @@ protected:
 
 		switch( hud_fastswitch.GetInt() )
 		{
-		case HUDTYPE_FASTSWITCH:
 		case HUDTYPE_CAROUSEL:
 			ActivateFastswitchWeaponDisplay( GetSelectedWeapon() );
 			break;
@@ -195,6 +197,21 @@ CHudWeaponSelection::CHudWeaponSelection( const char *pElementName ) : CBaseHudW
 	m_bFadingOut = false;
 }
 
+void CHudWeaponSelection::Init( void )
+{
+	CBaseHudWeaponSelection::Init();
+	Reset();
+}
+
+void CHudWeaponSelection::Reset( void )
+{
+	CBaseHudWeaponSelection::Reset();
+	if (hud_fastswitch.GetInt() == HUDTYPE_FASTSWITCH)
+	{
+		m_flSelectionTime = -FLT_MAX; // prevent fastswitch hud from showing on saveload
+	}
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: sets up display for showing weapon pickup
 //-----------------------------------------------------------------------------
@@ -215,7 +232,7 @@ void CHudWeaponSelection::OnThink( void )
 {
 	float flSelectionTimeout = SELECTION_TIMEOUT_THRESHOLD;
 	float flSelectionFadeoutTime = SELECTION_FADEOUT_TIME;
-	if ( hud_fastswitch.GetBool() )
+	if ( hud_fastswitch.GetInt() > 1 )
 	{
 		flSelectionTimeout = FASTSWITCH_DISPLAY_TIMEOUT;
 		flSelectionFadeoutTime = FASTSWITCH_FADEOUT_TIME;
@@ -264,7 +281,11 @@ bool CHudWeaponSelection::ShouldDraw()
 		return false;
 
 	// draw weapon selection a little longer if in fastswitch so we can see what we've selected
-	if ( hud_fastswitch.GetBool() && ( gpGlobals->curtime - m_flSelectionTime ) < (FASTSWITCH_DISPLAY_TIMEOUT + FASTSWITCH_FADEOUT_TIME) )
+	if (hud_fastswitch.GetInt() > 1 && (gpGlobals->curtime - m_flSelectionTime) < (FASTSWITCH_DISPLAY_TIMEOUT + FASTSWITCH_FADEOUT_TIME))
+		return true;
+
+	// unless we're in pc fastswitch
+	if (hud_fastswitch.GetInt() == HUDTYPE_FASTSWITCH && (gpGlobals->curtime - m_flSelectionTime) < (SELECTION_TIMEOUT_THRESHOLD + SELECTION_FADEOUT_TIME))
 		return true;
 
 	return ( m_bSelectionVisible ) ? true : false;
@@ -661,6 +682,7 @@ void CHudWeaponSelection::Paint()
 	break;
 
 	case HUDTYPE_BUCKETS:
+	case HUDTYPE_FASTSWITCH:
 		{
 			// bucket style
 			width = (MAX_WEAPON_SLOTS - 1) * (m_flSmallBoxSize + m_flBoxGap) + largeBoxWide;
@@ -756,6 +778,7 @@ void CHudWeaponSelection::DrawLargeWeaponBox( C_BaseCombatWeapon *pWeapon, bool 
 	switch ( hud_fastswitch.GetInt() )
 	{
 	case HUDTYPE_BUCKETS:
+	case HUDTYPE_FASTSWITCH:
 		{
 			// draw box for selected weapon
 			DrawBox( xpos, ypos, boxWide, boxTall, selectedColor, alpha, number );
@@ -769,17 +792,7 @@ void CHudWeaponSelection::DrawLargeWeaponBox( C_BaseCombatWeapon *pWeapon, bool 
 				int iconHeight = pWeapon->GetSpriteActive()->Height();
 
 				int x_offs = (boxWide - iconWidth) / 2;
-
-				int y_offs;
-				if ( bSelected && hud_fastswitch.GetInt() != 0 )
-				{
-					// place the icon aligned with the non-selected version
-					y_offs = (boxTall / 1.5f - iconHeight) / 2;
-				}
-				else
-				{
-					y_offs = (boxTall - iconHeight) / 2;
-				}
+				int y_offs = (boxTall - iconHeight) / 2;
 
 				if (!pWeapon->CanBeSelected())
 				{
@@ -1347,9 +1360,16 @@ void CHudWeaponSelection::FastWeaponSwitch( int iWeaponSlot )
 		pPlayer->EmitSound( "Player.DenyWeaponSelection" );
 	}
 
-	if ( HUDTYPE_CAROUSEL != hud_fastswitch.GetInt() )
+	if (hud_fastswitch.GetInt() == HUDTYPE_FASTSWITCH && hud_fastswitch_showselection.GetBool())
 	{
-		// kill any fastswitch display
+		// force show the weapon selection menu since it is unreliable when the selection has faded
+		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence( "OpenWeaponSelectionMenu" );
+		// dunno why the pc fastswitch isn't emitting a selected sound while carousel does, but we emit one here
+		pPlayer->EmitSound( "Player.WeaponSelectionClose" );
+	}
+	else if (hud_fastswitch.GetInt() == HUDTYPE_FASTSWITCH && !hud_fastswitch_showselection.GetBool())
+	{
+		// kill any hud popups
 		m_flSelectionTime = 0.0f;
 	}
 }

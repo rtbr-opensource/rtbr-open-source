@@ -40,6 +40,13 @@ public:
 	//Attack functions
 	virtual	void	PrimaryAttack( void );
 	virtual	void	SecondaryAttack( void );
+
+	virtual	void	PrimaryAttack( int iDamage, int iDamageType );
+	virtual	void	SecondaryAttack( int iDamage, int iDamageType );
+
+#ifdef MAPBASE
+	void	DelayedAttack(void);
+#endif // MAPBASE
 	
 	virtual void	ItemPostFrame( void );
 
@@ -51,7 +58,20 @@ public:
 	virtual float	GetRange( void )								{	return	32.0f;	}
 	virtual	float	GetDamageForActivity( Activity hitActivity )	{	return	1.0f;	}
 
+#ifdef MAPBASE
+#ifndef CLIENT_DLL
+	virtual int		CapabilitiesGet( void );
+	virtual	int		WeaponMeleeAttack1Condition( float flDot, float flDist );
+#endif
+
+	virtual int		GetDamageType() { return DMG_CLUB; }
+	virtual float	GetHitDelay() { return 0.f; }
+	virtual bool	CanHolster( void );
+#endif // MAPBASE
+
 	CBaseHL2MPBludgeonWeapon( const CBaseHL2MPBludgeonWeapon & );
+
+	virtual bool	PlayFleshyHittySoundOnHit() const { return true; }
 
 protected:
 	virtual	void	ImpactEffect( trace_t &trace );
@@ -59,8 +79,15 @@ protected:
 private:
 	bool			ImpactWater( const Vector &start, const Vector &end );
 	void			Swing( int bIsSecondary );
-	void			Hit( trace_t &traceHit, Activity nHitActivity );
+	void			Swing( int bIsSecondary, int iDamage, int iDamageType );
+	void			Hit( trace_t &traceHit, Activity nHitActivity, bool bIsSecondary );
+	void			Hit( trace_t &traceHit, Activity nHitActivity, bool bIsSecondary, int iDamage, int iDamageType );
 	Activity		ChooseIntersectionPointAndActivity( trace_t &hitTrace, const Vector &mins, const Vector &maxs, CBasePlayer *pOwner );
+
+#ifdef MAPBASE
+	float					m_flDelayedFire;
+	bool					m_bShotDelayed;
+#endif // MAPBASE
 };
 
 #endif

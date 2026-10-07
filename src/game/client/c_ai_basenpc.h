@@ -13,6 +13,9 @@
 
 
 #include "c_basecombatcharacter.h"
+#ifdef MAPBASE_MP
+#include "ai_debug_shared.h"
+#endif
 
 // NOTE: Moved all controller code into c_basestudiomodel
 class C_AI_BaseNPC : public C_BaseCombatCharacter
@@ -41,6 +44,17 @@ public:
 	void					OnDataChanged( DataUpdateType_t type );
 	bool					ImportantRagdoll( void ) { return m_bImportanRagdoll;	}
 
+#ifdef MAPBASE_MP
+	virtual int				GetHealth() const { return m_iHealth; }
+
+	virtual const char		*GetPlayerName( void ) const;
+	virtual void		DispatchTraceAttack( const CTakeDamageInfo &info, const Vector &vecDir, trace_t *ptr, CDmgAccumulator *pAccumulator = NULL );
+	void				DecalTrace( trace_t *pTrace, char const *decalName );
+	void				ImpactTrace( trace_t *pTrace, int iDamageType, const char *pCustomImpactName );
+	virtual bool		IsPlayerAlly( C_BasePlayer *pPlayer = NULL );
+	virtual bool		IsNeutralTo( C_BasePlayer *pPlayer = NULL );
+#endif
+
 private:
 	C_AI_BaseNPC( const C_AI_BaseNPC & ); // not defined, not accessible
 	float m_flTimePingEffect;
@@ -55,6 +69,19 @@ private:
 	bool m_bFadeCorpse;
 	bool m_bSpeedModActive;
 	bool m_bImportanRagdoll;
+
+#ifdef MAPBASE_MP
+	// User-friendly name used for death notices, etc.
+	// Now transmitted by player resource
+	//char m_szNetname[32];
+	
+	// Used to determine whether to draw blood, target ID, etc. on the client
+	// Uses first 3 gamerules relationship return codes (GR_TEAMMATE, GR_NOTTEAMMATE, and GR_ENEMY)
+	int m_nDefaultPlayerRelationship;
+
+	// Based on the existing decal hack from singleplayer HL2
+	bool m_fNoDamageDecal;
+#endif
 };
 
 

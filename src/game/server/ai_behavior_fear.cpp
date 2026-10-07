@@ -113,7 +113,7 @@ void CAI_FearBehavior::RunTask( const Task_t *pTask )
 					if( pHint == NULL )
 					{
 						TaskFail("Fear: Couldn't find hint node\n");
-						m_flDeferUntil = gpGlobals->curtime + 3.0f;// Don't bang the hell out of this behavior. If we don't find a node, take a short break and run regular AI.
+						m_flDeferUntil = gpGlobals->curtime + 3.0f; // Don't bang the heck out of this behavior. If we don't find a node, take a short break and run regular AI.
 					}
 					else
 					{
@@ -318,7 +318,11 @@ void CAI_FearBehavior::GatherConditions()
 	//  -I haven't seen the player in 2 seconds
 	//
 	// Here's the distance check:
+#ifdef MAPBASE_MP // From SecobMod
+	CBasePlayer *pPlayer = UTIL_GetNearestPlayer( GetAbsOrigin() );
+#else
 	CBasePlayer *pPlayer = AI_GetSinglePlayer();
+#endif
 	if( pPlayer != NULL && GetAbsOrigin().DistToSqr(pPlayer->GetAbsOrigin()) >= Square( ai_fear_player_dist.GetFloat() * 1.5f )  )
 	{
 		SetCondition(COND_FEAR_SEPARATED_FROM_PLAYER);
@@ -457,7 +461,15 @@ CAI_Hint *CAI_FearBehavior::FindFearWithdrawalDest()
 
 	hintCriteria.AddHintType( HINT_PLAYER_ALLY_FEAR_DEST );
 	hintCriteria.SetFlag( bits_HINT_NODE_VISIBLE_TO_PLAYER | bits_HINT_NOT_CLOSE_TO_ENEMY /*| bits_HINT_NODE_IN_VIEWCONE | bits_HINT_NPC_IN_NODE_FOV*/ );
+#ifdef MAPBASE
+	hintCriteria.SetFlag(bits_HINT_NODE_USE_GROUP);
+#endif
+
+#ifdef MAPBASE_MP // From SecobMod
+	hintCriteria.AddIncludePosition( UTIL_GetNearestPlayer( GetAbsOrigin() )->GetAbsOrigin(), (ai_fear_player_dist.GetFloat()) );
+#else
 	hintCriteria.AddIncludePosition( AI_GetSinglePlayer()->GetAbsOrigin(), ( ai_fear_player_dist.GetFloat() ) );
+#endif
 
 	pHint = CAI_HintManager::FindHint( pOuter, hintCriteria );
 

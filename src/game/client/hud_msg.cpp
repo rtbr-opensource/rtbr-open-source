@@ -42,6 +42,10 @@ void CHud::ResetHUD()
 	m_flMouseSensitivity = 0;
 	m_flMouseSensitivityFactor = 0;
 #endif
+
+#ifdef RTBMP
+	m_ViewTargetRelation = CROSSHAIRRELATION_NONE;
+#endif
 }
 
 //-----------------------------------------------------------------------------

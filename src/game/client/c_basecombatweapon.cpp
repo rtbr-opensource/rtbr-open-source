@@ -16,6 +16,9 @@
 #include "tier1/KeyValues.h"
 #include "toolframework/itoolframework.h"
 #include "toolframework_client.h"
+#ifdef MAPBASE
+#include "viewrender.h"
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -82,6 +85,23 @@ static inline bool ShouldDrawLocalPlayerViewModel( void )
 {
 #if defined( PORTAL )
 	return false;
+#elif MAPBASE
+	// We shouldn't draw the viewmodel externally.
+	C_BasePlayer *localplayer = C_BasePlayer::GetLocalPlayer();
+	if (localplayer)
+	{
+		if (localplayer->DrawingPlayerModelExternally() && localplayer->InFirstPersonView())
+		{
+			// If this isn't the main view, draw the weapon.
+			if (!localplayer->InPerspectiveView())
+				return false;
+		}
+
+		// Since we already have the local player, check its own ShouldDrawThisPlayer() to avoid extra checks
+		return !localplayer->ShouldDrawThisPlayer();
+	}
+	else
+		return false;
 #else
 	return !C_BasePlayer::ShouldDrawLocalPlayer();
 #endif
@@ -104,9 +124,15 @@ void C_BaseCombatWeapon::OnRestore()
 
 int C_BaseCombatWeapon::GetWorldModelIndex( void )
 {
+#ifdef MAPBASE
+	int iIndex = GetOwner() ? m_iWorldModelIndex.Get() : m_iDroppedModelIndex.Get();
+#else
+	int iIndex = m_iWorldModelIndex.Get();
+#endif
+
 	if ( GameRules() )
 	{
-		const char *pBaseName = modelinfo->GetModelName( modelinfo->GetModel( m_iWorldModelIndex ) );
+		const char *pBaseName = modelinfo->GetModelName( modelinfo->GetModel( iIndex ) );
 		const char *pTranslatedName = GameRules()->TranslateEffectForVisionFilter( "weapons", pBaseName );
 
 		if ( pTranslatedName != pBaseName )
@@ -115,7 +141,7 @@ int C_BaseCombatWeapon::GetWorldModelIndex( void )
 		}
 	}
 
-	return m_iWorldModelIndex;
+	return iIndex;
 }
 
 //-----------------------------------------------------------------------------
@@ -156,11 +182,8 @@ void C_BaseCombatWeapon::OnDataChanged( DataUpdateType_t updateType )
 	}
 	else // weapon carried by other player or not at all
 	{
-		int overrideModelIndex = CalcOverrideModelIndex();
-		if( overrideModelIndex != -1 && overrideModelIndex != GetModelIndex() )
-		{
-			SetModelIndex( overrideModelIndex );
-		}
+		// See comment below
+		EnsureCorrectRenderingModel();
 	}
 
 	if ( updateType == DATA_UPDATE_CREATED )
@@ -203,8 +226,16 @@ ShadowType_t C_BaseCombatWeapon::ShadowCastType()
 	if (!IsBeingCarried())
 		return SHADOWS_RENDER_TO_TEXTURE;
 
-	if (IsCarriedByLocalPlayer() && !C_BasePlayer::ShouldDrawLocalPlayer())
-		return SHADOWS_NONE;
+	if (IsCarriedByLocalPlayer())
+	{
+		if (!C_BasePlayer::ShouldDrawLocalPlayer())
+			return SHADOWS_NONE;
+
+#ifdef MAPBASE
+		if (C_BasePlayer::GetLocalPlayer() && C_BasePlayer::GetLocalPlayer()->ShadowCastType() == SHADOWS_NONE)
+			return SHADOWS_NONE;
+#endif
+	}
 
 	return SHADOWS_RENDER_TO_TEXTURE;
 }
@@ -261,8 +292,8 @@ void C_BaseCombatWeapon::DrawCrosshair()
 	}		 
 */
 
-	CHudCrosshair *crosshair = GET_HUDELEMENT( CHudCrosshair );
-	if ( !crosshair )
+	CHudCrosshair *pCrosshair = GET_HUDELEMENT( CHudCrosshair );
+	if ( !pCrosshair )
 		return;
 
 	// Find out if this weapon's auto-aimed onto a target
@@ -275,29 +306,30 @@ void C_BaseCombatWeapon::DrawCrosshair()
 		{
 			clr[3] = 255;
 
-			crosshair->SetCrosshair( GetWpnData().iconAutoaim, clr );
+			pCrosshair->SetCrosshair( GetWpnData().iconAutoaim, clr );
 		}
 		else if ( GetWpnData().iconCrosshair )
 		{
 			clr[3] = 255;
-			crosshair->SetCrosshair( GetWpnData().iconCrosshair, clr );
+			pCrosshair->SetCrosshair( GetWpnData().iconCrosshair, clr );
 		}
 		else
 		{
-			crosshair->ResetCrosshair();
+			pCrosshair->ResetCrosshair();
 		}
 	}
 	else
 	{ 
-		Color white( 255, 255, 255, 255 );
+		//Color white( 255, 255, 255, 255 );
+		Color orange( 255, 155, 0, 255 );
 
 		// zoomed crosshairs
 		if (bOnTarget && GetWpnData().iconZoomedAutoaim)
-			crosshair->SetCrosshair(GetWpnData().iconZoomedAutoaim, white);
+			pCrosshair->SetCrosshair( GetWpnData().iconZoomedAutoaim, orange );
 		else if ( GetWpnData().iconZoomedCrosshair )
-			crosshair->SetCrosshair( GetWpnData().iconZoomedCrosshair, white );
+			pCrosshair->SetCrosshair( GetWpnData().iconZoomedCrosshair, orange );
 		else
-			crosshair->ResetCrosshair();
+			pCrosshair->ResetCrosshair();
 	}
 }
 
@@ -326,7 +358,23 @@ bool C_BaseCombatWeapon::IsCarriedByLocalPlayer( void )
 //-----------------------------------------------------------------------------
 bool C_BaseCombatWeapon::ShouldDrawUsingViewModel( void )
 {
+#ifdef RTBMP
+	bool bDrawViewModel = IsCarriedByLocalPlayer();
+
+	if ( !bDrawViewModel )
+	{
+		// We should draw the viewmodel if we're observing our current target in first person.
+		C_BasePlayer *pLocalPlayer = C_BasePlayer::GetLocalPlayer();
+		if ( pLocalPlayer && pLocalPlayer->GetObserverTarget() == GetOwner() && pLocalPlayer->GetObserverMode() == OBS_MODE_IN_EYE )
+		{
+			bDrawViewModel = true;
+		}
+	}
+
+	return bDrawViewModel && !C_BasePlayer::ShouldDrawLocalPlayer();
+#else
 	return IsCarriedByLocalPlayer() && !C_BasePlayer::ShouldDrawLocalPlayer();
+#endif
 }
 
 
@@ -435,6 +483,12 @@ bool C_BaseCombatWeapon::ShouldDraw( void )
 		if ( !ShouldDrawLocalPlayerViewModel() )
 			return true;
 
+#ifdef MAPBASE
+		// We're drawing this in non-main views, handle it in DrawModel()
+		if ( pLocalPlayer->DrawingPlayerModelExternally() )
+			return true;
+#endif
+
 		// don't draw active weapon if not in some kind of 3rd person mode, the viewmodel will do that
 		return false;
 	}
@@ -481,19 +535,69 @@ int C_BaseCombatWeapon::DrawModel( int flags )
 	// check if local player chases owner of this weapon in first person
 	C_BasePlayer *localplayer = C_BasePlayer::GetLocalPlayer();
 
-	if ( localplayer && localplayer->IsObserver() && GetOwner() )
+	if ( localplayer )
 	{
-		// don't draw weapon if chasing this guy as spectator
-		// we don't check that in ShouldDraw() since this may change
-		// without notification 
+#ifdef MAPBASE
+		if (GetOwner() == localplayer && localplayer->DrawingPlayerModelExternally())
+		{
+			// If this isn't the main view, draw the weapon.
+			if ( (!localplayer->InPerspectiveView() || !localplayer->InFirstPersonView()) && (CurrentViewID() != VIEW_SHADOW_DEPTH_TEXTURE || !localplayer->IsEffectActive(EF_DIMLIGHT)))
+			{
+				// TODO: Is this inefficient?
+				int nModelIndex = GetModelIndex();
+				int nWorldModelIndex = GetWorldModelIndex();
+				if (nModelIndex != nWorldModelIndex)
+				{
+					SetModelIndex(nWorldModelIndex);
+				}
+
+				int iDraw = BaseClass::DrawModel(flags);
+
+				if (nModelIndex != nWorldModelIndex)
+				{
+					SetModelIndex(nModelIndex);
+				}
+
+				return iDraw;
+			}
+			else
+			{
+				return 0;
+			}
+		}
+#endif
+		if ( localplayer->IsObserver() && GetOwner() )
+		{
+			// don't draw weapon if chasing this guy as spectator
+			// we don't check that in ShouldDraw() since this may change
+			// without notification 
 		
-		if ( localplayer->GetObserverMode() == OBS_MODE_IN_EYE &&
-			 localplayer->GetObserverTarget() == GetOwner() ) 
-			return false;
+			if ( localplayer->GetObserverMode() == OBS_MODE_IN_EYE &&
+				 localplayer->GetObserverTarget() == GetOwner() ) 
+				return false;
+		}
 	}
 
 	return BaseClass::DrawModel( flags );
 }
+
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Purpose:	
+//-----------------------------------------------------------------------------
+bool C_BaseCombatWeapon::DispatchMuzzleEffect( const char *options, bool isFirstPerson )
+{
+	// Don't show muzzle flashes in first-person
+	C_BasePlayer *pPlayer = ToBasePlayer( GetOwner() );
+	if (pPlayer)
+	{
+		if (pPlayer->DrawingPlayerModelExternally() && pPlayer->InFirstPersonView())
+			return false;
+	}
+
+	return BaseClass::DispatchMuzzleEffect( options, isFirstPerson );
+}
+#endif
 
 
 //-----------------------------------------------------------------------------
@@ -517,6 +621,52 @@ int C_BaseCombatWeapon::CalcOverrideModelIndex()
 	}
 }
 
+bool C_BaseCombatWeapon::PredictionErrorShouldResetLatchedForAllPredictables( void )
+{
+#ifdef HL2MP
+	// misyl: Although I have tried to fix many of the pred errors in HL2MP.
+	// Still many remain, and many things remain unpredictable without a rewrite of the weapon code.
+	//
+	// As a workaround, if this weapon is not tangible (ie. has an owner/in inventory).
+	// Don't reset every latched var for every predictable ever if we have a pred error on a weapon.
+	//
+	// This might be useful for other games as well, but needs wider testing there.
+	if ( GetOwner() )
+		return false;
+#endif
+
+	return BaseClass::PredictionErrorShouldResetLatchedForAllPredictables();
+}
+
+//-----------------------------------------------------------------------------
+// If the local player is visible (thirdperson mode, tf2 taunts, etc., then make sure that we are using the
+//  w_ (world) model not the v_ (view) model or else the model can flicker, etc.
+// Otherwise, if we're not the local player, always use the world model
+//-----------------------------------------------------------------------------
+void C_BaseCombatWeapon::EnsureCorrectRenderingModel()
+{
+	C_BasePlayer *localplayer = C_BasePlayer::GetLocalPlayer();
+	if ( localplayer &&
+		localplayer == GetOwner() &&
+		!ShouldDrawUsingViewModel() )
+	{
+		return;
+	}
+
+	// BRJ 10/14/02
+	// FIXME: Remove when Yahn's client-side prediction is done
+	// It's a hacky workaround for the model indices fighting
+	// (GetRenderBounds uses the model index, which is for the view model)
+	SetModelIndex( GetWorldModelIndex() );
+
+	// Validate our current sequence just in case ( in theory the view and weapon models should have the same sequences for sequences that overlap at least )
+	CStudioHdr *pStudioHdr = GetModelPtr();
+	if ( pStudioHdr &&
+		GetSequence() >= pStudioHdr->GetNumSeq() )
+	{
+		SetSequence( 0 );
+	}
+}
 
 //-----------------------------------------------------------------------------
 // tool recording

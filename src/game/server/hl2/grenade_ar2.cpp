@@ -11,11 +11,14 @@
 #include "soundent.h"
 #include "decals.h"
 #include "shake.h"
-#include "smoke_trail.h"
 #include "ar2_explosion.h"
 #include "vstdlib/random.h"
 #include "engine/IEngineSound.h"
 #include "world.h"
+#include "fire.h"
+#include "particle_parse.h"
+#include "ai_basenpc.h"
+#include "props.h"
 
 #ifdef PORTAL
 	#include "portal_util_shared.h"
@@ -25,6 +28,9 @@
 #include "tier0/memdbgon.h"
 
 #define AR2_GRENADE_MAX_DANGER_RADIUS	300
+#define FIRERADIUS 100
+#define FIRECOUNT 30
+#define FIREATTACK 40
 
 extern short	g_sModelIndexFireball;			// (in combatweapon.cpp) holds the index for the smoke cloud
 
@@ -34,14 +40,15 @@ extern ConVar    sk_npc_dmg_smg1_grenade;
 extern ConVar    sk_max_smg1_grenade;
 
 ConVar	  sk_smg1_grenade_radius		( "sk_smg1_grenade_radius","0");
-
-ConVar g_CV_SmokeTrail("smoke_trail", "1", 0); // temporary dust explosion switch
+#ifdef MAPBASE
+ConVar	smg1_grenade_credit_transfer("smg1_grenade_credit_transfer", "1");
+#endif
 
 BEGIN_DATADESC( CGrenadeAR2 )
 
-	DEFINE_FIELD( m_hSmokeTrail, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_fSpawnTime, FIELD_TIME ),
 	DEFINE_FIELD( m_fDangerRadius, FIELD_FLOAT ),
+	DEFINE_FIELD( m_bIsFireGrenade, FIELD_BOOLEAN ),
 
 	// Function pointers
 	DEFINE_ENTITYFUNC( GrenadeAR2Touch ),
@@ -82,6 +89,7 @@ void CGrenadeAR2::Spawn( void )
 	m_takedamage	= DAMAGE_YES;
 	m_bIsLive		= true;
 	m_iHealth		= 1;
+	m_bParticleSpawned = false;
 
 	SetGravity( UTIL_ScaleForGravity( 400 ) );	// use a lower gravity for grenades to make them easier to see
 	SetFriction( 0.8 );
@@ -90,31 +98,6 @@ void CGrenadeAR2::Spawn( void )
 	m_fDangerRadius = 100;
 
 	m_fSpawnTime = gpGlobals->curtime;
-
-	// -------------
-	// Smoke trail.
-	// -------------
-	if( g_CV_SmokeTrail.GetInt() && !IsXbox() )
-	{
-		m_hSmokeTrail = SmokeTrail::CreateSmokeTrail();
-		
-		if( m_hSmokeTrail )
-		{
-			m_hSmokeTrail->m_SpawnRate = 48;
-			m_hSmokeTrail->m_ParticleLifetime = 1;
-			m_hSmokeTrail->m_StartColor.Init(0.1f, 0.1f, 0.1f);
-			m_hSmokeTrail->m_EndColor.Init(0,0,0);
-			m_hSmokeTrail->m_StartSize = 12;
-			m_hSmokeTrail->m_EndSize = m_hSmokeTrail->m_StartSize * 4;
-			m_hSmokeTrail->m_SpawnRadius = 4;
-			m_hSmokeTrail->m_MinSpeed = 4;
-			m_hSmokeTrail->m_MaxSpeed = 24;
-			m_hSmokeTrail->m_Opacity = 0.2f;
-
-			m_hSmokeTrail->SetLifetime(10.0f);
-			m_hSmokeTrail->FollowEntity(this);
-		}
-	}
 }
 
 //-----------------------------------------------------------------------------
@@ -137,6 +120,16 @@ void CGrenadeAR2::GrenadeAR2Think( void )
 		}
 	}
 	
+	if (GetModel() && !m_bParticleSpawned)
+	{
+		if (m_bIsFireGrenade)
+			DispatchParticleEffect("weapon_flare", PATTACH_ROOTBONE_FOLLOW, this);
+		else
+			DispatchParticleEffect("oicw_grenade_trail", PATTACH_ROOTBONE_FOLLOW, this);
+
+		m_bParticleSpawned = true;
+	}
+
 	// If I just went solid and my velocity is zero, it means I'm resting on
 	// the floor already when I went solid so blow up
 	if (m_bIsLive)
@@ -148,7 +141,7 @@ void CGrenadeAR2::GrenadeAR2Think( void )
 		}
 	}
 
-	// The old way of making danger sounds would scare the crap out of EVERYONE between you and where the grenade
+	// The old way of making danger sounds would scare EVERYONE between you and where the grenade
 	// was going to hit. The radius of the danger sound now 'blossoms' over the grenade's lifetime, making it seem
 	// dangerous to a larger area downrange than it does from where it was fired.
 	if( m_fDangerRadius <= AR2_GRENADE_MAX_DANGER_RADIUS )
@@ -161,6 +154,14 @@ void CGrenadeAR2::GrenadeAR2Think( void )
 
 void CGrenadeAR2::Event_Killed( const CTakeDamageInfo &info )
 {
+#ifdef MAPBASE
+	if (smg1_grenade_credit_transfer.GetBool() && info.GetAttacker()->MyCombatCharacterPointer())
+	{
+		CBaseCombatCharacter *pBCC = info.GetAttacker()->MyCombatCharacterPointer();
+		SetThrower(pBCC);
+		SetOwnerEntity(pBCC);
+	}
+#endif
 	Detonate( );
 }
 
@@ -173,7 +174,18 @@ void CGrenadeAR2::GrenadeAR2Touch( CBaseEntity *pOther )
 	// If I'm live go ahead and blow up
 	if (m_bIsLive)
 	{
-		Detonate();
+		if (!m_bIsFireGrenade) {
+			Detonate();
+		}
+		else {
+			CBaseCombatCharacter *pBCC = ToBaseCombatCharacter(pOther);
+			if (pBCC){
+				CTakeDamageInfo info(this, GetOwnerEntity(), m_flDamage, DMG_BLAST);
+				pBCC->TakeDamage(info);
+			}
+			DetonateFire();
+		}
+		
 	}
 	else
 	{
@@ -197,12 +209,6 @@ void CGrenadeAR2::Detonate(void)
 	m_bIsLive		= false;
 	m_takedamage	= DAMAGE_NO;	
 
-	if(m_hSmokeTrail)
-	{
-		UTIL_Remove(m_hSmokeTrail);
-		m_hSmokeTrail = NULL;
-	}
-
 	CPASFilter filter( GetAbsOrigin() );
 
 	te->Explosion( filter, 0.0,
@@ -210,9 +216,11 @@ void CGrenadeAR2::Detonate(void)
 		g_sModelIndexFireball,
 		2.0, 
 		15,
-		TE_EXPLFLAG_NONE,
+		TE_EXPLFLAG_NOPARTICLES | TE_EXPLFLAG_NOFIREBALL | TE_EXPLFLAG_NOFIREBALLSMOKE,
 		m_DmgRadius,
 		m_flDamage );
+
+	DispatchParticleEffect( "explosion_grenade", GetAbsOrigin(), QAngle( 0, 0, 0 ) );
 
 	Vector vecForward = GetAbsVelocity();
 	VectorNormalize(vecForward);
@@ -241,13 +249,130 @@ void CGrenadeAR2::Detonate(void)
 	UTIL_Remove( this );
 }
 
+void CGrenadeAR2::DetonateFire(void)
+{
+	if (!m_bIsLive)
+	{
+		return;
+	}
+	m_bIsLive = false;
+	m_takedamage = DAMAGE_NO;
+
+	FireSystem_StartFire(GetAbsOrigin(), 2, FIREATTACK, RandomFloat(25, 30), 0, GetThrower(), FIRE_FLARE);
+	DispatchParticleEffect("weapon_flare_impact", GetAbsOrigin(), QAngle(0, 0, 0));
+	for (int i = 0; i < FIRECOUNT - 1; i++) {
+		//Create("npc_headcrab", GenerateRandomCircle(GetAbsOrigin()), QAngle(0, 0, 0));
+
+		Vector tempFirePos = GenerateRandomCircle(GetAbsOrigin());
+
+		trace_t tr;
+		UTIL_TraceLine(GetAbsOrigin(), tempFirePos, MASK_SHOT, this, COLLISION_GROUP_NONE, &tr);
+		if (!tr.DidHit()) {
+			FireSystem_StartFire(tempFirePos, 2, FIREATTACK, RandomFloat(25, 30), 0, GetThrower(), FIRE_FLARE);
+		}
+	}
+	CPASFilter filter(GetAbsOrigin());
+	DispatchParticleEffect("weapon_flare_explosion", GetAbsOrigin(), QAngle(0, 0, 0));
+	te->Explosion(filter, 0.0,
+		&GetAbsOrigin(),
+		g_sModelIndexFireball,
+		2.0,
+		15,
+		TE_EXPLFLAG_NOFIREBALL | TE_EXPLFLAG_NOPARTICLES,
+		m_DmgRadius, 0);
+
+	Vector vecForward = GetAbsVelocity();
+	VectorNormalize(vecForward);
+	trace_t		tr;
+	UTIL_TraceLine(GetAbsOrigin(), GetAbsOrigin() + 60 * vecForward, MASK_SOLID_BRUSHONLY,
+		this, COLLISION_GROUP_NONE, &tr);
+
+	RadiusDamage( CTakeDamageInfo( this, GetThrower(), m_flDamage, DMG_BLAST | DMG_BURN ), GetAbsOrigin(), m_DmgRadius, CLASS_NONE, NULL );
+
+	if ((tr.m_pEnt != GetWorldEntity()) || (tr.hitbox != 0))
+	{
+		// non-world needs smaller decals
+		if (tr.m_pEnt && !tr.m_pEnt->IsNPC())
+		{
+			UTIL_DecalTrace(&tr, "SmallScorch");
+		}
+	}
+	else
+	{
+		UTIL_DecalTrace(&tr, "Scorch");
+	}
+	
+	UTIL_TraceLine(GetAbsOrigin(), GetAbsOrigin() + 60 * vecForward, MASK_ALL,
+		this, COLLISION_GROUP_NPC, &tr);
+
+	IgniteOtherIfAllowed(tr.m_pEnt);
+
+	UTIL_ScreenShake(GetAbsOrigin(), 25.0, 150.0, 1.0, 750, SHAKE_START);
+
+	UTIL_Remove(this);
+}
+
+Vector CGrenadeAR2::GenerateRandomCircle(Vector originalpos) {
+	double a = RandomFloat() * 2 * 3.1415;
+	double r = FIRERADIUS * sqrt(RandomFloat());
+
+	double x = r * cos(a);
+	double y = r * sin(a);
+	return Vector(originalpos.x + x, originalpos.y + y, originalpos.z);
+}
+
 void CGrenadeAR2::Precache( void )
 {
+	PrecacheParticleSystem( "explosion_grenade" );
+	PrecacheParticleSystem("weapon_flare_explosion");
 	PrecacheModel("models/Weapons/ar2_grenade.mdl"); 
+	PrecacheParticleSystem("weapon_flare_impact");
+	PrecacheParticleSystem("oicw_grenade_trail");
 }
 
 
 CGrenadeAR2::CGrenadeAR2(void)
 {
-	m_hSmokeTrail  = NULL;
+}
+
+void CGrenadeAR2::IgniteOtherIfAllowed(CBaseEntity * pOther)
+{
+	if (pOther == NULL) {
+		return;
+	}
+	// Don't burn the player
+	if (pOther->IsPlayer())
+		return;
+
+	CAI_BaseNPC *pNPC;
+	pNPC = dynamic_cast<CAI_BaseNPC*>(pOther);
+	if (pNPC) {
+		// Don't burn friendly NPCs
+		if (pNPC->IsPlayerAlly())
+			return;
+
+		// Don't burn boss enemies
+		if (FStrEq(STRING(pNPC->m_iClassname), "npc_combinegunship")
+			|| FStrEq(STRING(pNPC->m_iClassname), "npc_combinedropship")
+			|| FStrEq(STRING(pNPC->m_iClassname), "npc_strider")
+			|| FStrEq(STRING(pNPC->m_iClassname), "npc_helicopter")
+			|| FStrEq(STRING(pNPC->m_iClassname), "npc_cremator")
+			)
+			return;
+
+		// Burn this NPC
+		pNPC->IgniteLifetime(5);
+	}
+
+}
+
+bool CGrenadeAR2::PassesDamageFilter( const CTakeDamageInfo &info )
+{
+	// don't get blown up by ourselves
+	if (info.GetAttacker() && info.GetAttacker()->ClassMatches( GetClassname() ))
+		return false;
+	if (info.GetInflictor() && info.GetInflictor()->ClassMatches( GetClassname() ))
+		return false;
+
+	return BaseClass::PassesDamageFilter( info );
 }

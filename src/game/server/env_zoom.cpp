@@ -20,21 +20,34 @@ class CEnvZoom : public CPointEntity
 {
 public:
 	DECLARE_CLASS( CEnvZoom, CPointEntity );
+	DECLARE_SERVERCLASS();
+
+	virtual int UpdateTransmitState() { return SetTransmitState( FL_EDICT_ALWAYS ); }
 
 	void	InputZoom( inputdata_t &inputdata );
 	void	InputUnZoom( inputdata_t &inputdata );
+#ifdef MAPBASE
+	void	InputUnZoomWithRate( inputdata_t &inputdata );
+	void	InputSetZoomRate( inputdata_t &inputdata );
+#endif
 
 	int	GetFOV( void ) { return m_nFOV;	}
 	float GetSpeed( void ) { return m_flSpeed;	}
 private:
 
-	float	m_flSpeed;
-	int		m_nFOV;
+	CNetworkVar( float, m_flSpeed );
+	CNetworkVar( int, m_nFOV );
 
 	DECLARE_DATADESC();
 };
 
 LINK_ENTITY_TO_CLASS( env_zoom, CEnvZoom );
+
+IMPLEMENT_SERVERCLASS_ST( CEnvZoom, DT_EnvZoom )
+	SendPropFloat( SENDINFO( m_flSpeed ), 0, SPROP_NOSCALE ),
+	SendPropInt( SENDINFO( m_nFOV ) ),
+	SendPropInt( SENDINFO( m_spawnflags ), 32, SPROP_UNSIGNED ),
+END_SEND_TABLE()
 
 BEGIN_DATADESC( CEnvZoom )
 
@@ -43,6 +56,10 @@ BEGIN_DATADESC( CEnvZoom )
 
 	DEFINE_INPUTFUNC( FIELD_VOID, "Zoom", InputZoom ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "UnZoom", InputUnZoom ),
+#ifdef MAPBASE
+	DEFINE_INPUTFUNC( FIELD_VOID, "UnZoomWithRate", InputUnZoomWithRate ),
+	DEFINE_INPUTFUNC( FIELD_FLOAT, "SetZoomRate", InputSetZoomRate ),
+#endif
 
 END_DATADESC()
 
@@ -74,7 +91,16 @@ float GetZoomOwnerDesiredFOV( CBaseEntity *pZoomOwner )
 //-----------------------------------------------------------------------------
 void CEnvZoom::InputZoom( inputdata_t &inputdata )
 {
+#ifdef MAPBASE_MP // From SecobMod
+	CBasePlayer *pPlayer;
+
+	if ( inputdata.pActivator && inputdata.pActivator->IsPlayer() ) 
+		pPlayer = ToBasePlayer( inputdata.pActivator );
+	else
+		pPlayer = UTIL_GetNearestPlayer( GetAbsOrigin() );
+#else
 	CBasePlayer *pPlayer = UTIL_GetLocalPlayer();
+#endif
 
 	if ( pPlayer )
 	{
@@ -105,7 +131,16 @@ void CEnvZoom::InputZoom( inputdata_t &inputdata )
 //-----------------------------------------------------------------------------
 void CEnvZoom::InputUnZoom( inputdata_t &inputdata )
 {
+#ifdef MAPBASE_MP // From SecobMod
+	CBasePlayer *pPlayer;
+
+	if ( inputdata.pActivator && inputdata.pActivator->IsPlayer() ) 
+		pPlayer = ToBasePlayer( inputdata.pActivator );
+	else
+		pPlayer = UTIL_GetNearestPlayer( GetAbsOrigin() );
+#else
 	CBasePlayer *pPlayer = UTIL_GetLocalPlayer();
+#endif
 
 	if ( pPlayer )
 	{
@@ -113,4 +148,39 @@ void CEnvZoom::InputUnZoom( inputdata_t &inputdata )
 		pPlayer->SetFOV( this, 0 );
 	}
 }
+
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Purpose: 
+// Input  : &inputdata - 
+//-----------------------------------------------------------------------------
+void CEnvZoom::InputUnZoomWithRate( inputdata_t &inputdata )
+{
+#ifdef MAPBASE_MP // From SecobMod
+	CBasePlayer *pPlayer;
+
+	if (inputdata.pActivator && inputdata.pActivator->IsPlayer())
+		pPlayer = ToBasePlayer( inputdata.pActivator );
+	else
+		pPlayer = UTIL_GetNearestPlayer( GetAbsOrigin() );
+#else
+	CBasePlayer *pPlayer = UTIL_GetLocalPlayer();
+#endif
+
+	if ( pPlayer )
+	{
+		// Stuff the values
+		pPlayer->SetFOV( this, 0, m_flSpeed, m_nFOV );
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+// Input  : &inputdata - 
+//-----------------------------------------------------------------------------
+void CEnvZoom::InputSetZoomRate( inputdata_t &inputdata )
+{
+	m_flSpeed = inputdata.value.Float();
+}
+#endif
 

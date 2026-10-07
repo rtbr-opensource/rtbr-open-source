@@ -17,11 +17,18 @@
 #include "ispatialpartition.h"
 #include "collisionutils.h"
 #include "tier0/vprof.h"
+#ifdef MAPBASE
+#ifdef HL2_DLL
+#include "weapon_flaregun.h"
+#endif
+#include "mapbase/GlobalStrings.h"
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
 
+#ifndef MAPBASE
 /********************************************************************
  NOTE: if you are looking at this file becase you would like flares 
  to be considered as fires (and thereby trigger gas traps), be aware 
@@ -40,7 +47,13 @@
  For some partial work towards this end, see changelist 192474.
 
  ********************************************************************/
-
+#else
+// ================================================================ //
+// env_firesensors now have the ability to sense flares, toggled via spawnflag.
+// This is different from integrating it with the greater fire system and easily preserves original behavior.
+// You could try treating flares as real fires yourself if you think it's an issue.
+// ================================================================ //
+#endif
 
 
 
@@ -72,6 +85,8 @@ ConVar fire_dmgscale( "fire_dmgscale", "0.1" );
 ConVar fire_dmgbase( "fire_dmgbase", "1" );
 ConVar fire_growthrate( "fire_growthrate", "1.0" );
 ConVar fire_dmginterval( "fire_dmginterval", "1.0" );
+ConVar fire_flarescale( "fire_flarescale", "40.0", FCVAR_CHEAT | FCVAR_REPLICATED );
+ConVar fire_flaredmginterval( "fire_flaredmginterval", "0.125", FCVAR_CHEAT | FCVAR_REPLICATED );
 
 #define VPROF_FIRE(s) VPROF( s )
 
@@ -161,10 +176,12 @@ public:
 	void	InputEnable( inputdata_t &inputdata );
 	void	InputDisable( inputdata_t &inputdata );
 
+	bool	m_bIsFlareFire;
+
 protected:
 	
 	void	Spread( void );
-	void	SpawnEffect( fireType_e type, float scale );
+	void	SpawnEffect( fireType_e type, float scale, bool isFlareFire = false );
 
 	CHandle<CBaseFire>	m_hEffect;
 	EHANDLE		m_hOwner;
@@ -243,7 +260,11 @@ IterationRetval_t CFireSphere::EnumElement( IHandleEntity *pHandleEntity )
 	{
 		// UNDONE: Measure which of these is faster
 //		CFire *pFire = dynamic_cast<CFire *>(pEntity);
+#ifdef MAPBASE
+		if ( !EntIsClass( pEntity, gm_isz_class_EnvFire ) )
+#else
 		if ( !FClassnameIs( pEntity, "env_fire" ) )
+#endif
 			return ITERATION_CONTINUE;
 
 		CFire *pFire = static_cast<CFire *>(pEntity);
@@ -267,7 +288,7 @@ IterationRetval_t CFireSphere::EnumElement( IHandleEntity *pHandleEntity )
 int FireSystem_GetFiresInSphere( CFire **pList, int listMax, bool onlyActiveFires, const Vector &origin, float radius )
 {
 	CFireSphere sphereEnum( pList, listMax, onlyActiveFires, origin, radius );
-	partition->EnumerateElementsInSphere( PARTITION_ENGINE_NON_STATIC_EDICTS, origin, radius, false, &sphereEnum );
+	::partition->EnumerateElementsInSphere( PARTITION_ENGINE_NON_STATIC_EDICTS, origin, radius, false, &sphereEnum );
 
 	return sphereEnum.GetCount();
 }
@@ -409,6 +430,11 @@ bool FireSystem_StartFire( const Vector &position, float fireHeight, float attac
 	//Create a new fire entity
 	CFire *fire = (CFire *) CreateEntityByName( "env_fire" );
 	
+	if (type == FIRE_FLARE) {
+		fire->m_bIsFlareFire = true;
+		type = FIRE_NATURAL;
+	}
+
 	if ( fire == NULL )
 		return false;
 
@@ -566,6 +592,8 @@ BEGIN_DATADESC( CFire )
 	DEFINE_OUTPUT( m_OnIgnited, "OnIgnited" ),
 	DEFINE_OUTPUT( m_OnExtinguished, "OnExtinguished" ),
 
+	DEFINE_FIELD( m_bIsFlareFire, FIELD_BOOLEAN ),
+
 END_DATADESC()
 
 LINK_ENTITY_TO_CLASS( env_fire, CFire );
@@ -628,6 +656,10 @@ void CFire::Precache( void )
 			PrecacheParticleSystem( "env_fire_medium_smoke" );
 			PrecacheParticleSystem( "env_fire_large_smoke" );
 		}
+	}
+
+	if (m_bIsFlareFire) {
+		PrecacheParticleSystem( "weapon_flare_fire" );
 	}
 
 	if ( m_nFireType == FIRE_PLASMA )
@@ -772,7 +804,7 @@ void CFire::Activate( void )
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
-void CFire::SpawnEffect( fireType_e type, float scale )
+void CFire::SpawnEffect( fireType_e type, float scale, bool isFlareFire )
 {
 	CBaseFire *pEffect = NULL;
 	switch ( type )
@@ -784,6 +816,7 @@ void CFire::SpawnEffect( fireType_e type, float scale )
 			fireSmoke->EnableSmoke( ( m_spawnflags & SF_FIRE_SMOKELESS )==false );
 			fireSmoke->EnableGlow( ( m_spawnflags & SF_FIRE_NO_GLOW )==false );
 			fireSmoke->EnableVisibleFromAbove( ( m_spawnflags & SF_FIRE_VISIBLE_FROM_ABOVE )!=false );
+			fireSmoke->m_bIsFlareFire = isFlareFire;
 			
 			pEffect			= fireSmoke;
 			m_nFireType		= FIRE_NATURAL;
@@ -864,7 +897,7 @@ void CFire::Start()
 	UTIL_SetSize(this, Vector(-boxWidth,-boxWidth,0),Vector(boxWidth,boxWidth,m_flFireSize));
 
 	//Spawn the client-side effect
-	SpawnEffect( (fireType_e)m_nFireType, FIRE_SCALE_FROM_SIZE(m_flFireSize) );
+	SpawnEffect( (fireType_e)m_nFireType, FIRE_SCALE_FROM_SIZE( m_flFireSize ), m_bIsFlareFire );
 	m_OnIgnited.FireOutput( this, this );
 	SetThink( &CFire::BurnThink );
 	m_flDamageTime = 0;
@@ -979,8 +1012,16 @@ void CFire::Update( float simTime )
 	int outputDamage = 0;
 	if ( m_flDamageTime <= gpGlobals->curtime )
 	{
-		m_flDamageTime = gpGlobals->curtime + fire_dmginterval.GetFloat();
-		outputDamage = (fire_dmgbase.GetFloat() + outputHeat * fire_dmgscale.GetFloat() * m_flDamageScale) * fire_dmginterval.GetFloat();
+		if (!m_bIsFlareFire) {
+			m_flDamageTime = gpGlobals->curtime + fire_dmginterval.GetFloat();
+			outputDamage = (fire_dmgbase.GetFloat() + outputHeat * fire_dmgscale.GetFloat() * m_flDamageScale) * fire_dmginterval.GetFloat();
+		}
+		else
+		{
+			m_flDamageTime = gpGlobals->curtime + fire_flaredmginterval.GetFloat();
+			outputDamage = (fire_dmgbase.GetFloat() + outputHeat * fire_dmgscale.GetFloat() * m_flDamageScale) * fire_flarescale.GetFloat() * fire_flaredmginterval.GetFloat();
+		}
+
 		if ( outputDamage )
 		{
 			damage = true;
@@ -995,7 +1036,11 @@ void CFire::Update( float simTime )
 		{
 			continue;
 		}
+#ifdef MAPBASE
+		else if ( EntIsClass( pOther, gm_isz_class_EnvFire ) )
+#else
 		else if ( FClassnameIs( pOther, "env_fire" ) )
+#endif
 		{
 			if ( fireCount < ARRAYSIZE(pFires) )
 			{
@@ -1031,7 +1076,7 @@ void CFire::Update( float simTime )
 
 				if (tr.fraction == 1.0 && !tr.startsolid)
 				{
-					pOther->TakeDamage( CTakeDamageInfo( this, this, outputDamage, damageFlags ) );
+					pOther->TakeDamage( CTakeDamageInfo( this, m_hOwner, outputDamage, damageFlags ) );
 				}
 			}
 		}
@@ -1307,6 +1352,9 @@ void CEnvFireSource::InputDisable( inputdata_t &inputdata )
 // CEnvFireSensor detects changes in heat
 //==================================================
 #define SF_FIRESENSOR_START_ON	1
+#ifdef MAPBASE
+#define SF_FIRESENSOR_ACCEPT_FLARES 2
+#endif
 
 class CEnvFireSensor : public CBaseEntity
 {
@@ -1318,6 +1366,9 @@ public:
 	void TurnOff();
 	void InputEnable( inputdata_t &inputdata );
 	void InputDisable( inputdata_t &inputdata );
+#ifdef MAPBASE
+	int DrawDebugTextOverlays(void);
+#endif
 
 	DECLARE_DATADESC();
 
@@ -1328,6 +1379,10 @@ private:
 	float			m_targetLevel;
 	float			m_targetTime;
 	float			m_levelTime;
+#ifdef MAPBASE
+	// Only stored for access in debug overlays, don't save
+	float			m_curheat;
+#endif
 
 	COutputEvent	m_OnHeatLevelStart;
 	COutputEvent	m_OnHeatLevelEnd;
@@ -1385,6 +1440,30 @@ void CEnvFireSensor::Think()
 		heat += pFires[i]->GetHeatLevel();
 	}
 
+#ifdef MAPBASE
+	if (HasSpawnFlags(SF_FIRESENSOR_ACCEPT_FLARES))
+	{
+#ifdef HL2_DLL
+		// Also look for nearby flares
+		CBaseEntity *pEntity = gEntList.FindEntityByClassnameWithin( NULL, "env_flare", GetAbsOrigin(), m_radius );
+		while (pEntity)
+		{
+			CFlare *pFlare = static_cast<CFlare*>(pEntity);
+			if (pFlare)
+			{
+				heat += (pFlare->m_flTimeBurnOut > -1.0 ? (pFlare->m_flTimeBurnOut - gpGlobals->curtime) : 32);
+			}
+
+			pEntity = gEntList.FindEntityByClassnameWithin( pEntity, "env_flare", GetAbsOrigin(), m_radius );
+		}
+#endif
+	}
+#endif
+
+#ifdef MAPBASE
+	m_curheat = heat;
+#endif
+
 	if ( heat >= m_targetLevel )
 	{
 		m_levelTime += time;
@@ -1441,6 +1520,28 @@ void CEnvFireSensor::InputDisable( inputdata_t &inputdata )
 {
 	TurnOff();
 }
+
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Purpose: Draw any debug text overlays
+// Output : Current text offset from the top
+//-----------------------------------------------------------------------------
+int CEnvFireSensor::DrawDebugTextOverlays( void ) 
+{
+	int text_offset = BaseClass::DrawDebugTextOverlays();
+
+	if (m_debugOverlays & OVERLAY_TEXT_BIT) 
+	{
+		char tempstr[512];
+
+		// print flame size
+		Q_snprintf(tempstr, sizeof(tempstr), "    Current Heat: %f", m_curheat);
+		EntityText(text_offset,tempstr,0);
+		text_offset++;
+	}
+	return text_offset;
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: Draw any debug text overlays

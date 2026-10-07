@@ -314,6 +314,7 @@ void IGameSystem::UpdateAllSystems( float frametime )
 	{
 		IGameSystemPerFrame *sys = s_GameSystemsPerFrame[i];
 		MDLCACHE_CRITICAL_SECTION();
+		tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s - %s", __FUNCTION__, sys->Name() );
 		sys->Update( frametime );
 	}
 }
@@ -340,6 +341,15 @@ void IGameSystem::FrameUpdatePostEntityThinkAllSystems()
 void IGameSystem::PreClientUpdateAllSystems() 
 {
 	InvokePerFrameMethod( &IGameSystemPerFrame::PreClientUpdate );
+}
+
+#endif
+
+#ifdef MAPBASE_VSCRIPT
+
+void IGameSystem::RegisterVScriptAllSystems()
+{
+	InvokeMethod( &IGameSystem::RegisterVScript );
 }
 
 #endif

@@ -1,4 +1,4 @@
-//======= Copyright © 1996-2008, Valve Corporation, All rights reserved. ======
+//======= Copyright ï¿½ 1996-2008, Valve Corporation, All rights reserved. ======
 
 // STATIC: "CUBEMAP"					"0..1"
 // STATIC: "DIFFUSELIGHTING"			"0..1"
@@ -14,8 +14,9 @@
 // STATIC: "FLASHLIGHTDEPTHFILTERMODE"	"0..2"						[ps30] [PC]
 // STATIC: "FLASHLIGHTDEPTHFILTERMODE"	"0..0"						[ps20b] [XBOX]
 // STATIC: "BLENDTINTBYBASEALPHA"  "0..1"
+// STATIC: "ENVMAPMASK"					"0..1"
 
-// DYNAMIC: "PIXELFOGTYPE"				"0..1"						[ps20]
+// DYNAMIC: "PIXELFOGTYPE"				"0..2"
 // DYNAMIC: "WRITEWATERFOGTODESTALPHA"	"0..1"						[ps20]
 // DYNAMIC: "NUM_LIGHTS"				"0..2"						[ps20]
 // DYNAMIC: "NUM_LIGHTS"				"0..4"						[ps20b]
@@ -61,6 +62,8 @@
 
 // Meaningless combinations
 // SKIP: $NORMALMAPALPHAENVMAPMASK && !$CUBEMAP
+// SKIP: $NORMALMAPALPHAENVMAPMASK && $ENVMAPMASK
+// SKIP: $ENVMAPMASK && !$CUBEMAP
 
 #include "common_flashlight_fxc.h"
 #include "common_vertexlitgeneric_dx9.h"
@@ -130,43 +133,6 @@ struct PS_INPUT
 #endif
 };
 
-// Calculate both types of Fog and lerp to get result
-float CalcPixelFogFactorConst( float fPixelFogType, const float4 fogParams, const float flEyePosZ, const float flWorldPosZ, const float flProjPosZ )
-{
-	float fRangeFog = CalcRangeFog( flProjPosZ, fogParams.x, fogParams.z, fogParams.w );
-	float fHeightFog = CalcWaterFogAlpha( fogParams.y, flEyePosZ, flWorldPosZ, flProjPosZ, fogParams.w );
-	return lerp( fRangeFog, fHeightFog, fPixelFogType );
-}
-
-// Blend both types of Fog and lerp to get result
-float3 BlendPixelFogConst( const float3 vShaderColor, float pixelFogFactor, const float3 vFogColor, float fPixelFogType )
-{
-	pixelFogFactor = saturate( pixelFogFactor );
-	float3 fRangeResult = lerp( vShaderColor.rgb, vFogColor.rgb, pixelFogFactor * pixelFogFactor ); //squaring the factor will get the middle range mixing closer to hardware fog
-	float3 fHeightResult = lerp( vShaderColor.rgb, vFogColor.rgb, saturate( pixelFogFactor ) );
-	return lerp( fRangeResult, fHeightResult, fPixelFogType );
-}
-
-float4 FinalOutputConst( const float4 vShaderColor, float pixelFogFactor, float fPixelFogType, const int iTONEMAP_SCALE_TYPE, float fWriteDepthToDestAlpha, const float flProjZ )
-{
-	float4 result = vShaderColor;
-	if( iTONEMAP_SCALE_TYPE == TONEMAP_SCALE_LINEAR )
-	{
-		result.rgb *= LINEAR_LIGHT_SCALE;
-	}
-	else if( iTONEMAP_SCALE_TYPE == TONEMAP_SCALE_GAMMA )
-	{
-		result.rgb *= GAMMA_LIGHT_SCALE;
-	}
-
-	result.a = lerp( result.a, DepthToDestAlpha( flProjZ ), fWriteDepthToDestAlpha );
-
-	result.rgb = BlendPixelFogConst( result.rgb, pixelFogFactor, g_LinearFogColor.rgb, fPixelFogType );
-	result.rgb = SRGBOutput( result.rgb ); //SRGB in pixel shader conversion
-
-	return result;
-}
-
 float4 main( PS_INPUT i ) : COLOR
 {
 	bool bCubemap = CUBEMAP ? true : false;
@@ -180,6 +146,7 @@ float4 main( PS_INPUT i ) : COLOR
 	bool bAmbientLight = AMBIENT_LIGHT ? true : false;
 	bool bDetailTexture = DETAILTEXTURE ? true : false;
 	bool bBlendTintByBaseAlpha = BLENDTINTBYBASEALPHA ? true : false;
+	bool bEnvmapMask = ENVMAPMASK ? true : false;
 	int nNumLights = NUM_LIGHTS;
 
 #if ((defined(SHADER_MODEL_PS_2_B) || defined(SHADER_MODEL_PS_3_0)))
@@ -199,12 +166,30 @@ float4 main( PS_INPUT i ) : COLOR
 	baseColor = TextureCombine( baseColor, detailColor, DETAIL_BLEND_MODE, g_DetailBlendFactor );
 #endif
 
+#if ENVMAPMASK
+	// Blixibon - $bumpmap + $envmapmask
+	float3 specularFactor = 1.0f;
+#else
 	float specularFactor = 1.0f;
+#endif
+	
+#if !DETAILTEXTURE
+	// Blixibon - $bumpmap transform support
+	float4 normalTexel = tex2D( BumpmapSampler, i.detailTexCoord_atten3.xy );
+#else
 	float4 normalTexel = tex2D( BumpmapSampler, i.baseTexCoord2_tangentSpaceVertToEyeVectorXY.xy );
+#endif
 	float3 tangentSpaceNormal = normalTexel * 2.0f - 1.0f;
 
 	if ( bNormalMapAlphaEnvmapMask )
+	{
 		specularFactor = normalTexel.a;
+	}
+	else if( bEnvmapMask )
+	{
+		float4 envmapMaskTexel = tex2D( EnvmapMaskSampler, i.baseTexCoord2_tangentSpaceVertToEyeVectorXY.xy );
+		specularFactor *= envmapMaskTexel.xyz;	
+	}
 
 	float3 diffuseLighting = float3( 1.0f, 1.0f, 1.0f );
 
@@ -326,24 +311,22 @@ float4 main( PS_INPUT i ) : COLOR
 
 	float3 result = diffuseComponent + specularLighting;
 
-#if defined(SHADER_MODEL_PS_2_0)
-	float fogFactor = CalcPixelFogFactor( PIXELFOGTYPE, g_FogParams, g_EyePos.z, i.worldPos_projPosZ.z, i.worldPos_projPosZ.w );
-#else
-	float fogFactor = CalcPixelFogFactorConst( g_fPixelFogType, g_FogParams, g_EyePos.z, i.worldPos_projPosZ.z, i.worldPos_projPosZ.w );
-#endif
+	float fogFactor = CalcPixelFogFactor( PIXELFOGTYPE, g_FogParams, g_EyePos.xyz, i.worldPos_projPosZ.xyz, i.worldPos_projPosZ.w );
 
 #if defined( SHADER_MODEL_PS_2_0 )
 	#if WRITEWATERFOGTODESTALPHA && (PIXELFOGTYPE == PIXEL_FOG_TYPE_HEIGHT)
 		alpha = fogFactor;
 	#endif
 #else // 2b or higher
-	alpha = lerp( alpha, fogFactor, g_fPixelFogType * g_fWriteWaterFogToDestAlpha ); // Use the fog factor if it's height fog
+	#if (PIXELFOGTYPE == PIXEL_FOG_TYPE_HEIGHT)
+		alpha = lerp( alpha, fogFactor, g_fWriteWaterFogToDestAlpha ); // Use the fog factor if it's height fog
+	#endif
 #endif
 
 #if defined( SHADER_MODEL_PS_2_0 )
 	return FinalOutput( float4( result.rgb, alpha ), fogFactor, PIXELFOGTYPE, TONEMAP_SCALE_LINEAR, false, i.worldPos_projPosZ.w );
 #else
-	return FinalOutputConst( float4( result.rgb, alpha ), fogFactor, g_fPixelFogType, TONEMAP_SCALE_LINEAR, g_fWriteDepthToAlpha, i.worldPos_projPosZ.w );
+	return FinalOutput( float4( result.rgb, alpha ), fogFactor, PIXELFOGTYPE, TONEMAP_SCALE_LINEAR, g_fWriteDepthToAlpha, i.worldPos_projPosZ.w );
 #endif
 
 }

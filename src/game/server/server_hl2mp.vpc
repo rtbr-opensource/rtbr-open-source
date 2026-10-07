@@ -6,17 +6,17 @@
 
 $Macro SRCDIR		"..\.."
 $Macro GAMENAME 	"hl2mp" [!$SOURCESDK]
-$Macro GAMENAME 	"mod_hl2mp" [$SOURCESDK]
+$Macro GAMENAME 	"mod_hl2mp" [$SOURCESDK && !$RTBMP]
 
 $Include "$SRCDIR\game\server\server_base.vpc"
-$Include "$SRCDIR\game\server\nav_mesh.vpc" [$SOURCESDK]
+$Include "$SRCDIR\game\server\nav_mesh.vpc"
 
 $Configuration
 {
 	$Compiler
 	{
-		$AdditionalIncludeDirectories	"$BASE;$SRCDIR\game\shared\hl2,.\hl2,.\hl2mp,$SRCDIR\game\shared\hl2mp"
-		$PreprocessorDefinitions		"$BASE;HL2MP;HL2_DLL"
+		$AdditionalIncludeDirectories	"$BASE;$SRCDIR\game\shared\hl2,.\hl2,.\hl2mp,$SRCDIR\game\shared\hl2mp;$SRCDIR\game\shared\episodic;.\episodic"
+		$PreprocessorDefinitions		"$BASE;HL2MP;HL2_DLL;NEXT_BOT;HL2_EPISODIC"
 	}
 }
 
@@ -60,6 +60,73 @@ $Project "Server (HL2MP)"
 		$File	"trigger_area_capture.h"
 		$File   "$SRCDIR\game\shared\teamplay_round_timer.cpp"
 		$File   "$SRCDIR\game\shared\teamplay_round_timer.h"
+
+		$Folder "NextBot"
+		{
+			$File	"NextBot\NextBot.cpp"
+			$File	"NextBot\NextBot.h"
+			$File	"NextBot\NextBotBehavior.h"
+			$File	"NextBot\NextBotManager.cpp"
+			$File	"NextBot\NextBotManager.h"
+			$File	"NextBot\NextBotUtil.h"
+			$File	"NextBot\NextBotKnownEntity.h"
+			$File	"NextBot\NextBotGroundLocomotion.cpp"
+			$File	"NextBot\NextBotGroundLocomotion.h"
+			$File	"NextBot\simple_bot.cpp"
+			$File	"NextBot\simple_bot.h"
+
+			$Folder "NextBotInterfaces"
+			{
+				$File	"NextBot\NextBotBodyInterface.cpp"
+				$File	"NextBot\NextBotBodyInterface.h"
+				$File	"NextBot\NextBotComponentInterface.cpp"
+				$File	"NextBot\NextBotComponentInterface.h"
+				$File	"NextBot\NextBotEventResponderInterface.h"
+				$File	"NextBot\NextBotHearingInterface.h"
+				$File	"NextBot\NextBotIntentionInterface.cpp"
+				$File	"NextBot\NextBotIntentionInterface.h"
+				$File	"NextBot\NextBotInterface.cpp"
+				$File	"NextBot\NextBotInterface.h"
+				$File	"NextBot\NextBotLocomotionInterface.cpp"
+				$File	"NextBot\NextBotLocomotionInterface.h"
+				$File	"NextBot\NextBotVisionInterface.cpp"
+				$File	"NextBot\NextBotVisionInterface.h"
+				$File	"NextBot\NextBotContextualQueryInterface.h"
+			}
+
+			$Folder "NextBotPath"
+			{
+				$File	"NextBot\Path\NextBotChasePath.cpp"
+				$File	"NextBot\Path\NextBotChasePath.h"
+				$File	"NextBot\Path\NextBotRetreatPath.h"
+				$File	"NextBot\Path\NextBotPath.cpp"
+				$File	"NextBot\Path\NextBotPath.h"
+				$File	"NextBot\Path\NextBotPathFollow.cpp"
+				$File	"NextBot\Path\NextBotPathFollow.h"
+			}
+			
+			$Folder "NextBotPlayer"
+			{
+				$File	"NextBot\Player\NextBotPlayerBody.cpp"
+				$File	"NextBot\Player\NextBotPlayerBody.h"
+				$File	"NextBot\Player\NextBotPlayerLocomotion.cpp"
+				$File	"NextBot\Player\NextBotPlayerLocomotion.h"
+				$File	"NextBot\Player\NextBotPlayer.cpp"
+				$File	"NextBot\Player\NextBotPlayer.h"
+			}
+
+			$Folder "NextBotCommonBehaviors"
+			{
+				$File	"NextBot\Behavior\BehaviorBackUp.h"
+				$File	"NextBot\Behavior\BehaviorMoveTo.h"
+			}
+
+			$Folder "NextBotNavMeshEntities"
+			{
+				$File	"NextBot\NavMeshEntities\func_nav_prerequisite.cpp"
+				$File	"NextBot\NavMeshEntities\func_nav_prerequisite.h"
+			}
+		}
 
 		$Folder	"HL2 DLL"
 		{
@@ -119,13 +186,14 @@ $Project "Server (HL2MP)"
 			$File	"$SRCDIR\game\shared\hl2\hl2_gamerules.cpp"
 			$File	"$SRCDIR\game\shared\hl2\hl2_gamerules.h"
 			$File	"hl2\hl2_player.cpp"
+			$File	"$SRCDIR\game\shared\hl2\hl2_player_shared.cpp"
 			$File	"hl2\hl2_player.h"
 			$File	"$SRCDIR\game\shared\hl2\hl2_player_shared.h"
 			$File	"hl2\hl2_playerlocaldata.cpp"
 			$File	"hl2\hl2_playerlocaldata.h"
 			$File	"$SRCDIR\game\shared\hl2\hl2_shareddefs.h"
 			$File	"hl2\hl2_triggers.cpp"
-			$File	"$SRCDIR\game\shared\hl2\hl2_usermessages.cpp"
+			$File	"$SRCDIR\game\shared\hl2\hl2_usermessages.cpp" [!$RTBMP]
 			$File	"$SRCDIR\game\shared\hl2\hl_gamemovement.cpp"
 			$File	"$SRCDIR\game\shared\hl2\hl_gamemovement.h"
 			$File	"$SRCDIR\game\shared\hl2\hl_movedata.h"
@@ -140,8 +208,8 @@ $Project "Server (HL2MP)"
 			$File	"hl2\item_suit.cpp"
 			$File	"hl2\look_door.cpp"
 			$File	"hl2\monster_dummy.cpp"
-			$File	"hl2\npc_alyx.cpp"
-			$File	"hl2\npc_alyx.h"
+			//$File	"hl2\npc_alyx.cpp"
+			//$File	"hl2\npc_alyx.h" 
 			$File	"hl2\npc_antlion.cpp"
 			$File	"hl2\npc_antlion.h"
 			$File	"hl2\npc_antlionguard.cpp"
@@ -220,8 +288,8 @@ $Project "Server (HL2MP)"
 			$File	"hl2\vehicle_crane.h"
 			$File	"hl2\vehicle_prisoner_pod.cpp"
 			$File	"hl2\vehicle_viewcontroller.cpp"
-			$File	"hl2\weapon_alyxgun.h"
-			$File	"hl2\weapon_annabelle.cpp"
+			$File	"hl2\weapon_alyxgun.h"		[!$RTBMP]
+			$File	"hl2\weapon_annabelle.cpp"	[!$RTBMP]
 			$File	"hl2\weapon_bugbait.cpp"
 			$File	"hl2\weapon_crowbar.h"
 			$File	"weapon_cubemap.cpp"
@@ -237,15 +305,13 @@ $Project "Server (HL2MP)"
 				$File	"hl2\npc_missiledefense.cpp"
 				$File	"hl2\vehicle_apc.cpp"
 				$File	"hl2\weapon_cguard.cpp"
-				$File	"hl2\weapon_flaregun.cpp"
-				$File	"hl2\weapon_flaregun.h"
+				$File	"hl2\weapon_flaregun.cpp"	[!$RTBMP]
+				$File	"hl2\weapon_flaregun.h"		[!$RTBMP]
 			}
 		}
 
 		$Folder	"HL2MP"
 		{
-			$File	"hl2mp\hl2mp_bot_temp.cpp"
-			$File	"hl2mp\hl2mp_bot_temp.h"
 			$File	"hl2mp\hl2mp_client.cpp"
 			$File	"hl2mp\hl2mp_cvars.cpp"
 			$File	"hl2mp\hl2mp_gameinterface.cpp"
@@ -254,10 +320,76 @@ $Project "Server (HL2MP)"
 			$File	"$SRCDIR\game\shared\hl2mp\hl2mp_gamerules.h"
 			$File	"hl2mp\hl2mp_player.cpp"
 			$File	"hl2mp\hl2mp_player.h"
+			$File	"hl2mp\hl2mp_player_resource.cpp"
+			$File	"hl2mp\hl2mp_player_resource.h"
 			$File	"$SRCDIR\game\shared\hl2mp\hl2mp_player_shared.cpp"
 			$File	"$SRCDIR\game\shared\hl2mp\hl2mp_player_shared.h"
 			$File	"$SRCDIR\game\shared\hl2mp\hl2mp_weapon_parse.cpp"
 			$File	"$SRCDIR\game\shared\hl2mp\hl2mp_weapon_parse.h"
+
+			$Folder "Bots"
+			{
+				$File "hl2mp\bot\hl2mp_bot.cpp"
+				$File "hl2mp\bot\hl2mp_bot.h"
+				$File "hl2mp\bot\hl2mp_bot_body.cpp"
+				$File "hl2mp\bot\hl2mp_bot_body.h"
+				$File "hl2mp\bot\hl2mp_bot_locomotion.cpp"
+				$File "hl2mp\bot\hl2mp_bot_locomotion.h"
+				$File "hl2mp\bot\hl2mp_bot_manager.cpp"
+				$File "hl2mp\bot\hl2mp_bot_manager.h"
+				$File "hl2mp\bot\hl2mp_bot_squad.cpp"
+				$File "hl2mp\bot\hl2mp_bot_squad.h"
+				$File "hl2mp\bot\hl2mp_bot_vision.cpp"
+				$File "hl2mp\bot\hl2mp_bot_vision.h"
+
+				$Folder "Behaviour"
+				{
+					$Folder "Nav Entities"
+					{
+						$File	"hl2mp\bot\behavior\nav_entities\hl2mp_bot_nav_ent_destroy_entity.cpp"
+						$File	"hl2mp\bot\behavior\nav_entities\hl2mp_bot_nav_ent_destroy_entity.h"
+						$File	"hl2mp\bot\behavior\nav_entities\hl2mp_bot_nav_ent_move_to.cpp"
+						$File	"hl2mp\bot\behavior\nav_entities\hl2mp_bot_nav_ent_move_to.h"
+						$File	"hl2mp\bot\behavior\nav_entities\hl2mp_bot_nav_ent_wait.cpp"
+						$File	"hl2mp\bot\behavior\nav_entities\hl2mp_bot_nav_ent_wait.h"
+					}
+
+					$File "hl2mp\bot\behavior\hl2mp_bot_approach_object.cpp"
+					$File "hl2mp\bot\behavior\hl2mp_bot_approach_object.h"
+					$File "hl2mp\bot\behavior\hl2mp_bot_attack.cpp"
+					$File "hl2mp\bot\behavior\hl2mp_bot_attack.h"
+					$File "hl2mp\bot\behavior\hl2mp_bot_behavior.cpp"
+					$File "hl2mp\bot\behavior\hl2mp_bot_behavior.h"
+					$File "hl2mp\bot\behavior\hl2mp_bot_dead.cpp"
+					$File "hl2mp\bot\behavior\hl2mp_bot_dead.h"
+					$File "hl2mp\bot\behavior\hl2mp_bot_get_ammo.cpp"
+					$File "hl2mp\bot\behavior\hl2mp_bot_get_ammo.h"
+					$File "hl2mp\bot\behavior\hl2mp_bot_get_health.cpp"
+					$File "hl2mp\bot\behavior\hl2mp_bot_get_health.h"
+					$File "hl2mp\bot\behavior\hl2mp_bot_get_prop.cpp"
+					$File "hl2mp\bot\behavior\hl2mp_bot_get_prop.h"
+					$File "hl2mp\bot\behavior\hl2mp_bot_melee_attack.cpp"
+					$File "hl2mp\bot\behavior\hl2mp_bot_melee_attack.h"
+					$File "hl2mp\bot\behavior\hl2mp_bot_move_to_vantage_point.cpp"
+					$File "hl2mp\bot\behavior\hl2mp_bot_move_to_vantage_point.h"
+					$File "hl2mp\bot\behavior\hl2mp_bot_retreat_to_cover.cpp"
+					$File "hl2mp\bot\behavior\hl2mp_bot_retreat_to_cover.h"
+					$File "hl2mp\bot\behavior\hl2mp_bot_scenario_monitor.cpp"
+					$File "hl2mp\bot\behavior\hl2mp_bot_scenario_monitor.h"
+					$File "hl2mp\bot\behavior\hl2mp_bot_seek_and_destroy.cpp"
+					$File "hl2mp\bot\behavior\hl2mp_bot_seek_and_destroy.h"
+					$File "hl2mp\bot\behavior\hl2mp_bot_tactical_monitor.cpp"
+					$File "hl2mp\bot\behavior\hl2mp_bot_tactical_monitor.h"
+				}
+
+				$Folder "Map Entities"
+				{
+					$File "hl2mp\bot\map_entities\hl2mp_bot_generator.cpp"
+					$File "hl2mp\bot\map_entities\hl2mp_bot_generator.h"
+					$File "hl2mp\bot\map_entities\hl2mp_bot_proxy.cpp"
+					$File "hl2mp\bot\map_entities\hl2mp_bot_proxy.h"
+				}
+			}
 			
 			$Folder	"Weapons"
 			{
@@ -291,6 +423,52 @@ $Project "Server (HL2MP)"
 				$File	"$SRCDIR\game\shared\hl2mp\weapon_smg1.cpp"
 				$File	"$SRCDIR\game\shared\hl2mp\weapon_stunstick.cpp"
 			}
+		}
+		
+		$Folder "Episodic"
+		{
+			$File	"ai_eventresponse.cpp"
+			$File	"ai_eventresponse.h"
+			$File	"vehicle_choreo_generic.cpp"
+			$File	"hl2\grenade_spit.cpp"
+			$File	"hl2\grenade_spit.h"
+			$File	"hl2\info_darknessmode_lightsource.cpp"
+			$File	"hl2\info_darknessmode_lightsource.h"
+			$File	"$SRCDIR\game\shared\episodic\achievements_ep1.cpp"
+			$File	"$SRCDIR\game\shared\episodic\achievements_ep2.cpp"
+			$File	"$SRCDIR\game\shared\episodic\achievements_epx.cpp"
+			$File	"episodic\ai_behavior_alyx_injured.cpp"
+			$File	"episodic\ai_behavior_alyx_injured.h"
+			$File	"hl2\ai_behavior_operator.cpp"
+			$File	"hl2\ai_behavior_operator.h"
+			$File	"ai_behavior_passenger.cpp"
+			$File	"ai_behavior_passenger.h"
+			$File	"episodic\ai_behavior_passenger_companion.cpp"
+			$File	"episodic\ai_behavior_passenger_companion.h"
+			$File	"episodic\ai_behavior_passenger_zombie.cpp"
+			$File	"episodic\ai_behavior_passenger_zombie.h"
+			$File	"$SRCDIR\game\shared\episodic\npc_advisor_shared.h"
+			$File	"episodic\npc_advisor.cpp"
+			$File	"hl2\npc_alyx_episodic.cpp"
+			$File	"hl2\npc_alyx_episodic.h"
+			$File	"episodic\npc_combine_cannon.cpp"
+			$File	"hl2\npc_fastzombie.cpp"
+			$File	"episodic\npc_hunter.cpp"
+			$File	"episodic\npc_hunter.h"
+			$File	"episodic\npc_magnusson.cpp"
+			$File	"hl2\npc_vortigaunt_episodic.cpp"
+			$File	"hl2\npc_vortigaunt_episodic.h"
+			$File	"episodic\prop_scalable.cpp"
+			$File	"hl2\vehicle_jeep.cpp"
+			$File	"episodic\vehicle_jeep_episodic.cpp"
+			$File	"episodic\vehicle_jeep_episodic.h"
+			$File	"episodic\weapon_striderbuster.cpp"
+			$File	"episodic\weapon_striderbuster.h"
+			$File	"episodic\ep1_gamestats.h"
+			$File	"episodic\ep2_gamestats.h"
+			$File	"episodic\ep1_gamestats.cpp" \
+					"episodic\ep2_gamestats.cpp"
+			$File	"episodic\npc_puppet.cpp"
 		}
 	}
 }

@@ -23,6 +23,7 @@ BEGIN_DATADESC( CEntityFlame )
 	DEFINE_KEYFIELD( m_flLifetime, FIELD_FLOAT, "lifetime" ),
 
 	DEFINE_FIELD( m_flSize, FIELD_FLOAT ),
+	DEFINE_FIELD( m_bIsGreen, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_hEntAttached, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_bUseHitboxes, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_iNumHitboxFires, FIELD_INTEGER ),
@@ -38,6 +39,7 @@ END_DATADESC()
 
 IMPLEMENT_SERVERCLASS_ST( CEntityFlame, DT_EntityFlame )
 	SendPropEHandle( SENDINFO( m_hEntAttached ) ),
+	SendPropBool( SENDINFO( m_bIsGreen ) ),
 END_SEND_TABLE()
 
 LINK_ENTITY_TO_CLASS( entityflame, CEntityFlame );
@@ -133,6 +135,7 @@ CEntityFlame *CEntityFlame::Create( CBaseEntity *pTarget, bool useHitboxes )
 
 	UTIL_SetOrigin( pFlame, pTarget->GetAbsOrigin() );
 
+	pFlame->m_bIsGreen = false;
 	pFlame->m_flSize = size;
 	pFlame->SetThink( &CEntityFlame::FlameThink );
 	pFlame->SetNextThink( gpGlobals->curtime + 0.1f );
@@ -147,6 +150,42 @@ CEntityFlame *CEntityFlame::Create( CBaseEntity *pTarget, bool useHitboxes )
 
 	return pFlame;
 }
+
+CEntityFlame *CEntityFlame::CreateGreen( CBaseEntity *pTarget, bool useHitboxes )
+{
+	CEntityFlame *pFlame = (CEntityFlame *)CreateEntityByName( "entityflame" );
+
+	if (pFlame == NULL)
+		return NULL;
+
+	float xSize = pTarget->CollisionProp()->OBBMaxs().x - pTarget->CollisionProp()->OBBMins().x;
+	float ySize = pTarget->CollisionProp()->OBBMaxs().y - pTarget->CollisionProp()->OBBMins().y;
+
+	float size = (xSize + ySize) * 0.5f;
+
+	if (size < 16.0f)
+	{
+		size = 16.0f;
+	}
+
+	UTIL_SetOrigin( pFlame, pTarget->GetAbsOrigin() );
+
+	pFlame->m_bIsGreen = true;
+	pFlame->m_flSize = size;
+	pFlame->SetThink( &CEntityFlame::FlameThink );
+	pFlame->SetNextThink( gpGlobals->curtime + 0.1f );
+
+	pFlame->AttachToEntity( pTarget );
+	pFlame->SetLifetime( 2.0f );
+
+	//Send to the client even though we don't have a model
+	pFlame->AddEFlags( EFL_FORCE_CHECK_TRANSMIT );
+
+	pFlame->SetUseHitboxes( useHitboxes );
+
+	return pFlame;
+}
+
 
 
 //-----------------------------------------------------------------------------
@@ -291,6 +330,9 @@ void CEntityFlame::FlameThink( void )
 			{
 				// Notify the NPC that it's no longer burning!
 				pAttachedCC->Extinguish();
+#ifdef RTBMP
+				pAttachedCC->SetImmolatorBurning( false );
+#endif
 			}
 		}
 
@@ -302,10 +344,21 @@ void CEntityFlame::FlameThink( void )
 		// Do radius damage ignoring the entity I'm attached to. This will harm things around me.
 		RadiusDamage( CTakeDamageInfo( this, this, 4.0f, DMG_BURN ), GetAbsOrigin(), m_flSize/2, CLASS_NONE, m_hEntAttached );
 
-		// Directly harm the entity I'm attached to. This is so we can precisely control how much damage the entity
-		// that is on fire takes without worrying about the flame's position relative to the bodytarget (which is the
-		// distance that the radius damage code uses to determine how much damage to inflict)
-		m_hEntAttached->TakeDamage( CTakeDamageInfo( this, this, FLAME_DIRECT_DAMAGE, DMG_BURN | DMG_DIRECT ) );
+		// Players don't take immolator flame damage. The afterburn mechanic will deal the damage for us.
+		if (!(m_bIsGreen && m_hEntAttached->IsPlayer()))
+		{
+			// Directly harm the entity I'm attached to. This is so we can precisely control how much damage the entity
+			// that is on fire takes without worrying about the flame's position relative to the bodytarget (which is the
+			// distance that the radius damage code uses to determine how much damage to inflict)
+			CBaseEntity *pAttacker = this;
+			CBaseCombatCharacter *pAttachedCC = m_hEntAttached->MyCombatCharacterPointer();
+			if ( pAttachedCC && pAttachedCC->IsImmolatorBurning() )
+			{
+				pAttacker = pAttachedCC->GetLastImmolatorAttacker();
+			}
+
+			m_hEntAttached->TakeDamage( CTakeDamageInfo( this, pAttacker, FLAME_DIRECT_DAMAGE, DMG_BURN | DMG_DIRECT ) );
+		}
 
 		if( !m_hEntAttached->IsNPC() && hl2_episodic.GetBool() )
 		{

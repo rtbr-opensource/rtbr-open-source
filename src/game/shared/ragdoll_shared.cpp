@@ -90,9 +90,9 @@ public:
 			if ( m_bSelfCollisions )
 			{
 				char szToken[256];
-				const char *pStr = nexttoken(szToken, pValue, ',');
+				const char *pStr = nexttoken(szToken, sizeof(szToken), pValue, ',');
 				int index0 = atoi(szToken);
-				nexttoken( szToken, pStr, ',' );
+				nexttoken( szToken, sizeof( szToken ), pStr, ',' );
 				int index1 = atoi(szToken);
 
 				m_pSet->EnableCollisions( index0, index1 );
@@ -174,6 +174,10 @@ void RagdollSetupAnimatedFriction( IPhysicsEnvironment *pPhysEnv, ragdoll_t *rag
 	}
 }
 
+#ifdef MAPBASE
+ConVar g_ragdoll_fixed_constraints_mass( "g_ragdoll_fixed_constraints_mass", "1000", FCVAR_REPLICATED );
+#endif
+
 static void RagdollAddSolid( IPhysicsEnvironment *pPhysEnv, ragdoll_t &ragdoll, const ragdollparams_t &params, solid_t &solid )
 {
 	if ( solid.index >= 0 && solid.index < params.pCollide->solidCount)
@@ -186,7 +190,12 @@ static void RagdollAddSolid( IPhysicsEnvironment *pPhysEnv, ragdoll_t &ragdoll, 
 		{
 			if ( params.fixedConstraints )
 			{
+#ifdef MAPBASE
+				if (g_ragdoll_fixed_constraints_mass.GetFloat() != -1)
+					solid.params.mass = g_ragdoll_fixed_constraints_mass.GetFloat();
+#else
 				solid.params.mass = 1000.f;
+#endif
 			}
 
 			solid.params.rotInertiaLimit = 0.1;
@@ -333,8 +342,8 @@ void RagdollSetupCollisions( ragdoll_t &ragdoll, vcollide_t *pCollide, int model
 			const char *pBlock = pParse->GetCurrentBlockName();
 			if ( !strcmpi( pBlock, "collisionrules" ) )
 			{
-				IPhysicsCollisionSet *pSet = physics->FindOrCreateCollisionSet( modelIndex, ragdoll.listCount );
-				CRagdollCollisionRules rules(pSet);
+				IPhysicsCollisionSet *pSetRules = physics->FindOrCreateCollisionSet( modelIndex, ragdoll.listCount );
+				CRagdollCollisionRules rules( pSetRules );
 				pParse->ParseCustom( (void *)&rules, &rules );
 				bFoundRules = true;
 			}
@@ -755,8 +764,11 @@ bool ShouldRemoveThisRagdoll( CBaseAnimating *pRagdoll )
 	{
 		if ( g_debug_ragdoll_removal.GetBool() )
 		{
-			debugoverlay->AddBoxOverlay( origin, vMins, vMaxs, QAngle( 0, 0, 0 ), 0, 255, 0, 16, 5 );
-			debugoverlay->AddLineOverlay( origin, origin + Vector( 0, 0, 64 ), 0, 255, 0, true, 5 );
+			if ( debugoverlay )
+			{
+				debugoverlay->AddBoxOverlay( origin, vMins, vMaxs, QAngle( 0, 0, 0 ), 0, 255, 0, 16, 5 );
+				debugoverlay->AddLineOverlay( origin, origin + Vector( 0, 0, 64 ), 0, 255, 0, true, 5 );
+			}
 		}
 
 		return true;
@@ -765,15 +777,20 @@ bool ShouldRemoveThisRagdoll( CBaseAnimating *pRagdoll )
 	{
 		if ( g_debug_ragdoll_removal.GetBool() )
 		{
-			debugoverlay->AddBoxOverlay( origin, vMins, vMaxs, QAngle( 0, 0, 0 ), 0, 0, 255, 16, 5 );
-			debugoverlay->AddLineOverlay( origin, origin + Vector( 0, 0, 64 ), 0, 0, 255, true, 5 );
+			if ( debugoverlay )
+			{
+				debugoverlay->AddBoxOverlay( origin, vMins, vMaxs, QAngle( 0, 0, 0 ), 0, 0, 255, 16, 5 );
+				debugoverlay->AddLineOverlay( origin, origin + Vector( 0, 0, 64 ), 0, 0, 255, true, 5 );
+			}
 		}
 
 		return true;
 	}
 
 #else
+#ifndef MAPBASE_MP // From SecobMod
 	CBasePlayer *pPlayer = UTIL_GetLocalPlayer();
+#endif
 
 	if( !UTIL_FindClientInPVS( pRagdoll->edict() ) )
 	{
@@ -782,6 +799,7 @@ bool ShouldRemoveThisRagdoll( CBaseAnimating *pRagdoll )
 
 		return true;
 	}
+#ifndef MAPBASE_MP // From SecobMod
 	else if( !pPlayer->FInViewCone( pRagdoll ) )
 	{
 		if ( g_debug_ragdoll_removal.GetBool() )
@@ -789,6 +807,7 @@ bool ShouldRemoveThisRagdoll( CBaseAnimating *pRagdoll )
 		
 		return true;
 	}
+#endif
 
 #endif
 
@@ -825,6 +844,33 @@ void CRagdollLRURetirement::Update( float frametime ) // EPISODIC VERSION
 	m_iRagdollCount = 0;
 	m_iSimulatedRagdollCount = 0;
 
+#ifdef MAPBASE // From Alien Swarm SDK
+	// remove ragdolls with a forced retire time
+	for ( i = m_LRU.Head(); i < m_LRU.InvalidIndex(); i = next )
+	{
+		next = m_LRU.Next(i);
+
+		CBaseAnimating *pRagdoll = m_LRU[i].Get();
+
+		//Just ignore it until we're done burning/dissolving.
+		if ( pRagdoll && pRagdoll->GetEffectEntity() )
+			continue;
+
+		// ignore if it's not time to force retire this ragdoll
+		if ( m_LRU[i].GetForcedRetireTime() == 0.0f || gpGlobals->curtime < m_LRU[i].GetForcedRetireTime() )
+			continue;
+
+		//Msg(" Removing ragdoll %s due to forced retire time of %f (now = %f)\n", pRagdoll->GetModelName(), m_LRU[i].GetForcedRetireTime(), gpGlobals->curtime );
+
+#ifdef CLIENT_DLL
+		pRagdoll->SUB_Remove();
+#else
+		pRagdoll->SUB_StartFadeOut( 0 );
+#endif
+		m_LRU.Remove(i);
+	}
+#endif
+
 	// First, find ragdolls that are good candidates for deletion because they are not
 	// visible at all, or are in a culled visibility box
 	for ( i = m_LRU.Head(); i < m_LRU.InvalidIndex(); i = next )
@@ -842,12 +888,12 @@ void CRagdollLRURetirement::Update( float frametime ) // EPISODIC VERSION
 			if ( m_LRU.Count() > iMaxRagdollCount )
 			{
 				//Found one, we're done.
-				if ( ShouldRemoveThisRagdoll( m_LRU[i] ) == true )
+				if ( ShouldRemoveThisRagdoll( pRagdoll ) == true )
 				{
 #ifdef CLIENT_DLL
-					m_LRU[ i ]->SUB_Remove();
+					pRagdoll->SUB_Remove();
 #else
-					m_LRU[ i ]->SUB_StartFadeOut( 0 );
+					pRagdoll->SUB_StartFadeOut( 0 );
 #endif
 
 					m_LRU.Remove(i);
@@ -881,6 +927,27 @@ void CRagdollLRURetirement::Update( float frametime ) // EPISODIC VERSION
 	
 		for ( i = m_LRU.Head(); i < m_LRU.InvalidIndex(); i = next )
 		{
+#ifdef MAPBASE
+			next = m_LRU.Next(i);
+
+			CBaseAnimating *pRagdoll = m_LRU[i].Get();
+
+			if ( pRagdoll )
+			{
+				IPhysicsObject *pObject = pRagdoll->VPhysicsGetObject();
+				if ( pRagdoll->GetEffectEntity() || ( pObject && !pObject->IsAsleep()) )
+					continue;
+
+				// float distToPlayer = (pPlayer->GetAbsOrigin() - pRagdoll->GetAbsOrigin()).LengthSqr();
+				float distToPlayer = (PlayerOrigin - pRagdoll->GetAbsOrigin()).LengthSqr();
+
+				if (distToPlayer > furthestDistSq)
+				{
+					furthestOne = i;
+					furthestDistSq = distToPlayer;
+				}
+			}
+#else
 			CBaseAnimating *pRagdoll = m_LRU[i].Get();
 
 			next = m_LRU.Next(i);
@@ -899,6 +966,7 @@ void CRagdollLRURetirement::Update( float frametime ) // EPISODIC VERSION
 					furthestDistSq = distToPlayer;
 				}
 			}
+#endif
 			else // delete bad rags first.
 			{
 				furthestOne = i;
@@ -906,10 +974,11 @@ void CRagdollLRURetirement::Update( float frametime ) // EPISODIC VERSION
 			}
 		}
 
+		CBaseAnimating *pRemoveRagdoll = m_LRU[ furthestOne ].Get();
 #ifdef CLIENT_DLL
-		m_LRU[ furthestOne ]->SUB_Remove();
+		pRemoveRagdoll->SUB_Remove();
 #else
-		m_LRU[ furthestOne ]->SUB_StartFadeOut( 0 );
+		pRemoveRagdoll->SUB_StartFadeOut( 0 );
 #endif
 
 	}
@@ -930,9 +999,9 @@ void CRagdollLRURetirement::Update( float frametime ) // EPISODIC VERSION
 				continue;
 
 	#ifdef CLIENT_DLL
-			m_LRU[ i ]->SUB_Remove();
+			pRagdoll->SUB_Remove();
 	#else
-			m_LRU[ i ]->SUB_StartFadeOut( 0 );
+			pRagdoll->SUB_StartFadeOut( 0 );
 	#endif
 			m_LRU.Remove(i);
 		}
@@ -962,6 +1031,33 @@ void CRagdollLRURetirement::Update( float frametime ) // Non-episodic version
 	m_iRagdollCount = 0;
 	m_iSimulatedRagdollCount = 0;
 
+#ifdef MAPBASE // From Alien Swarm SDK
+	// remove ragdolls with a forced retire time
+	for ( i = m_LRU.Head(); i < m_LRU.InvalidIndex(); i = next )
+	{
+		next = m_LRU.Next(i);
+
+		CBaseAnimating *pRagdoll = m_LRU[i].Get();
+
+		//Just ignore it until we're done burning/dissolving.
+		if ( pRagdoll && pRagdoll->GetEffectEntity() )
+			continue;
+
+		// ignore if it's not time to force retire this ragdoll
+		if ( m_LRU[i].GetForcedRetireTime() == 0.0f || gpGlobals->curtime < m_LRU[i].GetForcedRetireTime() )
+			continue;
+
+		//Msg(" Removing ragdoll %s due to forced retire time of %f (now = %f)\n", pRagdoll->GetModelName(), m_LRU[i].GetForcedRetireTime(), gpGlobals->curtime );
+
+#ifdef CLIENT_DLL
+		pRagdoll->SUB_Remove();
+#else
+		pRagdoll->SUB_StartFadeOut( 0 );
+#endif
+		m_LRU.Remove(i);
+	}
+#endif
+
 	for ( i = m_LRU.Head(); i < m_LRU.InvalidIndex(); i = next )
 	{
 		next = m_LRU.Next(i);
@@ -977,12 +1073,12 @@ void CRagdollLRURetirement::Update( float frametime ) // Non-episodic version
 			if ( m_LRU.Count() > iMaxRagdollCount )
 			{
 				//Found one, we're done.
-				if ( ShouldRemoveThisRagdoll( m_LRU[i] ) == true )
+				if ( ShouldRemoveThisRagdoll( pRagdoll ) == true )
 				{
 #ifdef CLIENT_DLL
-					m_LRU[ i ]->SUB_Remove();
+					pRagdoll->SUB_Remove();
 #else
-					m_LRU[ i ]->SUB_StartFadeOut( 0 );
+					pRagdoll->SUB_StartFadeOut( 0 );
 #endif
 
 					m_LRU.Remove(i);
@@ -1011,14 +1107,24 @@ void CRagdollLRURetirement::Update( float frametime ) // Non-episodic version
 
 		CBaseAnimating *pRagdoll = m_LRU[i].Get();
 
+#ifdef MAPBASE
+		if ( pRagdoll )
+		{
+			//Just ignore it until we're done burning/dissolving.
+			IPhysicsObject *pObject = pRagdoll->VPhysicsGetObject();
+			if ( pRagdoll->GetEffectEntity() || ( pObject && !pObject->IsAsleep()) )
+				continue;
+		}
+#else
 		//Just ignore it until we're done burning/dissolving.
 		if ( pRagdoll && pRagdoll->GetEffectEntity() )
 			continue;
+#endif
 
 #ifdef CLIENT_DLL
-		m_LRU[ i ]->SUB_Remove();
+		pRagdoll->SUB_Remove();
 #else
-		m_LRU[ i ]->SUB_StartFadeOut( 0 );
+		pRagdoll->SUB_StartFadeOut( 0 );
 #endif
 		m_LRU.Remove(i);
 	}
@@ -1037,24 +1143,32 @@ ConVar g_ragdoll_important_maxcount( "g_ragdoll_important_maxcount", "2", FCVAR_
 //-----------------------------------------------------------------------------
 // Move it to the top of the LRU
 //-----------------------------------------------------------------------------
+#ifdef MAPBASE // From Alien Swarm SDK
+void CRagdollLRURetirement::MoveToTopOfLRU( CBaseAnimating *pRagdoll, bool bImportant, float flForcedRetireTime )
+#else
 void CRagdollLRURetirement::MoveToTopOfLRU( CBaseAnimating *pRagdoll, bool bImportant )
+#endif
 {
 	if ( bImportant )
 	{
+#ifdef MAPBASE // From Alien Swarm SDK
+		m_LRUImportantRagdolls.AddToTail( CRagdollEntry( pRagdoll, flForcedRetireTime ) );
+#else
 		m_LRUImportantRagdolls.AddToTail( pRagdoll );
+#endif
 
 		if ( m_LRUImportantRagdolls.Count() > g_ragdoll_important_maxcount.GetInt() )
 		{
 			int iIndex = m_LRUImportantRagdolls.Head();
 
-			CBaseAnimating *pRagdoll = m_LRUImportantRagdolls[iIndex].Get();
+			CBaseAnimating *pRagdollLRU = m_LRUImportantRagdolls[iIndex].Get();
 
-			if ( pRagdoll )
+			if ( pRagdollLRU )
 			{
 #ifdef CLIENT_DLL
-				pRagdoll->SUB_Remove();
+				pRagdollLRU->SUB_Remove();
 #else
-				pRagdoll->SUB_StartFadeOut( 0 );
+				pRagdollLRU->SUB_StartFadeOut( 0 );
 #endif
 				m_LRUImportantRagdolls.Remove(iIndex);
 			}
@@ -1071,8 +1185,38 @@ void CRagdollLRURetirement::MoveToTopOfLRU( CBaseAnimating *pRagdoll, bool bImpo
 		}
 	}
 
+#ifdef MAPBASE // From Alien Swarm SDK
+	m_LRU.AddToTail( CRagdollEntry( pRagdoll, flForcedRetireTime ) );
+#else
 	m_LRU.AddToTail( pRagdoll );
+#endif
 }
+
+#ifdef MAPBASE
+//-----------------------------------------------------------------------------
+// Remove it from the LRU
+//-----------------------------------------------------------------------------
+void CRagdollLRURetirement::RemoveFromLRU( CBaseAnimating *pRagdoll )
+{
+	for (int i = 0; i < m_LRU.Count(); i++)
+	{
+		if (m_LRU[i].Get() == pRagdoll)
+		{
+			m_LRU.Remove( i );
+			return;
+		}
+	}
+	
+	for (int i = 0; i < m_LRUImportantRagdolls.Count(); i++)
+	{
+		if (m_LRUImportantRagdolls[i].Get() == pRagdoll)
+		{
+			m_LRUImportantRagdolls.Remove( i );
+			return;
+		}
+	}
+}
+#endif
 
 
 //EFFECT/ENTITY TRANSFERS
@@ -1127,6 +1271,12 @@ C_EntityDissolve *DissolveEffect( C_BaseEntity *pTarget, float flTime )
 C_EntityFlame *FireEffect( C_BaseAnimating *pTarget, C_BaseEntity *pServerFire, float *flScaleEnd, float *flTimeStart, float *flTimeEnd )
 {
 	C_EntityFlame *pFire = new C_EntityFlame;
+
+#ifdef RTBMP
+	C_EntityFlame *pOldFire = dynamic_cast<C_EntityFlame *>(pServerFire);
+	if ( pOldFire )
+		pFire->m_bIsGreen = pOldFire->m_bIsGreen;
+#endif
 
 	if ( pFire->InitializeAsClientEntity( NULL, RENDER_GROUP_TRANSLUCENT_ENTITY ) == false )
 	{

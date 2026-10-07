@@ -18,12 +18,15 @@ $include "$SRCDIR\vpc_scripts\protobuf_builder.vpc"
 $Include "$SRCDIR\vpc_scripts\source_replay.vpc"	[$TF]
 $Include "$SRCDIR\game\protobuf_include.vpc"
 
+// Mapbase stuff
+$Include "$SRCDIR\game\server\server_mapbase.vpc"	[$MAPBASE]
+
 $Configuration	"Debug"
 {
 	$General
 	{
-		$OutputDirectory		".\Debug_$GAMENAME"			[$WIN32]
-		$IntermediateDirectory	".\Debug_$GAMENAME"			[$WIN32]
+		$OutputDirectory		".\Debug_$GAMENAME" [$WINDOWS]
+		$IntermediateDirectory	".\Debug_$GAMENAME" [$WINDOWS]
 
 		$OutputDirectory		".\Debug_$GAMENAME_360"		[$X360]
 		$IntermediateDirectory	".\Debug_$GAMENAME_360"		[$X360]
@@ -34,34 +37,49 @@ $Configuration	"Release"
 {
 	$General
 	{
-		$OutputDirectory		".\Release_$GAMENAME"		[$WIN32]
-		$IntermediateDirectory	".\Release_$GAMENAME"		[$WIN32]
+		// Windows generator doesn't sandbox these directories per configuration but others do :-/
+		$OutputDirectory		".\Release_$GAMENAME" [$WINDOWS]
+		$IntermediateDirectory	".\Release_$GAMENAME" [$WINDOWS]
 
 		$OutputDirectory		".\Release_$GAMENAME_360"	[$X360]
 		$IntermediateDirectory	".\Release_$GAMENAME_360"	[$X360]
 	}
 }
 
+$CustomBuildStep "nut"
+{
+	$CommandLine	"python $SRCDIR\devtools\bin\texttoarray.py $(InputPath) g_Script_$(InputName)> $(InputName)_nut.h" [$WINDOWS]
+	$CommandLine	"python $SRCDIR\devtools\bin\texttoarray.py $(InputPath) g_Script_$(InputName)> $(InputName)_nut.h" [$POSIX]
+	$Description	"$(InputFileName) produces $(InputName)_nut.h"
+	$Outputs		"$(InputName)_nut.h"
+}
+
 $Configuration
 {
 	$General
 	{
-		$OutputDirectory		".\$GAMENAME"		[$OSXALL]
+		$OutputDirectory			".\$GAMENAME" [$OSXALL]
+		$IntermediateDirectory		".\$GAMENAME" [$OSXALL]
 	}
-	
+
 	$Compiler
 	{
 		$AdditionalIncludeDirectories	"$BASE;.\;$SRCDIR\game\shared;$SRCDIR\utils\common;$SRCDIR\game\shared\econ;$SRCDIR\game\server\NextBot"
 		$PreprocessorDefinitions		"$BASE;GAME_DLL;VECTOR;VERSION_SAFE_STEAM_API_INTERFACES;PROTECTED_THINGS_ENABLE;sprintf=use_Q_snprintf_instead_of_sprintf;strncpy=use_Q_strncpy_instead;_snprintf=use_Q_snprintf_instead"
+		$PreprocessorDefinitions		"$BASE;INCLUDED_STEAM2_USERID_STRUCTS" 
 		$PreprocessorDefinitions		"$BASE;SWDS" [$POSIX]
 		$PreprocessorDefinitions		"$BASE;fopen=dont_use_fopen" [$WINDOWS||$X360]
 		$Create/UsePrecompiledHeader	"Use Precompiled Header (/Yu)"
 		$Create/UsePCHThroughFile		"cbase.h"
+
+		// misyl: We should eliminate these someday.
+		$DisableSpecificWarnings		"$BASE;4267" [$WIN64] // warning C4267: 'argument': conversion from 'size_t' to 'int', possible loss of data
+		$DisableSpecificWarnings		"$BASE;4101" [$WINDOWS] // warning C4101: 'topColor': unreferenced local variable
 	}
 
 	$Linker
 	{
-		$AdditionalDependencies			"$BASE winmm.lib" [$WIN32]
+		$AdditionalDependencies			"$BASE winmm.lib" [$WINDOWS]
 		$SystemLibraries                                                        "iconv" [$OSXALL]
 	}
 }
@@ -72,11 +90,11 @@ $Project
 	{
 		$File	"gamedll_replay.cpp"
 		$File	"$SRCDIR\common\replay\ireplaysessionrecorder.h"
-		
+
 		$File	"$SRCDIR\game\shared\replay_gamestats_shared.cpp"	[$BUILD_REPLAY]
 		$File	"$SRCDIR\game\shared\replay_gamestats_shared.h"	[$BUILD_REPLAY]
 	}
-	
+
 	$Folder	"Source Files"
 	{
 		$File	"$SRCDIR\game\shared\achievement_saverestore.cpp"
@@ -123,8 +141,10 @@ $Project
 		$File	"ai_concommands.cpp"
 		$File	"ai_condition.cpp"
 		$File	"ai_condition.h"
-		$File	"AI_Criteria.cpp"
+		$File	"AI_Criteria.cpp" [!$NEW_RESPONSE_SYSTEM]
 		$File	"AI_Criteria.h"
+		$File	"$SRCDIR\game\shared\ai_criteria_new.cpp" [$NEW_RESPONSE_SYSTEM]
+		$File	"$SRCDIR\game\shared\ai_criteria_new.h" [$NEW_RESPONSE_SYSTEM]
 		$File	"ai_debug.h"
 		$File	"$SRCDIR\game\shared\ai_debug_shared.h"
 		$File	"ai_default.cpp"
@@ -179,8 +199,10 @@ $Project
 		$File	"ai_planesolver.h"
 		$File	"ai_playerally.cpp"
 		$File	"ai_playerally.h"
-		$File	"AI_ResponseSystem.cpp"
+		$File	"AI_ResponseSystem.cpp" [!$NEW_RESPONSE_SYSTEM]
 		$File	"AI_ResponseSystem.h"
+		$File	"$SRCDIR\game\shared\ai_responsesystem_new.cpp" [$NEW_RESPONSE_SYSTEM]
+		$File	"$SRCDIR\game\shared\ai_responsesystem_new.h" [$NEW_RESPONSE_SYSTEM]
 		$File	"ai_route.cpp"
 		$File	"ai_route.h"
 		$File	"ai_routedist.h"
@@ -194,8 +216,10 @@ $Project
 		$File	"ai_senses.h"
 		$File	"ai_sentence.cpp"
 		$File	"ai_sentence.h"
-		$File	"ai_speech.cpp"
+		$File	"ai_speech.cpp" [!$NEW_RESPONSE_SYSTEM]
 		$File	"ai_speech.h"
+		$File	"ai_speech_new.cpp" [$NEW_RESPONSE_SYSTEM]
+		$File	"ai_speech_new.h" [$NEW_RESPONSE_SYSTEM]
 		$File	"ai_speechfilter.cpp"
 		$File	"ai_speechfilter.h"
 		$File	"ai_squad.cpp"
@@ -425,7 +449,6 @@ $Project
 		$File	"init_factory.h"
 		$File	"intermission.cpp"
 		$File	"$SRCDIR\public\interpolatortypes.h"
-		$File	"$SRCDIR\game\shared\interval.h"
 		$File	"$SRCDIR\public\iregistry.h"
 		$File	"$SRCDIR\game\shared\iscenetokenprocessor.h"
 		$File	"iservervehicle.h"
@@ -583,6 +606,7 @@ $Project
 		$File	"$SRCDIR\game\shared\singleplay_gamerules.cpp"
 		$File	"$SRCDIR\game\shared\singleplay_gamerules.h"
 		$File	"SkyCamera.cpp"
+		$File	"skyboxswapper.cpp"
 		$File	"slideshow_display.cpp"
 		$File	"sound.cpp"
 		$File	"$SRCDIR\game\shared\SoundEmitterSystem.cpp"
@@ -641,10 +665,25 @@ $Project
 		$File	"$SRCDIR\game\shared\vehicle_viewblend_shared.cpp"
 		$File	"vguiscreen.cpp"
 		$File	"vguiscreen.h"
+		$File	"vscript_server.cpp"
+		$File	"$SRCDIR\game\shared\vscript_shared.cpp"
+		$File	"vscript_server.nut"
+		$file	"point_worldtext.cpp"
+		$file	"point_worldtext.h"
+		$File	"player_voice_listener.h"
+		$File	"player_voice_listener.cpp"
+		$File	"logic_eventlistener.cpp"
+		$File	"logic_eventlistener.h"
+		$File	"spawn_helper.nut"
 		$File	"$SRCDIR\public\mathlib\vmatrix.h"
 		$File	"$SRCDIR\game\shared\voice_common.h"
 		$File	"$SRCDIR\game\shared\voice_gamemgr.cpp"
 		$File	"$SRCDIR\game\shared\voice_gamemgr.h"
+		$File	"vscript_server.cpp"
+		$File	"vscript_server.h"
+		$File	"vscript_server.nut"
+		$File	"$SRCDIR\game\shared\vscript_shared.cpp"
+		$File	"$SRCDIR\game\shared\vscript_shared.h"
 		$File	"waterbullet.cpp"
 		$File	"waterbullet.h"
 		$File	"WaterLODControl.cpp"
@@ -663,7 +702,9 @@ $Project
 		$File	"$SRCDIR\game\server\vote_controller.cpp"
 		//Haptics
 		$File	"$SRCDIR\public\haptics\haptic_msgs.cpp"
-		$File	"$SRCDIR\public\haptics\haptic_utils.cpp"	[$WIN32]
+		$File	"$SRCDIR\public\haptics\haptic_utils.cpp"	[$WINDOWS]
+		$File	"netpropmanager.cpp"
+		$File	"netpropmanager.h"
 
 		// Not using precompiled header cbase.h
 
@@ -678,9 +719,9 @@ $Project
 				"h_export.cpp"										\
 				"init_factory.cpp"									\
 				"$SRCDIR\public\interpolatortypes.cpp"				\
-				"$SRCDIR\game\shared\interval.cpp"					\
 				"$SRCDIR\public\keyframe\keyframe.cpp"				\
 				"$SRCDIR\common\language.cpp"						\
+				"$SRCDIR\common\steamid.cpp"						\
 				"$SRCDIR\public\map_utils.cpp"						\
 				"$SRCDIR\public\networkvar.cpp"						\
 				"$SRCDIR\common\randoverride.cpp"					\
@@ -970,6 +1011,7 @@ $Project
 		$File	"$SRCDIR\public\tier1\utlrbtree.h"
 		$File	"$SRCDIR\public\tier1\UtlSortVector.h"
 		$File	"$SRCDIR\public\tier1\utlvector.h"
+		$File	"$SRCDIR\public\tier1\utlrange.h"
 		$File	"$SRCDIR\public\vallocator.h"
 		$File	"variant_t.h"
 		$File	"$SRCDIR\public\vcollide.h"
@@ -992,10 +1034,11 @@ $Project
 		$File	"$SRCDIR\public\winlite.h"
 		$File	"$SRCDIR\public\worldsize.h"
 		$File	"$SRCDIR\public\zip_uncompressed.h"
+		$File	"$SRCDIR\public\tier1\interval.h"
 		$File	"$SRCDIR\game\shared\mp_shareddefs.h"
 		$File	"$SRCDIR\game\shared\econ\ihasowner.h"
 		//Haptics
-		$File	"$SRCDIR\public\haptics\haptic_utils.h"	[$WIN32]
+		$File	"$SRCDIR\public\haptics\haptic_utils.h"	[$WINDOWS]
 	}
 
 	$Folder	"Tools Framework"
@@ -1013,6 +1056,8 @@ $Project
 		$Lib	particles
 		$Lib	tier2
 		$Lib	tier3
-		$ImpLibexternal steam_api
+
+		$ImpLibexternal steam_api	[!$WIN64]
+		$ImpLibexternal steam_api64	[$WIN64]
 	}
 }

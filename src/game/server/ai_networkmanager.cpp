@@ -30,7 +30,8 @@
 #include "tier0/memdbgon.h"
 
 // Increment this to force rebuilding of all networks
-#define	 AINET_VERSION_NUMBER	37
+#define	 AINET_VERSION_NUMBER	38
+// LHG: 37 -> 38, created HULL_SMALL for antlion rollergrub, nodegraphs need to be rebuilt to account for the new channel
 
 //-----------------------------------------------------------------------------
 
@@ -654,7 +655,7 @@ void CAI_NetworkManager::LoadNetworkGraph( void )
 		srcID = buf.GetShort();
 		destID = buf.GetShort();
 
-		CAI_Link *pLink = m_pNetwork->CreateLink( srcID, destID );;
+		CAI_Link *pLink = m_pNetwork->CreateLink( srcID, destID );
 
 		byte ignored[NUM_HULLS];
 		byte *pDest = ( pLink ) ? &pLink->m_iAcceptedMoveTypes[0] : &ignored[0];

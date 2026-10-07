@@ -1,0 +1,171 @@
+#
+# MAPBASE SOURCE 2013 CI
+#
+# This workflow script automatically builds the Source SDK 2013 codebase on Windows and Linux using GitHub Actions.
+#
+# This is useful in a number of ways:
+#
+#     1. It ensures pull requests compile correctly on multiple platforms and provides binaries that can be used to test them.
+#     2. It can be used to compile code for releases without having to pull and prepare a local development environment.
+#     3. It opens potential for scripts that can employ more principles of CI/CD. (e.g. automatically publishing a release)
+#
+# This is based on a workflow originally created by z33ky.
+
+name: Build Projects
+
+on:
+  workflow_call:
+    inputs:
+      configuration:
+        description: 'Which configuration to build with'
+        default: 'Release'
+        required: true
+        type: string
+      game:
+        description: 'The name of the game to build (if relevant)'
+        default: 'episodic'
+        required: false
+        type: string
+      project-group:
+        description: 'Which group of projects to compile'
+        required: true
+        type: string
+      build-on-linux:
+        description: 'Build on Ubuntu/Linux?'
+        default: true
+        required: false
+        type: boolean
+      build-on-windows:
+        description: 'Build on Windows?'
+        default: false
+        required: false
+        type: boolean
+
+# env:
+#   RTBR_MOD_LOC: ../../../workflow_bins
+#   CICD: 1
+
+jobs:
+  build_windows:
+    if: inputs.build-on-windows == true
+    name: Windows (VS2022)
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+
+    - name: Add MSBuild to PATH
+      uses: compnerd/gha-setup-vsdevenv@v6
+
+      # HACKHACK: MSBuild doesn't seem to recognize Python even when its directory is within PATH,
+      # so we currently have to make it call Python directly.
+      # This assumes %Python3_ROOT_DIR% will always be set by setup-python above.
+    - name: Implement Python workaround
+      if: inputs.project-group == 'game' || inputs.project-group == 'everything'
+      working-directory: 'src/game/server'
+      shell: bash
+      run: |
+        sed -i 's/\"python/\"%Python3_ROOT_DIR%\\python/' server_base.vpc
+        cat server_base.vpc
+
+    - name: Create project files
+      working-directory: 'src'
+      shell: cmd
+      run: |
+        devtools\bin\vpc.exe /${{inputs.game}} /define:SOURCESDK +${{inputs.project-group}} /mksln build.sln
+
+      # --------------------------------------------------------------------
+
+    - name: Build
+      #if: steps.filter.outputs.game == 'true'
+      working-directory: 'src'
+      shell: cmd
+      run: |
+        devenv build.sln /upgrade
+        msbuild -m -t:Rebuild -p:Configuration=${{inputs.configuration}};Platform=win64 build.sln
+
+      # --------------------------------------------------------------------
+
+    - name: Publish binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: '${{inputs.project-group}}_win64_${{ inputs.configuration }}'
+        path: |
+          game/bin
+          game/bin/x64
+          game/mod_*/bin
+          game/mod_*/x64/bin
+          !game/bin/x64/steam_api64.dll
+          !game/bin/linux64/libsteam_api.so
+        if-no-files-found: error
+
+  build_ubuntu:
+    if: inputs.build-on-linux == true && inputs.project-group != 'maptools' # No Linux map tools for now
+    name: Ubuntu (GCC/G++)
+    runs-on: ubuntu-latest
+    env:
+      config: ${{ inputs.configuration }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install podman python3
+
+    - name: Pick game
+      if: inputs.project-group == 'game' || inputs.project-group == 'shaders'
+      working-directory: 'src'
+      shell: bash
+      run: |
+        sed -i 's|/hl2mp /tf|/${{inputs.game}}|' buildgameprojects
+        sed -i 's|+game|+${{inputs.project-group}}|' buildgameprojects
+
+    - name: Set configuration
+      working-directory: 'src'
+      shell: bash
+      run: |
+        config=${{inputs.configuration}}
+        export CFG=${config,,}
+        echo "config=${CFG}" >> $GITHUB_ENV
+        echo "${CICD}"
+        echo "${OUTBINDIR}"
+
+      # --------------------------------------------------------------------
+
+    - name: Build
+      working-directory: 'src'
+      run: ./buildgameprojects ${config,,}
+
+      # --------------------------------------------------------------------
+
+    # Workaround for debug symbols being included in release builds
+    - name: Strip debug symbols
+      if: inputs.configuration == 'Release'
+      shell: bash
+      run: |
+        find game -type f -name "*.so" | while read -r file; do
+          strip -S "$file"
+        done
+
+    # For now, don't publish the .dbg files even though we publish .pdb files on Windows
+    # (they're too big)
+    - name: Publish binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: '${{inputs.project-group}}_linux64_${{ inputs.configuration }}'
+        path: |
+          game/bin/linux64/*.so
+          game/bin/*.so
+          !game/bin/linux64/*_srv.so
+          !game/bin/*_srv.so
+          game/mod_*/bin/linux64/*.so
+          game/mod_*/bin/*.so
+          !game/mod_*/bin/linux64/*_srv.so
+          !game/mod_*/bin/*_srv.so
+          !game/bin/linux64/libsteam_api.so
+        if-no-files-found: error

@@ -89,7 +89,13 @@
 #include "tier3/tier3.h"
 #include "serverbenchmark_base.h"
 #include "querycache.h"
+#include "player_voice_listener.h"
+#ifdef MAPBASE
+#include "world.h"
+#endif
 
+#include "vscript/ivscript.h"
+#include "vscript_server.h"
 
 #ifdef TF_DLL
 #include "gc_clientsystem.h"
@@ -97,7 +103,6 @@
 #include "steamworks_gamestats.h"
 #include "tf/tf_gc_server.h"
 #include "tf_gamerules.h"
-#include "tf_lobby.h"
 #include "player_vs_environment/tf_population_manager.h"
 #include "workshop/maps_workshop.h"
 
@@ -183,6 +188,7 @@ IServerEngineTools *serverenginetools = NULL;
 ISceneFileCache *scenefilecache = NULL;
 IXboxSystem *xboxsystem = NULL;	// Xbox 360 only
 IMatchmaking *matchmaking = NULL;	// Xbox 360 only
+IScriptManager *scriptmanager = NULL;
 #if defined( REPLAY_ENABLED )
 IReplaySystem *g_pReplay = NULL;
 IServerReplayContext *g_pReplayServerContext = NULL;
@@ -246,6 +252,10 @@ static ClientPutInServerOverrideFn g_pClientPutInServerOverride = NULL;
 static void UpdateChapterRestrictions( const char *mapname );
 
 static void UpdateRichPresence ( void );
+
+#ifdef MAPBASE
+extern void RegisterMapbaseGameEvents();
+#endif
 
 
 #if !defined( _XBOX ) // Don't doubly define this symbol.
@@ -564,7 +574,7 @@ CServerGameDLL g_ServerGameDLL;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR(CServerGameDLL, IServerGameDLL, INTERFACEVERSION_SERVERGAMEDLL, g_ServerGameDLL);
 
 // When bumping the version to this interface, check that our assumption is still valid and expose the older version in the same way
-COMPILE_TIME_ASSERT( INTERFACEVERSION_SERVERGAMEDLL_INT == 10 );
+COMPILE_TIME_ASSERT( INTERFACEVERSION_SERVERGAMEDLL_INT == 12 );
 
 bool CServerGameDLL::DLLInit( CreateInterfaceFn appSystemFactory, 
 		CreateInterfaceFn physicsFactory, CreateInterfaceFn fileSystemFactory, 
@@ -596,7 +606,7 @@ bool CServerGameDLL::DLLInit( CreateInterfaceFn appSystemFactory,
 		return false;
 	if ( (enginesound = (IEngineSound *)appSystemFactory(IENGINESOUND_SERVER_INTERFACE_VERSION, NULL)) == NULL )
 		return false;
-	if ( (partition = (ISpatialPartition *)appSystemFactory(INTERFACEVERSION_SPATIALPARTITION, NULL)) == NULL )
+	if ( (::partition = (ISpatialPartition *)appSystemFactory(INTERFACEVERSION_SPATIALPARTITION, NULL)) == NULL )
 		return false;
 	if ( (modelinfo = (IVModelInfo *)appSystemFactory(VMODELINFO_SERVER_INTERFACE_VERSION, NULL)) == NULL )
 		return false;
@@ -624,6 +634,18 @@ bool CServerGameDLL::DLLInit( CreateInterfaceFn appSystemFactory,
 		return false;
 	if ( IsX360() && (matchmaking = (IMatchmaking *)appSystemFactory( VENGINE_MATCHMAKING_VERSION, NULL )) == NULL )
 		return false;
+
+	if ( !CommandLine()->CheckParm( "-noscripting") )
+	{
+#ifndef MAPBASE_VSCRIPT // Mapbase VScript uses .lib
+		scriptmanager = (IScriptManager*)appSystemFactory(VSCRIPT_INTERFACE_VERSION, NULL);
+#endif
+
+		if (scriptmanager == nullptr)
+		{
+			scriptmanager = (IScriptManager*)Sys_GetFactoryThis()(VSCRIPT_INTERFACE_VERSION, NULL);
+		}
+	}
 
 	// If not running dedicated, grab the engine vgui interface
 	if ( !engine->IsDedicatedServer() )
@@ -682,6 +704,7 @@ bool CServerGameDLL::DLLInit( CreateInterfaceFn appSystemFactory,
 	g_pGameSaveRestoreBlockSet->AddBlockHandler( GetCommentarySaveRestoreBlockHandler() );
 	g_pGameSaveRestoreBlockSet->AddBlockHandler( GetEventQueueSaveRestoreBlockHandler() );
 	g_pGameSaveRestoreBlockSet->AddBlockHandler( GetAchievementSaveRestoreBlockHandler() );
+	g_pGameSaveRestoreBlockSet->AddBlockHandler( GetVScriptSaveRestoreBlockHandler() );
 
 	// The string system must init first + shutdown last
 	IGameSystem::Add( GameStringSystem() );
@@ -700,6 +723,11 @@ bool CServerGameDLL::DLLInit( CreateInterfaceFn appSystemFactory,
 #endif
 	// Add sound emitter
 	IGameSystem::Add( SoundEmitterSystem() );
+
+#ifdef MAPBASE
+	// Load Mapbase game events
+	RegisterMapbaseGameEvents();
+#endif
 
 	// load Mod specific game events ( MUST be before InitAllSystems() so it can pickup the mod specific events)
 	gameeventmanager->LoadEventsFromFile("resource/ModEvents.res");
@@ -726,9 +754,6 @@ bool CServerGameDLL::DLLInit( CreateInterfaceFn appSystemFactory,
 	}
 
 	InvalidateQueryCache();
-
-	// Parse the particle manifest file & register the effects within it
-	ParseParticleEffects( false, false );
 
 	// try to get debug overlay, may be NULL if on HLDS
 	debugoverlay = (IVDebugOverlay *)appSystemFactory( VDEBUG_OVERLAY_INTERFACE_VERSION, NULL );
@@ -757,6 +782,7 @@ void CServerGameDLL::DLLShutdown( void )
 	// Due to dependencies, these are not autogamesystems
 	ModelSoundsCacheShutdown();
 
+	g_pGameSaveRestoreBlockSet->RemoveBlockHandler( GetVScriptSaveRestoreBlockHandler() );
 	g_pGameSaveRestoreBlockSet->RemoveBlockHandler( GetAchievementSaveRestoreBlockHandler() );
 	g_pGameSaveRestoreBlockSet->RemoveBlockHandler( GetCommentarySaveRestoreBlockHandler() );
 	g_pGameSaveRestoreBlockSet->RemoveBlockHandler( GetEventQueueSaveRestoreBlockHandler() );
@@ -949,10 +975,14 @@ bool CServerGameDLL::IsRestoring()
 	return g_InRestore;
 }
 
+float g_flServerCurTime = 0.0f;
+
 // Called any time a new level is started (after GameInit() also on level transitions within a game)
 bool CServerGameDLL::LevelInit( const char *pMapName, char const *pMapEntities, char const *pOldLevel, char const *pLandmarkName, bool loadGame, bool background )
 {
 	VPROF("CServerGameDLL::LevelInit");
+
+	g_flServerCurTime = gpGlobals->curtime;
 
 #ifdef USES_ECON_ITEMS
 	GameItemSchema_t *pItemSchema = ItemSystem()->GetItemSchema();
@@ -970,6 +1000,9 @@ bool CServerGameDLL::LevelInit( const char *pMapName, char const *pMapEntities, 
 		// Single player games tell xbox live what game & chapter the user is playing
 		UpdateRichPresence();
 	}
+
+	// Parse the particle manifest file & register the effects within it
+	ParseParticleEffects( false, false );
 
 	//Tony; parse custom manifest if exists!
 	ParseParticleEffectsMap( pMapName, false );
@@ -1205,6 +1238,7 @@ void CServerGameDLL::GameFrame( bool simulating )
 		gpGlobals->frametime *= 2.0f;
 	}
 
+	g_flServerCurTime = gpGlobals->curtime;
 	float oldframetime = gpGlobals->frametime;
 
 #ifdef _DEBUG
@@ -1341,7 +1375,11 @@ void CServerGameDLL::Think( bool finalTick )
 	if ( m_fAutoSaveDangerousTime != 0.0f && m_fAutoSaveDangerousTime < gpGlobals->curtime )
 	{
 		// The safety timer for a dangerous auto save has expired
+#ifdef MAPBASE_MP // From SecobMod
+		CBasePlayer *pPlayer = UTIL_GetLocalPlayer();
+#else
 		CBasePlayer *pPlayer = UTIL_PlayerByIndex( 1 );
+#endif
 
 		if ( pPlayer && ( pPlayer->GetDeathTime() == 0.0f || pPlayer->GetDeathTime() > gpGlobals->curtime )
 			&& !pPlayer->IsSinglePlayerGameEnding()
@@ -1390,6 +1428,12 @@ void CServerGameDLL::LevelShutdown( void )
 
 	// In case we quit out during initial load
 	CBaseEntity::SetAllowPrecache( false );
+
+	// Josh: Uncache all the particle systems on level shutdown
+	// otherwise we leak them constantly on changelevel in the
+	// particle precache stringtable list.
+	g_pParticleSystemMgr->UncacheAllParticleSystems();
+	g_pParticleSystemMgr->RecreateDictionary();
 
 	g_nCurrentChapterIndex = -1;
 
@@ -1722,9 +1766,41 @@ static TITLECOMMENT gTitleComments[] =
 #endif
 };
 
+#ifdef MAPBASE
+extern CUtlVector<MODTITLECOMMENT> *Mapbase_GetChapterMaps();
+extern CUtlVector<MODCHAPTER> *Mapbase_GetChapterList();
+#endif
+
 #ifdef _XBOX
 void CServerGameDLL::GetTitleName( const char *pMapName, char* pTitleBuff, int titleBuffSize )
 {
+#ifdef MAPBASE
+	// Check the world entity for a chapter title
+	if ( CWorld *pWorld = GetWorldEntity() )
+	{
+		const char *pWorldChapter = pWorld->GetChapterTitle();
+		if ( pWorldChapter && pWorldChapter[0] != '\0' )
+		{
+			Q_strncpy( chapterTitle, pWorldChapter, sizeof( chapterTitle ) );
+			return;
+		}
+	}
+
+	// Look in the mod's chapter list
+	CUtlVector<MODTITLECOMMENT> *ModChapterComments = Mapbase_GetChapterMaps();
+	if (ModChapterComments->Count() > 0)
+	{
+		for ( int i = 0; i < ModChapterComments->Count(); i++ )
+		{
+			if ( !Q_strnicmp( mapname, ModChapterComments->Element(i).pBSPName, strlen(ModChapterComments->Element(i).pBSPName) ) )
+			{
+				Q_strncpy( pTitleBuff, ModChapterComments->Element(i).pTitleName, titleBuffSize );
+				return;
+			}
+		}
+	}
+#endif
+
 	// Try to find a matching title comment for this mapname
 	for ( int i = 0; i < ARRAYSIZE(gTitleComments); i++ )
 	{
@@ -1734,6 +1810,7 @@ void CServerGameDLL::GetTitleName( const char *pMapName, char* pTitleBuff, int t
 			return;
 		}
 	}
+
 	Q_strncpy( pTitleBuff, pMapName, titleBuffSize );
 }
 #endif
@@ -1771,6 +1848,44 @@ void CServerGameDLL::GetSaveComment( char *text, int maxlength, float flMinutes,
 			break;
 		}
 	}
+
+#ifdef MAPBASE
+	// Look in the mod's chapter list
+	CUtlVector<MODTITLECOMMENT> *ModChapterComments = Mapbase_GetChapterMaps();
+	if (ModChapterComments->Count() > 0)
+	{
+		for ( int i = 0; i < ModChapterComments->Count(); i++ )
+		{
+			if ( !Q_strnicmp( mapname, ModChapterComments->Element(i).pBSPName, strlen(ModChapterComments->Element(i).pBSPName) ) )
+			{
+				// found one
+				int j;
+
+				// Got a message, post-process it to be save name friendly
+				Q_strncpy( comment, ModChapterComments->Element(i).pTitleName, sizeof( comment ) );
+				pName = comment;
+				j = 0;
+				// Strip out CRs
+				while ( j < 64 && comment[j] )
+				{
+					if ( comment[j] == '\n' || comment[j] == '\r' )
+						comment[j] = 0;
+					else
+						j++;
+				}
+				break;
+			}
+		}
+	}
+
+	// Check the world entity for a chapter title
+	if ( CWorld *pWorld = GetWorldEntity() )
+	{
+		const char *pWorldChapter = pWorld->GetChapterTitle();
+		if ( pWorldChapter && pWorldChapter[0] != '\0' )
+			pName = pWorldChapter;
+	}
+#endif
 	
 	// If we didn't get one, use the designer's map name, or the BSP name itself
 	if ( !pName )
@@ -1897,6 +2012,9 @@ const char *CServerGameDLL::GetServerBrowserMapOverride()
 			return pszFilenameShort;
 		}
 	}
+
+	static char maptmp[256];
+	return GetCleanMapName( STRING( gpGlobals->mapname ), maptmp );
 #endif
 	return NULL;
 }
@@ -1908,18 +2026,19 @@ const char *CServerGameDLL::GetServerBrowserGameData()
 #ifdef TF_DLL
 	sResult.Format( "tf_mm_trusted:%d,tf_mm_servermode:%d", tf_mm_trusted.GetInt(), tf_mm_servermode.GetInt() );
 
-	CTFLobby *pLobby = GTFGCClientSystem()->GetLobby();
-	if ( pLobby == NULL )
+	CMatchInfo *pMatch = GTFGCClientSystem()->GetMatch();
+	if ( !pMatch )
 	{
 		sResult.Append( ",lobby:0" );
 	}
 	else
 	{
-		sResult.Append( CFmtStr( ",lobby:%016llx", pLobby->GetGroupID() ) );
+		sResult.Append( CFmtStr( ",lobby:%016llx", pMatch->m_nLobbyID ) );
 	}
 	if ( TFGameRules() && TFGameRules()->IsMannVsMachineMode() )
 	{
-		sResult.Append( CFmtStr( ",mannup:%d", ( pLobby && pLobby->GetPlayingForBraggingRights() ) ? 1 : 0  ) );
+		bool bMannup = pMatch && pMatch->m_eMatchGroup == k_eTFMatchGroup_MvM_MannUp;
+		sResult.Append( CFmtStr( ",mannup:%d", (int)bMannup ) );
 	}
 #endif
 
@@ -1981,6 +2100,15 @@ bool CServerGameDLL::IsManualMapChangeOkay( const char **pszReason )
 	}
 
 	return true;
+}
+
+//-----------------------------------------------------------------------------
+bool CServerGameDLL::GetWorkshopMap( uint32 uIndex, WorkshopMapDesc_t *pDesc )
+{
+#ifdef TF_DLL
+	return TFMapsWorkshop()->GetWorkshopMapDesc( uIndex, pDesc );
+#endif // TF_DLL
+	return false;
 }
 
 //-----------------------------------------------------------------------------
@@ -2120,6 +2248,68 @@ void UpdateChapterRestrictions( const char *mapname )
 			break;
 		}
 	}
+
+#ifdef MAPBASE
+	// Look in the mod's chapter list
+	CUtlVector<MODTITLECOMMENT> *ModChapterComments = Mapbase_GetChapterMaps();
+	if (ModChapterComments->Count() > 0)
+	{
+		for ( int i = 0; i < ModChapterComments->Count(); i++ )
+		{
+			if ( !Q_strnicmp( mapname, ModChapterComments->Element(i).pBSPName, strlen(ModChapterComments->Element(i).pBSPName) ) )
+			{
+				// found
+				Q_strncpy( chapterTitle, ModChapterComments->Element(i).pTitleName, sizeof( chapterTitle ) );
+				int j = 0;
+				while ( j < 64 && chapterTitle[j] )
+				{
+					if ( chapterTitle[j] == '\n' || chapterTitle[j] == '\r' )
+						chapterTitle[j] = 0;
+					else
+						j++;
+				}
+
+				// Mods can order their own custom chapter names,
+				// allowing for more flexible string name usage, multiple names in one chapter, etc.
+				CUtlVector<MODCHAPTER> *ModChapterList = Mapbase_GetChapterList();
+				for ( int i = 0; i < ModChapterList->Count(); i++ )
+				{
+					if ( !Q_strnicmp( chapterTitle, ModChapterList->Element(i).pChapterName, strlen(chapterTitle) ) )
+					{
+						// ok we have the string, see if it's newer
+						int nNewChapter = ModChapterList->Element(i).iChapter;
+						int nUnlockedChapter = sv_unlockedchapters.GetInt();
+
+						if ( nUnlockedChapter < nNewChapter )
+						{
+							// ok we're at a higher chapter, unlock
+							sv_unlockedchapters.SetValue( nNewChapter );
+
+							// HACK: Call up through a better function than this? 7/23/07 - jdw
+							if ( IsX360() )
+							{
+								engine->ServerCommand( "host_writeconfig\n" );
+							}
+						}
+
+						g_nCurrentChapterIndex = nNewChapter;
+						return;
+					}
+				}
+
+				break;
+			}
+		}
+	}
+
+	// Check the world entity for a chapter title.
+	if ( CWorld *pWorld = GetWorldEntity() )
+	{
+		const char *pWorldChapter = pWorld->GetChapterTitle();
+		if ( pWorldChapter && pWorldChapter[0] != '\0' )
+			Q_strncpy( chapterTitle, pWorldChapter, sizeof( chapterTitle ) );
+	}
+#endif
 
 	if ( !chapterTitle[0] )
 		return;
@@ -2645,6 +2835,7 @@ void CServerGameEnts::CheckTransmit( CCheckTransmitInfo *pInfo, const unsigned s
 CServerGameClients g_ServerGameClients;
 // INTERFACEVERSION_SERVERGAMECLIENTS_VERSION_3 is compatible with the latest since we're only adding things to the end, so expose that as well.
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR(CServerGameClients, IServerGameClients003, INTERFACEVERSION_SERVERGAMECLIENTS_VERSION_3, g_ServerGameClients );
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR(CServerGameClients, IServerGameClients004, INTERFACEVERSION_SERVERGAMECLIENTS_VERSION_4, g_ServerGameClients );
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR(CServerGameClients, IServerGameClients, INTERFACEVERSION_SERVERGAMECLIENTS, g_ServerGameClients );
 
 
@@ -2660,6 +2851,12 @@ EXPOSE_SINGLE_INTERFACE_GLOBALVAR(CServerGameClients, IServerGameClients, INTERF
 //-----------------------------------------------------------------------------
 bool CServerGameClients::ClientConnect( edict_t *pEdict, const char *pszName, const char *pszAddress, char *reject, int maxrejectlen )
 {	
+	if ( gpGlobals->eLoadType == MapLoad_Background && !FStrEq( pszAddress, "loopback" ) )
+	{
+		Q_strncpy( reject, "Cannot join a background map", maxrejectlen );
+		return false;
+	}
+
 	if ( !g_pGameRules )
 		return false;
 	
@@ -2818,75 +3015,11 @@ void CServerGameClients::ClientSettingsChanged( edict_t *pEdict )
 		return;
 
 	CBasePlayer *player = ( CBasePlayer * )CBaseEntity::Instance( pEdict );
-	
+
 	if ( !player )
 		return;
 
-	bool bAllowNetworkingClientSettingsChange = g_pGameRules->IsConnectedUserInfoChangeAllowed( player );
-	if ( bAllowNetworkingClientSettingsChange )
-	{
-
-#define QUICKGETCVARVALUE(v) (engine->GetClientConVarValue( player->entindex(), v ))
-
-	// get network setting for prediction & lag compensation
-	
-	// Unfortunately, we have to duplicate the code in cdll_bounded_cvars.cpp here because the client
-	// doesn't send the virtualized value up (because it has no way to know when the virtualized value
-	// changes). Possible todo: put the responsibility on the bounded cvar to notify the engine when
-	// its virtualized value has changed.		
-	
-	player->m_nUpdateRate = Q_atoi( QUICKGETCVARVALUE("cl_updaterate") );
-	static const ConVar *pMinUpdateRate = g_pCVar->FindVar( "sv_minupdaterate" );
-	static const ConVar *pMaxUpdateRate = g_pCVar->FindVar( "sv_maxupdaterate" );
-	if ( pMinUpdateRate && pMaxUpdateRate )
-		player->m_nUpdateRate = clamp( player->m_nUpdateRate, (int) pMinUpdateRate->GetFloat(), (int) pMaxUpdateRate->GetFloat() );
-
-	bool useInterpolation = Q_atoi( QUICKGETCVARVALUE("cl_interpolate") ) != 0;
-	if ( useInterpolation )
-	{
-		float flLerpRatio = Q_atof( QUICKGETCVARVALUE("cl_interp_ratio") );
-		if ( flLerpRatio == 0 )
-			flLerpRatio = 1.0f;
-		float flLerpAmount = Q_atof( QUICKGETCVARVALUE("cl_interp") );
-
-		static const ConVar *pMin = g_pCVar->FindVar( "sv_client_min_interp_ratio" );
-		static const ConVar *pMax = g_pCVar->FindVar( "sv_client_max_interp_ratio" );
-		if ( pMin && pMax && pMin->GetFloat() != -1 )
-		{
-			flLerpRatio = clamp( flLerpRatio, pMin->GetFloat(), pMax->GetFloat() );
-		}
-		else
-		{
-			if ( flLerpRatio == 0 )
-				flLerpRatio = 1.0f;
-		}
-		// #define FIXME_INTERP_RATIO
-		player->m_fLerpTime = MAX( flLerpAmount, flLerpRatio / player->m_nUpdateRate );
-	}
-	else
-	{
-		player->m_fLerpTime = 0.0f;
-	}
-	
-#if !defined( NO_ENTITY_PREDICTION )
-	bool usePrediction = Q_atoi( QUICKGETCVARVALUE("cl_predict")) != 0;
-
-	if ( usePrediction )
-	{
-		player->m_bPredictWeapons  = Q_atoi( QUICKGETCVARVALUE("cl_predictweapons")) != 0;
-		player->m_bLagCompensation = Q_atoi( QUICKGETCVARVALUE("cl_lagcompensation")) != 0;
-	}
-	else
-#endif
-	{
-		player->m_bPredictWeapons  = false;
-		player->m_bLagCompensation = false;
-	}
-	
-
-#undef QUICKGETCVARVALUE
-	}
-
+	player->ClientSettingsChanged();
 	g_pGameRules->ClientSettingsChanged( player );
 }
 
@@ -3062,6 +3195,8 @@ void CServerGameClients::ClientSetupVisibility( edict_t *pViewEntity, edict_t *p
 //-----------------------------------------------------------------------------
 #define CMD_MAXBACKUP 64
 
+static ConVar sv_max_usercmd_move_magnitude( "sv_max_usercmd_move_magnitude", "1000", 0, "Maximum move magnitude that can be requested by client." );	
+
 float CServerGameClients::ProcessUsercmds( edict_t *player, bf_read *buf, int numcmds, int totalcmds,
 	int dropped_packets, bool ignore, bool paused )
 {
@@ -3084,7 +3219,7 @@ float CServerGameClients::ProcessUsercmds( edict_t *player, bf_read *buf, int nu
 		pPlayer = static_cast< CBasePlayer * >( pEnt );
 	}
 	// Too many commands?
-	if ( totalcmds < 0 || totalcmds >= ( CMD_MAXBACKUP - 1 ) )
+	if ( totalcmds < 0 || totalcmds >= ( CMD_MAXBACKUP - 1 ) || numcmds < 0 || numcmds > totalcmds )
 	{
 		const char *name = "unknown";
 		if ( pPlayer )
@@ -3105,8 +3240,21 @@ float CServerGameClients::ProcessUsercmds( edict_t *player, bf_read *buf, int nu
 	for ( i = totalcmds - 1; i >= 0; i-- )
 	{
 		to = &cmds[ i ];
+#if defined( MAPBASE_VSCRIPT )
+		ReadUsercmd( buf, to, from, pPlayer ); // Tell whose UserCmd it is
+#else
 		ReadUsercmd( buf, to, from );
+#endif
 		from = to;
+
+		if ( ( fabs( to->forwardmove ) > sv_max_usercmd_move_magnitude.GetFloat() ) ||
+			( fabs( to->sidemove ) > sv_max_usercmd_move_magnitude.GetFloat() ) ||
+			( fabs( to->upmove ) > sv_max_usercmd_move_magnitude.GetFloat() ) )
+		{
+			to->forwardmove = 0;
+			to->sidemove = 0;
+			to->upmove = 0;
+		}
 	}
 
 	// Client not fully connected or server has gone inactive  or is paused, just ignore
@@ -3197,7 +3345,11 @@ void CServerGameClients::GetBugReportInfo( char *buf, int buflen )
 
 	if ( gpGlobals->maxClients == 1 )
 	{
+#ifdef MAPBASE_MP // From SecobMod
+		CBaseEntity *ent = FindPickerEntity( UTIL_GetLocalPlayer() );
+#else
 		CBaseEntity *ent = FindPickerEntity( UTIL_PlayerByIndex(1) );
+#endif
 		if ( ent )
 		{
 			Q_snprintf( buf, buflen, "Picker %i/%s - ent %s model %s\n",
@@ -3218,6 +3370,21 @@ void CServerGameClients::GetBugReportInfo( char *buf, int buflen )
 			}
 			Q_snprintf( buf, buflen, "%sCurrent time: %6.3f\n", buf, gpGlobals->curtime );
 		}
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: A player sent a voice packet
+//-----------------------------------------------------------------------------
+void CServerGameClients::ClientVoice( edict_t *pEdict )
+{
+	CBasePlayer *pPlayer = ( CBasePlayer * )CBaseEntity::Instance( pEdict );
+	if (pPlayer)
+	{
+		pPlayer->OnVoiceTransmit();
+		
+		// Notify the voice listener that we've spoken
+		PlayerVoiceListener().AddPlayerSpeakTime( pPlayer );
 	}
 }
 
